@@ -11,6 +11,7 @@ const { precomputeSpectra } = require('../../phase3/spectrum.cjs')
 const { precomputeOscilloscopes } = require('../../phase3/oscilloscope.cjs')
 const { precomputeSpectrograms } = require('../../phase3/spectrogram.cjs')
 const { precomputeWaveforms } = require('../../phase3/waveform.cjs')
+const { precomputeVus } = require('../../phase3/vu.cjs')
 
 const ROOT = resolve(__dirname, '..', '..')
 const PRISM = join(ROOT, 'upstream', 'prism')
@@ -20,6 +21,7 @@ const nativeSpectrum = nativeModule.spectrum
 const nativeOscilloscope = nativeModule.oscilloscope
 const nativeSpectrogram = nativeModule.spectrogram
 const nativeWaveform = nativeModule.waveform
+const nativeVu = nativeModule.vumeter
 const config = JSON.parse(process.env.PHASE2_JOB || '{}')
 const FPS = 30
 
@@ -93,10 +95,12 @@ async function exportVideo() {
   const oscilloscopeDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
   const spectrogramDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
   const waveformDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
+  const vuDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
   let spectrumCache
   let oscilloscopeCache
   let spectrogramCache
   let waveformCache
+  let vuCache
   let reader
   let encoder
   let win
@@ -125,6 +129,9 @@ async function exportVideo() {
       waveformDirectory, width / project.width, () => !fs.existsSync(config.cancelFile),
       (configuration, configurations, frames, total) => console.log(JSON.stringify({
         event: 'waveform-progress', configuration, configurations, frames, total })))
+    vuCache = await precomputeVus(project.audioPath, metadata, project, nativeVu,
+      vuDirectory, () => !fs.existsSync(config.cancelFile),
+      (frames, total) => console.log(JSON.stringify({ event: 'vu-progress', frames, total })))
     reader = new PcmReader(project.audioPath, metadata.sampleRate)
     win = new BrowserWindow({ show: false, width, height,
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
@@ -158,7 +165,8 @@ async function exportVideo() {
       const oscilloscopes = oscilloscopeCache.frame()
       const spectrograms = spectrogramCache.frame()
       const waveforms = waveformCache.frame()
-      const encoded = await win.webContents.executeJavaScript(`window.phase2Export.render(${JSON.stringify(x)},${JSON.stringify(y)},${JSON.stringify(spectra)},${JSON.stringify(oscilloscopes)},${JSON.stringify(spectrograms)},${JSON.stringify(waveforms)},${index})`)
+      const vus = vuCache.frame()
+      const encoded = await win.webContents.executeJavaScript(`window.phase2Export.render(${JSON.stringify(x)},${JSON.stringify(y)},${JSON.stringify(spectra)},${JSON.stringify(oscilloscopes)},${JSON.stringify(spectrograms)},${JSON.stringify(waveforms)},${JSON.stringify(vus)},${index})`)
       renderMs += performance.now() - renderStart
       const png = Buffer.from(encoded, 'base64')
       const backpressureStart = performance.now()
@@ -190,7 +198,7 @@ async function exportVideo() {
       }
       fs.rmSync(temp, { force: true })
     }
-    try { await reader?.close() } finally { spectrumCache?.close(); oscilloscopeCache?.close(); spectrogramCache?.close(); waveformCache?.close(); win?.destroy() }
+    try { await reader?.close() } finally { spectrumCache?.close(); oscilloscopeCache?.close(); spectrogramCache?.close(); waveformCache?.close(); vuCache?.close(); win?.destroy() }
   }
 }
 

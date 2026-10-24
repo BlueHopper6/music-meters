@@ -1,6 +1,6 @@
 # Meter feature parity
 
-This table tracks the **application's** verified features after Phase 3.4. `Supported` means editor stills and exported MP4 frames use real Prism analysis and drawing. It does not claim pixel-for-pixel equivalence with MiniMeters. Prism is pinned to `49721802252b115d169e353c98b27408daa5e2b7`. MiniMeters features below are drawn from its [official feature list](https://minimeters.app/); Prism capabilities are checked against the pinned source paths named in the evidence column.
+This table tracks the **application's** verified features after Phase 3.5. `Supported` means editor stills and exported MP4 frames use real Prism analysis and drawing. It does not claim pixel-for-pixel equivalence with MiniMeters. Prism is pinned to `49721802252b115d169e353c98b27408daa5e2b7`. MiniMeters features below are drawn from its [official feature list](https://minimeters.app/); Prism capabilities are checked against the pinned source paths named in the evidence column.
 
 | Feature or mode | Status | Evidence and scope |
 | --- | --- | --- |
@@ -30,6 +30,8 @@ This table tracks the **application's** verified features after Phase 3.4. `Supp
 | Waveform DAW timeline ruler | Different behavior | Prism's timeline depends on a DAW transport. This file-based offline editor retains its waveform grid without DAW bar/beat labels. |
 | Waterfall spectrum history | Not yet implemented | Prism `Waterfall.ts` and native waterfall exist; no editor/export layer yet. This is a Prism category, not a distinct MiniMeters module in its current official feature list. |
 | Loudness/peak windows and readouts | Not yet implemented | Prism `LUFSMeter.ts` and native `lufsmeter.cpp` exist; no editor/export layer yet. MiniMeters lists momentary/short-term LUFS and fast/slow RMS windows. |
-| VU ballistics, channel selection, and calibration | Not yet implemented | Prism `VUMeter.ts` and native `vumeter.cpp` exist; no editor/export layer yet. MiniMeters lists L/R/M/S channel options and input calibration. |
+| VU ballistics and calibration | Supported | Prism `native/src/vumeter.cpp` provides 300 ms RMS integration and stereo correlation; Prism `vuMeterBallistics.ts` supplies deterministic peak hold/decay for offline frame time. The 0 VU reference is configurable from −30 to 0 dBFS per layer. See [Phase 3.5 report](phase-3-5-report.md). |
+| VU bars, needles, and channel display | Supported | Prism `VUMeter.ts` paints horizontal/vertical stereo bars and stereo/combined needles. Two unlike instances, all four visual styles, editor stills, and 720p/1080p MP4 were verified. Bar channels are fixed to L/R; combined needle uses a stereo RMS dB average. |
+| VU selectable L/R/M/S input routing | Not yet implemented | MiniMeters lists channel routing; this app supplies Prism's L/R VU input and does not expose selectable M/S routing. |
 
 `Different behavior` and `Not feasible` remain available statuses for future rows when a tested feature warrants them. Features listed as not yet implemented are roadmap items, not claims that Prism cannot provide them.

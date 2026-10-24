@@ -33,6 +33,15 @@ function waveformLayer(id = 'waveform-1', name = 'Waveform history') {
     bandLowColor: '#ff4444', bandMidColor: '#44dd44', bandHighColor: '#4488ff' }
 }
 
+function vuLayer(id = 'vu-1', name = 'VU meter') {
+  return { id, type: 'vu', name, x: 190, y: 190, w: 900, h: 420,
+    visible: true, locked: false, opacity: 1, color: '#38bdf8',
+    mode: 'bar', orientation: 'horizontal', needleChannels: 'stereo',
+    referenceDb: -14, peakColor: '#ff7f00',
+    needleLeftColor: '#c7dfff', needleRightColor: '#ff477e',
+    needleCombinedColor: '#f4f8ff' }
+}
+
 function defaultProject() {
   return {
     version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
@@ -68,7 +77,7 @@ function normalizeProject(raw) {
   if (!Array.isArray(raw.layers) || raw.layers.length > 32) throw new Error('Project supports at most 32 layers')
   const seen = new Set()
   const layers = raw.layers.map((layer, index) => {
-    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope', 'spectrogram', 'waveform'].includes(layer.type)) {
+    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope', 'spectrogram', 'waveform', 'vu'].includes(layer.type)) {
       throw new Error(`Layer ${index + 1} must be a supported meter`)
     }
     if (typeof layer.id !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(layer.id) || seen.has(layer.id)) {
@@ -142,6 +151,18 @@ function normalizeProject(raw) {
         bandMidColor: color(layer.bandMidColor, 'Mid band color'),
         bandHighColor: color(layer.bandHighColor, 'High band color') }
     }
+    if (layer.type === 'vu') {
+      if (!['bar', 'needle'].includes(layer.mode)) throw new Error('Unsupported VU display mode')
+      if (!['horizontal', 'vertical'].includes(layer.orientation)) throw new Error('Unsupported VU orientation')
+      if (!['stereo', 'combined'].includes(layer.needleChannels)) throw new Error('Unsupported VU needle channels')
+      return { ...normalized, mode: layer.mode, orientation: layer.orientation,
+        needleChannels: layer.needleChannels,
+        referenceDb: number(layer.referenceDb, 'VU reference dBFS', -30, 0),
+        peakColor: color(layer.peakColor, 'VU peak color'),
+        needleLeftColor: color(layer.needleLeftColor, 'VU left needle color'),
+        needleRightColor: color(layer.needleRightColor, 'VU right needle color'),
+        needleCombinedColor: color(layer.needleCombinedColor, 'VU combined needle color') }
+    }
     return normalized
   })
   return { version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
@@ -149,4 +170,4 @@ function normalizeProject(raw) {
     audioPath: raw.audioPath, layers }
 }
 
-module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, normalizeProject }
+module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, normalizeProject }

@@ -1,6 +1,32 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, normalizeProject } = require('../project.cjs')
+const { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, normalizeProject } = require('../project.cjs')
+
+test('two VU meters retain independent display and calibration settings in version 1', () => {
+  const project = defaultProject()
+  const bar = { ...vuLayer('vu-bar', 'Bar'), x: 30, y: 150, w: 580, h: 420 }
+  const needle = { ...vuLayer('vu-needle', 'Needle'), x: 650, y: 150, w: 580, h: 420,
+    mode: 'needle', needleChannels: 'combined', referenceDb: -20, needleCombinedColor: '#ffaa44' }
+  project.layers.push(bar, needle)
+  const saved = normalizeProject(project)
+  assert.equal(saved.version, 1)
+  assert.deepEqual(saved.layers.slice(1), [bar, needle])
+})
+
+test('rejects invalid VU mode, orientation, channels, reference, and color', () => {
+  const invalid = change => {
+    const project = defaultProject()
+    const layer = vuLayer()
+    change(layer)
+    project.layers.push(layer)
+    return project
+  }
+  assert.throws(() => normalizeProject(invalid(layer => { layer.mode = 'radial' })), /VU display mode/)
+  assert.throws(() => normalizeProject(invalid(layer => { layer.orientation = 'diagonal' })), /VU orientation/)
+  assert.throws(() => normalizeProject(invalid(layer => { layer.needleChannels = 'mid' })), /VU needle channels/)
+  assert.throws(() => normalizeProject(invalid(layer => { layer.referenceDb = -31 })), /VU reference dBFS/)
+  assert.throws(() => normalizeProject(invalid(layer => { layer.peakColor = 'red' })), /VU peak color/)
+})
 
 test('default project is a valid 16:9 composition with one real meter layer', () => {
   const project = normalizeProject(defaultProject())

@@ -1,0 +1,35 @@
+# Phase 3.5: Prism VU meter
+
+## Result and source
+
+**PASS.** Work began from clean `main` at `e32ad32c9f1ac7cfcc341feb70c74b46b3614e5d` on `feature/phase-3-vu-meter` after Phase 3.4 merged. Pinned Prism is `49721802252b115d169e353c98b27408daa5e2b7`; Astrofox remains `ef3312505eb2830f34440da0196fa1ec545be659` and no Astrofox code was imported. Both ignored upstream checkouts remained unchanged.
+
+The analyzer reuses Prism `native/src/vumeter.cpp` and `vumeter.h` for its 300 ms stereo RMS integration, fast bar envelopes, and correlation. The fixed-time peak fields come from Prism `src/renderer/visualizers/vuMeterBallistics.ts`. The native addon's peak hold is driven by `std::chrono::steady_clock`, which depends on export speed; using its peak values would make the offline video nondeterministic. The JavaScript implementation uses the same Prism peak hold and decay rules with explicit video-frame time. `src/renderer/visualizers/VUMeter.ts` paints Prism's horizontal or vertical L/R bars and stereo or combined needles, including calibration and colors. The build inserts an in-memory explicit-time frame seam into the painter; the pinned Prism files on disk are untouched.
+
+`phase3/vu.cjs` analyzes PCM continuously in 30 FPS chunks. One shared stream serves any number of VU layers because their differences are display settings. Export stores seven float readings per frame in a temporary fixed-width cache and supplies them to independent persistent painters. Preview reanalyzes to the selected frame and replays a bounded six seconds of readings into a fresh painter so needle smoothing and peak display reproduce after a seek or setting change. The cache is removed on success, cancellation, or failure. Version 1 projects retain compatibility; each VU layer saves display mode, bar orientation, needle channel display, 0 VU reference from −30 to 0 dBFS, colors, geometry, visibility, and opacity.
+
+## Gate evidence
+
+The deterministic ten-second 48 kHz fixture has silence at 0–2 s, a 1 kHz sine at −14 dBFS RMS in phase at 2–4 s, anti-phase at 4–6 s, left-only at 6–8 s, and silence at 8–10 s with a 5 ms near-full-scale stereo pulse at 8.10 s. The gate composition contains a horizontal L/R bar at −14 dBFS reference, a combined needle at −20 dBFS reference, and a vectorscope.
+
+| Check | Result |
+| --- | --- |
+| Native and deterministic ballistics | **PASS:** Silence read −60 dBFS. At 3 s the native VU was −14.001 dBFS in both channels. At 2.1 s it was still −17.521 dBFS, and by 2.5 s it had settled to −14.001 dBFS. The native fast bar reached −11.514 dBFS during the sine. Correlation was +1 in phase, −1 anti-phase, and 0 with the right channel silent; right VU was −60 dBFS at 7 s. The pulse peak was −0.482 dBFS at frame 244, held through frame 265, then fell to −3.182 dBFS at frame 270 and −12.182 dBFS at frame 285. Native and Prism JavaScript VU/bar readings agreed within 1.5 dB, and correlation within 0.05, at sampled frames. |
+| Instance isolation and analysis parity | **PASS:** Two unlike VU layers received the same shared readings, and each layer's preview was identical when analyzed alone. Preview's last reading and the export cache were exactly equal at frame 270. Preview kept at most 181 readings. |
+| Editor behavior and styles | **PASS:** Stills at 1, 3, 5, 7, 8.13, 8.8, and 9.5 s were visually inspected. Vertical bars and stereo needles were rendered, visually inspected, and returned byte-for-byte to the original view after restoring horizontal bars and the combined needle. The 3 s PNG also matched byte-for-byte after a 9.5 → 3 s backward seek, save/reopen, and a 580 → 540 → 580 width change. JSON preserved both meters' mode, positions, and separate references. |
+| Editor versus MP4 | **PASS:** Numbered frames 90, 150, 210, 244, 264, and 285 were extracted and compared to the matching stills. Whole-frame PSNR ranged from 38.08 to 41.54 dB; bar-region PSNR was at least 36.17 dB and needle-region PSNR at least 35.67 dB. All exceeded the 30 dB whole-frame and 25 dB region gates. Frame 90 at 1080p was visually inspected. |
+| MP4 and audio | **PASS:** The 720p review video and ignored 1080p export fully decoded. Both have 300 H.264 `yuv420p` frames at 30 FPS, AAC audio, and 10.000 s duration. Source/output left-channel correlation exceeded 0.98 at 3, 5, and 7 s; in-phase, anti-phase, and left-only relations were correct. The 8.10 s pulse survived the encode and 9.5 s was silent. |
+| Cancellation | **PASS:** Cancellation after 30 rendered frames printed `Export cancelled`; no final or partial MP4, VU cache directory, or test encoder/decoder process remained. |
+| Regression and checks | **PASS:** Existing spectrum/vectorscope, oscilloscope, spectrogram, and waveform editor/export smokes produced fresh MP4s. Project/PCM tests passed 16/16. Browser build, strict TypeScript, JavaScript/Python syntax checks, and `git diff --check` passed. |
+
+Review artifacts: [720p MP4](../samples/phase3/vu-gate.mp4), [silence](../samples/phase3/vu-silence.png), [calibrated tone](../samples/phase3/vu-tone.png), [anti-phase](../samples/phase3/vu-anti-phase.png), [left only](../samples/phase3/vu-left-only.png), [pulse](../samples/phase3/vu-pulse.png), [peak hold](../samples/phase3/vu-hold.png), [peak decay](../samples/phase3/vu-decay.png), [vertical bars](../samples/phase3/vu-vertical-bar.png), and [stereo needles](../samples/phase3/vu-stereo-needles.png). The fixture, saved project, 1080p MP4, and numbered comparison frames are under ignored `artifacts/phase3/vu/`.
+
+## Commands, performance, and limits
+
+Commands run: `python phase3/test/make-vu-fixture.py`; `node phase2/build.cjs`; strict TypeScript over the three app modules; `node --test phase2/test/project.test.cjs phase1/test/pcm-reader.test.cjs`; Electron VU and four prior-meter smoke scripts; `python phase3/test/compare-vu-frame.py` for six numbered frames; `python phase3/test/verify-vu-export.py` for both presets; `node phase2/export.cjs` for the 1080p and cancelled jobs; syntax checks; and `git diff --check`.
+
+The fresh 1080p export took **13.86 s**, with **11.97 s** in render/PNG bridge and **0.34 s** encoder backpressure; peak Electron main-process RSS was **125,169,664 bytes**. These observations exclude the renderer, FFmpeg, and disk cache and are not performance guarantees.
+
+The bar display uses Prism's integrated VU reading; native fast-bar readings are measured but are not drawn by this pinned Prism painter. The reference shifts the classic VU display scale rather than changing input gain. Bar channels are L/R; combined needle uses Prism's stereo RMS dB average and maximum channel peak. Selectable M/S routing is not exposed. Offline analysis updates every video frame, so transient timing can differ from a live audio callback. Still previews analyze from the start of the song, making long-song seeks slower; the six-second replay bounds visual history but does not avoid that analysis pass.
+
+Next recommended phase: Phase 3.6, only after user approval.

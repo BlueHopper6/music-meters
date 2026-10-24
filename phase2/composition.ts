@@ -3,8 +3,9 @@ import { SpectrumAnalyzer } from '../upstream/prism/src/renderer/visualizers/Spe
 import { Oscilloscope } from '../upstream/prism/src/renderer/visualizers/Oscilloscope'
 import { Spectrogram } from '../upstream/prism/src/renderer/visualizers/Spectrogram'
 import { Waveform } from '../upstream/prism/src/renderer/visualizers/Waveform'
-import type { SpectrumNativeAnalyzer, OscilloscopeNativeAnalyzer, SpectrogramNativeAnalyzer, WaveformNativeAnalyzer } from '../upstream/prism/src/renderer/audio/native'
-import type { SpectrogramNativeOptions, SpectrogramNativeResult } from '../upstream/prism/src/renderer/audio/native/visualizer-dsp'
+import { VUMeter } from '../upstream/prism/src/renderer/visualizers/VUMeter'
+import type { SpectrumNativeAnalyzer, OscilloscopeNativeAnalyzer, SpectrogramNativeAnalyzer, WaveformNativeAnalyzer, VUMeterNativeAnalyzer } from '../upstream/prism/src/renderer/audio/native'
+import type { SpectrogramNativeOptions, SpectrogramNativeResult, VUMeterNativeSnapshot } from '../upstream/prism/src/renderer/audio/native/visualizer-dsp'
 import { normalizeProject } from './project.cjs'
 
 type BaseLayer = {
@@ -29,7 +30,10 @@ export type SpectrogramLayer = BaseLayer & {
 }
 export type WaveformLayer = BaseLayer & { type: 'waveform'; mode: 'mono' | 'stereo'
   scrollSpeed: number; multiband: boolean; bandLowColor: string; bandMidColor: string; bandHighColor: string }
-export type Layer = VectorscopeLayer | SpectrumLayer | OscilloscopeLayer | SpectrogramLayer | WaveformLayer
+export type VuLayer = BaseLayer & { type: 'vu'; mode: 'bar' | 'needle'; orientation: 'horizontal' | 'vertical'
+  needleChannels: 'stereo' | 'combined'; referenceDb: number; peakColor: string
+  needleLeftColor: string; needleRightColor: string; needleCombinedColor: string }
+export type Layer = VectorscopeLayer | SpectrumLayer | OscilloscopeLayer | SpectrogramLayer | WaveformLayer | VuLayer
 export type Project = {
   version: number; width: number; height: number; fps: number; title: string
   background: string; audioPath: string; layers: Layer[]
@@ -40,9 +44,10 @@ export type OscilloscopeWave = { samples: Float32Array; detectedPitch: number; t
 export type SpectrogramColumns = SpectrogramNativeResult
 export type SpectrogramFrame = { rebuild: boolean; entries: SpectrogramColumns[] }
 export type WaveformFrame = { rebuild: boolean; entries: Float32Array[] }
+export type VuFrame = { rebuild: boolean; startFrame: number; values: Float32Array }
 export type AnalysisFrame = { vectorscope: Points; spectra: Record<string, SpectrumBins>;
   oscilloscopes: Record<string, OscilloscopeWave>; spectrograms: Record<string, SpectrogramFrame>;
-  waveforms: Record<string, WaveformFrame> }
+  waveforms: Record<string, WaveformFrame>; vus: Record<string, VuFrame> }
 
 export function decodeFloats(encoded: string): Float32Array {
   const binary = atob(encoded)
@@ -56,7 +61,8 @@ export function decodeAnalysis(encoded: { x: string; y: string;
   oscilloscopes?: Record<string, { samples: string; detectedPitch: number; triggerIndex: number }>;
   spectrograms?: Record<string, { rebuild: boolean; entries: Array<{
     columnCount: number; rowCount: number; display: string; heat: string }> }>;
-  waveforms?: Record<string, { rebuild: boolean; entries: Array<{ columns: number; summary: string }> }> }): AnalysisFrame {
+  waveforms?: Record<string, { rebuild: boolean; entries: Array<{ columns: number; summary: string }> }>;
+  vus?: Record<string, { rebuild: boolean; startFrame: number; values: string }> }): AnalysisFrame {
   const spectra: Record<string, SpectrumBins> = {}
   for (const [key, value] of Object.entries(encoded.spectra || {})) {
     spectra[key] = { mid: decodeFloats(value.mid), side: decodeFloats(value.side) }
@@ -76,7 +82,11 @@ export function decodeAnalysis(encoded: { x: string; y: string;
   for (const [key, value] of Object.entries(encoded.waveforms || {})) {
     waveforms[key] = { rebuild: value.rebuild, entries: value.entries.map(entry => decodeFloats(entry.summary)) }
   }
-  return { vectorscope: { x: decodeFloats(encoded.x), y: decodeFloats(encoded.y) }, spectra, oscilloscopes, spectrograms, waveforms }
+  const vus: Record<string, VuFrame> = {}
+  for (const [key, value] of Object.entries(encoded.vus || {})) {
+    vus[key] = { rebuild: value.rebuild, startFrame: value.startFrame, values: decodeFloats(value.values) }
+  }
+  return { vectorscope: { x: decodeFloats(encoded.x), y: decodeFloats(encoded.y) }, spectra, oscilloscopes, spectrograms, waveforms, vus }
 }
 
 class SpectrumSnapshot implements SpectrumNativeAnalyzer {
@@ -151,19 +161,36 @@ class WaveformSnapshot implements WaveformNativeAnalyzer {
   pending() { return this.queue.map(() => ({ left: this.trigger, right: this.trigger })) }
 }
 
+class VuSnapshot implements VUMeterNativeAnalyzer {
+  current: VUMeterNativeSnapshot = { vuLDb: -60, vuRDb: -60, barLDb: -60, barRDb: -60,
+    peakLDb: -60, peakRDb: -60, correlation: 0 }
+  isAvailable() { return true }
+  setSampleRate(_sampleRate: number) {}
+  pushSamples(_left: Float32Array, _right: Float32Array) {}
+  getSnapshot() { return this.current }
+  reset() {}
+  set(values: Float32Array, offset: number) {
+    this.current = { vuLDb: values[offset], vuRDb: values[offset + 1],
+      barLDb: values[offset + 2], barRDb: values[offset + 3],
+      peakLDb: values[offset + 4], peakRDb: values[offset + 5],
+      correlation: values[offset + 6] }
+  }
+}
+
 type Meter = {
   canvas: HTMLCanvasElement; type: Layer['type']; signature: string
-  painter: Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform
-  snapshot?: SpectrumSnapshot | OscilloscopeSnapshot | SpectrogramSnapshot | WaveformSnapshot
+  painter: Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform | VUMeter
+  snapshot?: SpectrumSnapshot | OscilloscopeSnapshot | SpectrogramSnapshot | WaveformSnapshot | VuSnapshot
   lastSpectrogramFrame?: SpectrogramFrame
   lastWaveformFrame?: WaveformFrame
+  lastVuFrame?: VuFrame
 }
 
 export class Composition {
   private context: CanvasRenderingContext2D
   private meters = new Map<string, Meter>()
   private analysis: AnalysisFrame = { vectorscope: { x: new Float32Array(0), y: new Float32Array(0) },
-    spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {} }
+    spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {}, vus: {} }
   private sampleRate = 48000
   private source = {
     getSampleRate: () => this.sampleRate,
@@ -238,6 +265,17 @@ export class Composition {
           lineColor: layer.color, bandColors: { low: layer.bandLowColor,
             mid: layer.bandMidColor, high: layer.bandHighColor }, backgroundColor: 'transparent' }) }
     }
+    if (layer.type === 'vu') {
+      const snapshot = new VuSnapshot()
+      const source = { ...this.source, getPendingVUMeterSamples: () => [] }
+      return { canvas: surface, type: layer.type, signature, snapshot,
+        painter: new VUMeter(surface, { dataSource: source, nativeAnalyzer: snapshot,
+          mode: layer.mode, orientation: layer.orientation,
+          needleChannels: layer.needleChannels, referenceDb: layer.referenceDb,
+          lineColor: layer.color, peakColor: layer.peakColor,
+          needleLeftColor: layer.needleLeftColor, needleRightColor: layer.needleRightColor,
+          needleCombinedColor: layer.needleCombinedColor, backgroundColor: 'transparent' }) }
+    }
     const snapshot = new SpectrumSnapshot()
     return { canvas: surface, type: layer.type, signature, snapshot,
       painter: new SpectrumAnalyzer(surface, { dataSource: this.source, nativeAnalyzer: snapshot,
@@ -288,6 +326,10 @@ export class Composition {
           : layer.type === 'waveform'
             ? JSON.stringify([layer.type, layer.color, layer.mode, layer.scrollSpeed, layer.multiband,
               layer.bandLowColor, layer.bandMidColor, layer.bandHighColor])
+          : layer.type === 'vu'
+            ? JSON.stringify([layer.type, layer.color, layer.mode, layer.orientation,
+              layer.needleChannels, layer.referenceDb, layer.peakColor,
+              layer.needleLeftColor, layer.needleRightColor, layer.needleCombinedColor])
           : JSON.stringify([layer.type, layer.color, layer.fftSize, layer.smoothing, layer.scaleType,
             layer.minFrequency, layer.maxFrequency, layer.minDecibels, layer.maxDecibels, layer.showSideLine])
       const width = Math.max(1, Math.round(layer.w * sx))
@@ -336,8 +378,30 @@ export class Composition {
           ;(meter.snapshot as WaveformSnapshot).queue = [...frame.entries]
           meter.lastWaveformFrame = frame
         }
+      } else if (layer.type === 'vu') {
+        const frame = analysis.vus[layer.id]
+        if (frame && frame !== meter.lastVuFrame) {
+          if (frame.rebuild && meter.lastVuFrame) {
+            meter.painter.dispose()
+            meter = this.createMeter(layer, width, height, signature)
+            this.meters.set(layer.id, meter)
+          }
+          const values = frame.values
+          if (values.length % 7 !== 0) throw new Error('Invalid VU frame data')
+          const snapshot = meter.snapshot as VuSnapshot
+          const painter = meter.painter as VUMeter & { advanceFrame(nowMs: number): void }
+          for (let index = 0; index < values.length / 7; index++) {
+            snapshot.set(values, index * 7)
+            if (index + 1 < values.length / 7) painter.advanceFrame((frame.startFrame + index) * 1000 / 30)
+          }
+          meter.lastVuFrame = frame
+        }
       }
-      ;(meter.painter as (Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform) & { renderFrame(): void }).renderFrame()
+      if (layer.type === 'vu') {
+        ;(meter.painter as VUMeter & { renderFrame(nowMs: number): void }).renderFrame(frameIndex * 1000 / project.fps)
+      } else {
+        ;(meter.painter as (Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform) & { renderFrame(): void }).renderFrame()
+      }
       context.save()
       context.globalAlpha = layer.opacity
       context.drawImage(meter.canvas, layer.x * sx, layer.y * sy, layer.w * sx, layer.h * sy)
