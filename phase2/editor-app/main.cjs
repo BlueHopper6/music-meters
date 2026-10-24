@@ -4,6 +4,7 @@ const { spawn } = require('node:child_process')
 const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
 const { defaultProject, normalizeProject } = require('../project.cjs')
+const { readImage, imagePaths, assetData, saveArtwork, resolveArtwork } = require('../assets.cjs')
 const { probeAudio, analyzeFrame } = require('../audio.cjs')
 const { previewSpectra } = require('../../phase3/spectrum.cjs')
 const { previewOscilloscopes } = require('../../phase3/oscilloscope.cjs')
@@ -27,6 +28,7 @@ const nativeWaterfall = nativeModule.waterfall
 const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.flac'])
 let win
 let project = defaultProject()
+const allowedImages = new Set()
 let metadata = null
 let activeAudio = ''
 let projectPath = null
@@ -51,10 +53,31 @@ function validateActiveProject(raw) {
   if (normalized.audioPath !== activeAudio && normalized.audioPath !== project.audioPath) {
     throw new Error('Project audio does not match the imported file')
   }
+  for (const input of imagePaths(normalized)) if (!allowedImages.has(input)) {
+    throw new Error('Choose artwork through the local image picker')
+  }
   return normalized
 }
 
 ipcMain.handle('initial', () => ({ project, metadata, projectPath }))
+ipcMain.handle('choose-image', async () => {
+  let selected = process.env.PHASE4_TEST_IMAGE_PATH || ''
+  if (!selected) {
+    const result = await dialog.showOpenDialog(win, { title: 'Choose local artwork',
+      properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] })
+    if (result.canceled) return null
+    selected = result.filePaths[0]
+  }
+  const absolute = resolve(selected)
+  readImage(absolute)
+  allowedImages.add(absolute)
+  return absolute
+})
+ipcMain.handle('load-assets', (_event, raw) => {
+  const value = validateActiveProject(raw)
+  for (const input of imagePaths(value)) if (!allowedImages.has(input)) throw new Error('Choose artwork through the local image picker')
+  return assetData(value)
+})
 ipcMain.handle('choose-audio', async () => {
   let selected = process.env.PHASE2_TEST_IMPORT_PATH || ''
   if (!selected) {
@@ -113,7 +136,7 @@ ipcMain.handle('save-project', async (_event, raw) => {
   }
   if (extname(target).toLowerCase() !== '.json') throw new Error('Project file must end in .json')
   const reference = activeAudio || value.audioPath
-  const document = { ...value, audioPath: undefined,
+  const document = { ...saveArtwork(value, target), audioPath: undefined,
     audioRelativePath: reference ? relative(dirname(target), reference).replaceAll('\\', '/') : '' }
   fs.mkdirSync(dirname(target), { recursive: true })
   fs.writeFileSync(target, JSON.stringify(document, null, 2) + '\n', { flag: 'w' })
@@ -138,7 +161,9 @@ ipcMain.handle('open-project', async () => {
     throw new Error('Project audio reference is invalid')
   }
   const candidate = ref ? resolve(dirname(target), ref) : ''
-  const value = normalizeProject({ ...stored, audioPath: candidate })
+  const value = normalizeProject(resolveArtwork({ ...stored, audioPath: candidate }, target))
+  allowedImages.clear()
+  for (const input of imagePaths(value)) allowedImages.add(input)
   let nextMetadata = null
   let nextAudio = ''
   if (candidate && fs.existsSync(candidate)) {
@@ -158,6 +183,7 @@ ipcMain.handle('render-mp4', async (_event, raw, preset) => {
   if (!metadata || !activeAudio) throw new Error('Import audio before rendering')
   if (!['720p', '1080p'].includes(preset)) throw new Error('Unsupported export preset')
   const value = validateActiveProject(raw)
+  assetData(value)
   let output = process.env.PHASE2_TEST_OUTPUT_PATH || ''
   if (!output) {
     const result = await dialog.showSaveDialog(win, {
@@ -224,9 +250,11 @@ app.whenReady().then(() => {
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   })
   return win.loadFile(join(__dirname, 'index.html')).then(async () => {
-    if (process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
+    if (process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
-        if (process.env.PHASE3_ALL_METERS_SMOKE === '1') await require('../../phase3/test/all-meters-smoke.cjs')(win)
+        if (process.env.PHASE4_LEGACY_SMOKE === '1') await require('../../phase4/test/legacy-smoke.cjs')(win)
+        else if (process.env.PHASE4_COMPOSITION_SMOKE === '1') await require('../../phase4/test/editor-smoke.cjs')(win)
+        else if (process.env.PHASE3_ALL_METERS_SMOKE === '1') await require('../../phase3/test/all-meters-smoke.cjs')(win)
         else if (process.env.PHASE3_VECTORSCOPE_SMOKE === '1') await require('../../phase3/test/vectorscope-smoke.cjs')(win)
         else if (process.env.PHASE3_WATERFALL_SMOKE === '1') await require('../../phase3/test/waterfall-smoke.cjs')(win)
         else if (process.env.PHASE3_LOUDNESS_SMOKE === '1') await require('../../phase3/test/loudness-smoke.cjs')(win)

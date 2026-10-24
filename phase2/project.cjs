@@ -65,6 +65,25 @@ function waterfallLayer(id = 'waterfall-1', name = 'Waterfall spectrum') {
     smoothing: 0.9, tiltDbPerOctave: 2, showGrid: true }
 }
 
+function imageLayer(id = 'image-1', name = 'Artwork') {
+  return { id, type: 'image', name, x: 72, y: 170, w: 400, h: 400,
+    visible: true, locked: false, opacity: 1, color: '#ffffff',
+    imagePath: '', fit: 'cover', rotation: 0, shadow: 0 }
+}
+
+function textLayer(id = 'text-1', name = 'Song title', text = 'Untitled track') {
+  return { id, type: 'text', name, x: 72, y: 64, w: 1120, h: 82,
+    visible: true, locked: false, opacity: 1, color: '#e7f9ff', text,
+    fontFamily: 'Arial', fontSize: 52, fontWeight: 'bold', align: 'left',
+    rotation: 0, shadow: 0 }
+}
+
+function compositionProject() {
+  return { ...defaultProject(), version: 2,
+    background: { type: 'solid', color: '#101628', color2: '#243750', imagePath: '', fit: 'cover' },
+    layers: [vectorscopeLayer(), textLayer()] }
+}
+
 function defaultProject() {
   return {
     version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
@@ -87,9 +106,25 @@ function color(value, name) {
   return value
 }
 
+function localImagePath(value, name) {
+  if (typeof value !== 'string' || value.length > 4096 || /[\u0000-\u001f]/.test(value)
+      || /^[a-z][a-z0-9+.-]*:\/\//i.test(value) || /^file:/i.test(value)
+      || (value && !/\.(png|jpe?g|webp)$/i.test(value))) throw new Error(`${name} must be a local PNG, JPEG, or WebP path`)
+  return value
+}
+
+function background(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid background')
+  if (!['solid', 'gradient', 'image'].includes(value.type)) throw new Error('Unsupported background type')
+  if (!['cover', 'contain'].includes(value.fit)) throw new Error('Invalid background fit')
+  return { type: value.type, color: color(value.color, 'Background color'),
+    color2: color(value.color2, 'Second background color'),
+    imagePath: localImagePath(value.imagePath, 'Background image'), fit: value.fit }
+}
+
 function normalizeProject(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid project document')
-  if (raw.version !== 1) throw new Error(`Unsupported project version: ${raw.version}`)
+  if (raw.version !== 1 && raw.version !== 2) throw new Error(`Unsupported project version: ${raw.version}`)
   if (raw.width !== WIDTH || raw.height !== HEIGHT || raw.fps !== FPS) {
     throw new Error('Project must use the 1280×720, 30 FPS composition timebase')
   }
@@ -98,8 +133,8 @@ function normalizeProject(raw) {
   if (!Array.isArray(raw.layers) || raw.layers.length > 32) throw new Error('Project supports at most 32 layers')
   const seen = new Set()
   const layers = raw.layers.map((layer, index) => {
-    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope', 'spectrogram', 'waveform', 'vu', 'loudness', 'waterfall'].includes(layer.type)) {
-      throw new Error(`Layer ${index + 1} must be a supported meter`)
+    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope', 'spectrogram', 'waveform', 'vu', 'loudness', 'waterfall', ...(raw.version === 2 ? ['image', 'text'] : [])].includes(layer.type)) {
+      throw new Error(`Layer ${index + 1} has an unsupported type`)
     }
     if (typeof layer.id !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(layer.id) || seen.has(layer.id)) {
       throw new Error(`Layer ${index + 1} has an invalid or duplicate ID`)
@@ -110,8 +145,9 @@ function normalizeProject(raw) {
     }
     const x = number(layer.x, 'X', 0, WIDTH)
     const y = number(layer.y, 'Y', 0, HEIGHT)
-    const w = number(layer.w, 'Width', 80, WIDTH)
-    const h = number(layer.h, 'Height', 80, HEIGHT)
+    const minimum = layer.type === 'text' ? 20 : layer.type === 'image' ? 40 : 80
+    const w = number(layer.w, 'Width', minimum, WIDTH)
+    const h = number(layer.h, 'Height', minimum, HEIGHT)
     if (x + w > WIDTH || y + h > HEIGHT) throw new Error(`Layer ${index + 1} extends outside the canvas`)
     if (typeof layer.visible !== 'boolean' || typeof layer.locked !== 'boolean') {
       throw new Error(`Layer ${index + 1} has invalid visibility or lock state`)
@@ -119,6 +155,21 @@ function normalizeProject(raw) {
     const normalized = { id: layer.id, type: layer.type, name: layer.name,
       x, y, w, h, visible: layer.visible, locked: layer.locked,
       opacity: number(layer.opacity, 'Opacity', 0, 1), color: color(layer.color, 'Meter color') }
+    if (layer.type === 'image' || layer.type === 'text') {
+      const rotation = number(layer.rotation, 'Rotation', -180, 180)
+      const shadow = number(layer.shadow, 'Shadow', 0, 40)
+      if (layer.type === 'image') {
+        if (!['cover', 'contain'].includes(layer.fit)) throw new Error('Invalid image fit')
+        return { ...normalized, imagePath: localImagePath(layer.imagePath, 'Artwork'),
+          fit: layer.fit, rotation, shadow }
+      }
+      if (typeof layer.text !== 'string' || layer.text.length > 500 || /[\u0000-\u001f]/.test(layer.text)) throw new Error('Invalid text layer content')
+      if (!['Arial', 'Georgia', 'Verdana', 'Times New Roman', 'Courier New'].includes(layer.fontFamily)) throw new Error('Unsupported font')
+      if (!['normal', 'bold'].includes(layer.fontWeight) || !['left', 'center', 'right'].includes(layer.align)) throw new Error('Invalid typography')
+      return { ...normalized, text: layer.text, fontFamily: layer.fontFamily,
+        fontSize: number(layer.fontSize, 'Font size', 12, 160), fontWeight: layer.fontWeight,
+        align: layer.align, rotation, shadow }
+    }
     if (layer.type === 'vectorscope') {
       const defaults = vectorscopeLayer()
       const setting = key => layer[key] === undefined ? defaults[key] : layer[key]
@@ -224,9 +275,9 @@ function normalizeProject(raw) {
     }
     return normalized
   })
-  return { version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
-    title: raw.title, background: color(raw.background, 'Background'),
+  return { version: raw.version, width: WIDTH, height: HEIGHT, fps: FPS,
+    title: raw.title, background: raw.version === 1 ? color(raw.background, 'Background') : background(raw.background),
     audioPath: raw.audioPath, layers }
 }
 
-module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, VECTORSCOPE_MODES, defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject }
+module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, VECTORSCOPE_MODES, defaultProject, compositionProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject }

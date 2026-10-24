@@ -3,7 +3,7 @@ import { Composition, decodeAnalysis, type Project } from './composition'
 declare global {
   interface Window {
     phase2Export: {
-      initialize: (project: Project, width: number, height: number, sampleRate: number) => void
+      initialize: (project: Project, width: number, height: number, sampleRate: number, assets: Record<string, string>) => Promise<void>
       render: (x: string, y: string, multiband: string, spectra: Record<string, { mid: string; side: string }>,
         oscilloscopes: Record<string, { samples: string; detectedPitch: number; triggerIndex: number }>,
         spectrograms: Record<string, { rebuild: boolean; entries: Array<{
@@ -23,13 +23,14 @@ let project: Project
 let sampleRate = 48000
 
 window.phase2Export = {
-  initialize(nextProject, width, height, nextSampleRate) {
+  async initialize(nextProject, width, height, nextSampleRate, assets) {
     composition?.dispose()
     canvas.width = width
     canvas.height = height
     composition = new Composition(canvas)
     project = nextProject
     sampleRate = nextSampleRate
+    await composition.setAssets(assets)
   },
   render(x, y, multiband, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness, waterfalls, frameIndex) {
     if (!composition) throw new Error('Export composition was not initialized')
