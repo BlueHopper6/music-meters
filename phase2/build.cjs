@@ -22,15 +22,16 @@ function prerequisites() {
 async function build() {
   prerequisites()
   const esbuild = require(path.join(PRISM, 'node_modules', 'esbuild'))
-  const target = path.join(PRISM, 'src', 'renderer', 'visualizers', 'Vectorscope.ts')
+  const targets = new Set(['Vectorscope.ts', 'SpectrumAnalyzer.ts'].map(name =>
+    path.join(PRISM, 'src', 'renderer', 'visualizers', name)))
   const marker = '  private drawFrame = (): void => {'
   const outdir = path.join(ROOT, 'artifacts', 'phase2')
   fs.mkdirSync(outdir, { recursive: true })
   const plugin = {
     name: 'explicit-vectorscope-frame',
     setup(bundle) {
-      bundle.onLoad({ filter: /Vectorscope\.ts$/ }, args => {
-        if (path.resolve(args.path) !== target) return null
+      bundle.onLoad({ filter: /(?:Vectorscope|SpectrumAnalyzer)\.ts$/ }, args => {
+        if (!targets.has(path.resolve(args.path))) return null
         const source = fs.readFileSync(args.path, 'utf8')
         if (source.split(marker).length !== 2) throw new Error('Pinned Prism frame seam changed')
         return { contents: source.replace(marker, `  renderFrame(): void { this.drawFrame() }\n\n${marker}`),

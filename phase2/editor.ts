@@ -1,12 +1,14 @@
-import { Composition, decodePoints, type Points, type Project } from './composition'
-import { defaultProject, normalizeProject } from './project.cjs'
+import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type SpectrumLayer } from './composition'
+import { defaultProject, spectrumLayer, normalizeProject } from './project.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number }
 type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null }
 type Desktop = {
   initial(): Promise<Initial>
   chooseAudio(): Promise<{ path: string; metadata: Metadata } | null>
-  previewAt(frame: number): Promise<{ x: string; y: string; sampleRate: number; frameIndex: number }>
+  previewAt(frame: number, project: Project): Promise<
+    { x: string; y: string; spectra: Record<string, { mid: string; side: string }>; sampleRate: number; frameIndex: number; superseded?: false }
+    | { superseded: true }>
   saveProject(project: Project): Promise<string | null>
   openProject(): Promise<Initial | null>
   renderMp4(project: Project, preset: string): Promise<string | null>
@@ -23,7 +25,8 @@ const stageWrap = $<HTMLDivElement>('stage-wrap')
 const status = $<HTMLDivElement>('status')
 let project = defaultProject() as Project
 let metadata: Metadata | null = null
-let points: Points = { x: new Float32Array(0), y: new Float32Array(0) }
+const emptyAnalysis = (): AnalysisFrame => ({ vectorscope: { x: new Float32Array(0), y: new Float32Array(0) }, spectra: {} })
+let analysis = emptyAnalysis()
 let sampleRate = 48000
 let frameIndex = 0
 let selectedId: string | null = project.layers[0]?.id || null
@@ -35,7 +38,7 @@ let projectPath: string | null = null
 function selected() { return project.layers.find(layer => layer.id === selectedId) }
 function setStatus(message: string) { status.textContent = message }
 function render() {
-  composition.render(project, points, frameIndex, sampleRate)
+  composition.render(project, analysis, frameIndex, sampleRate)
   updateSelection()
 }
 function updateSelection() {
@@ -94,6 +97,22 @@ function refreshInspector() {
     input.checked = !!value
     input.disabled = !layer
   }
+  const spectrum = layer?.type === 'spectrum' ? layer : null
+  $('spectrum-options').hidden = !spectrum
+  if (spectrum) {
+    for (const [id, value] of [
+      ['spectrum-fft', spectrum.fftSize], ['spectrum-scale', spectrum.scaleType],
+      ['spectrum-smoothing', spectrum.smoothing], ['spectrum-min-hz', spectrum.minFrequency],
+      ['spectrum-max-hz', spectrum.maxFrequency], ['spectrum-min-db', spectrum.minDecibels],
+      ['spectrum-max-db', spectrum.maxDecibels],
+    ] as const) {
+      const input = $<HTMLInputElement | HTMLSelectElement>(id)
+      input.value = String(value)
+      input.disabled = spectrum.locked
+    }
+    ;($<HTMLInputElement>('spectrum-side')).checked = spectrum.showSideLine
+    ;($<HTMLInputElement>('spectrum-side')).disabled = spectrum.locked
+  }
 }
 function refreshAudio() {
   $('audio-name').textContent = project.audioPath ? project.audioPath.split(/[\\/]/).pop() || project.audioPath : 'No audio imported'
@@ -110,10 +129,10 @@ function updateTimeControls() {
   ;($<HTMLInputElement>('time-input')).value = (frameIndex / 30).toFixed(2)
 }
 function repaint() { project = normalizeProject(project) as Project; render(); refreshInspector(); refreshLayers() }
-function nextId() {
+function nextId(prefix = 'scope') {
   let index = 1
-  while (project.layers.some(layer => layer.id === `scope-${index}`)) index++
-  return `scope-${index}`
+  while (project.layers.some(layer => layer.id === `${prefix}-${index}`)) index++
+  return `${prefix}-${index}`
 }
 async function refreshPreview() {
   const request = ++previewRequest
@@ -121,12 +140,12 @@ async function refreshPreview() {
   $('preview-busy').hidden = false
   setStatus(`Analyzing audio through ${(frameIndex / 30).toFixed(2)} s…`)
   try {
-    const result = await window.desktop.previewAt(frameIndex)
-    if (request !== previewRequest) return
-    points = decodePoints(result)
+    const result = await window.desktop.previewAt(frameIndex, project)
+    if (request !== previewRequest || result.superseded) return
+    analysis = decodeAnalysis(result)
     sampleRate = result.sampleRate
     render()
-    setStatus(`Real Prism vectorscope still at ${(frameIndex / 30).toFixed(2)} s.`)
+    setStatus(`Real Prism meter still at ${(frameIndex / 30).toFixed(2)} s.`)
   } catch (error) {
     if (request === previewRequest && !String(error).includes('Preview superseded')) setStatus(String(error))
   } finally {
@@ -170,6 +189,38 @@ $<HTMLInputElement>('layer-color').addEventListener('input', event => {
   layer.color = (event.target as HTMLInputElement).value
   render()
 })
+for (const [id, property] of [
+  ['spectrum-fft', 'fftSize'], ['spectrum-scale', 'scaleType'],
+  ['spectrum-smoothing', 'smoothing'], ['spectrum-min-hz', 'minFrequency'],
+  ['spectrum-max-hz', 'maxFrequency'], ['spectrum-min-db', 'minDecibels'],
+  ['spectrum-max-db', 'maxDecibels'],
+] as const) {
+  $<HTMLInputElement | HTMLSelectElement>(id).addEventListener('change', event => {
+    const layer = selected()
+    if (!layer || layer.type !== 'spectrum' || layer.locked) return
+    const previous = { ...layer }
+    const value = (event.target as HTMLInputElement).value
+    ;(layer as unknown as Record<string, string | number>)[property] = property === 'scaleType' ? value : Number(value)
+    try {
+      project = normalizeProject(project) as Project
+      refreshInspector()
+      if (property === 'fftSize' || property === 'smoothing') {
+        analysis.spectra = {}
+        render(); schedulePreview()
+      } else render()
+    } catch (error) {
+      Object.assign(layer, previous)
+      refreshInspector()
+      setStatus(String(error))
+    }
+  })
+}
+$<HTMLInputElement>('spectrum-side').addEventListener('change', event => {
+  const layer = selected()
+  if (!layer || layer.type !== 'spectrum' || layer.locked) return
+  layer.showSideLine = (event.target as HTMLInputElement).checked
+  render()
+})
 for (const [id, property] of [['layer-visible', 'visible'], ['layer-locked', 'locked']] as const) {
   $<HTMLInputElement>(id).addEventListener('change', event => {
     const layer = selected(); if (!layer) return
@@ -207,9 +258,15 @@ selection.addEventListener('lostpointercapture', () => { drag = null })
 
 $('add-layer').addEventListener('click', () => {
   if (project.layers.length >= 32) return setStatus('The project supports at most 32 layers.')
-  const id = nextId()
-  project.layers.push({ id, type: 'vectorscope', name: `Vectorscope ${project.layers.length + 1}`,
-    x: 390, y: 170, w: 500, h: 500, visible: true, locked: false, opacity: 1, color: '#55f4e8' })
+  const type = ($<HTMLSelectElement>('add-type')).value
+  const id = nextId(type === 'spectrum' ? 'spectrum' : 'scope')
+  if (type === 'spectrum') {
+    project.layers.push(spectrumLayer(id, `Spectrum ${project.layers.length + 1}`) as SpectrumLayer)
+    if (metadata) schedulePreview()
+  } else {
+    project.layers.push({ id, type: 'vectorscope', name: `Vectorscope ${project.layers.length + 1}`,
+      x: 390, y: 170, w: 500, h: 500, visible: true, locked: false, opacity: 1, color: '#55f4e8' })
+  }
   selectedId = id; repaint()
 })
 $('duplicate-layer').addEventListener('click', () => {
@@ -218,6 +275,7 @@ $('duplicate-layer').addEventListener('click', () => {
   const copy = { ...layer, id: nextId(), name: `${layer.name} copy`.slice(0, 80), locked: false,
     x: Math.min(layer.x + 20, 1280 - layer.w), y: Math.min(layer.y + 20, 720 - layer.h) }
   project.layers.splice(project.layers.indexOf(layer) + 1, 0, copy)
+  if (copy.type === 'spectrum' && metadata) schedulePreview()
   selectedId = copy.id; repaint()
 })
 $('delete-layer').addEventListener('click', () => {
@@ -252,7 +310,7 @@ $('import-audio').addEventListener('click', async () => {
     const chosen = await window.desktop.chooseAudio()
     if (!chosen) return
     project.audioPath = chosen.path; metadata = chosen.metadata; frameIndex = 0
-    points = { x: new Float32Array(0), y: new Float32Array(0) }
+    analysis = emptyAnalysis()
     refreshAudio(); await refreshPreview()
   } catch (error) { setStatus(String(error)) }
 })
@@ -269,7 +327,7 @@ $('open-project').addEventListener('click', async () => {
     project = normalizeProject(loaded.project) as Project
     metadata = loaded.metadata; projectPath = loaded.projectPath
     selectedId = project.layers.at(-1)?.id || null; frameIndex = 0
-    points = { x: new Float32Array(0), y: new Float32Array(0) }
+    analysis = emptyAnalysis()
     refreshInspector(); refreshLayers(); refreshAudio(); render()
     if (metadata) await refreshPreview()
     else setStatus('Project opened. Audio is missing; import a replacement file.')
@@ -292,6 +350,9 @@ $('cancel-render').addEventListener('click', async () => {
   setStatus('Cancellation requested…')
 })
 window.desktop.onExport(event => {
+  if (event.event === 'analysis-progress') {
+    setStatus(`Analyzing spectrum ${event.configuration}/${event.configurations}: ${event.frames}/${event.total} frames.`)
+  }
   if (event.event === 'progress') {
     const value = 100 * Number(event.frames) / Number(event.totalFrames);
     ;($('progress-bar') as HTMLElement).style.width = `${value.toFixed(1)}%`

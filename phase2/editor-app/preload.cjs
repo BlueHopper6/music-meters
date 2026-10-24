@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('desktop', {
   initial: () => ipcRenderer.invoke('initial'),
   chooseAudio: () => ipcRenderer.invoke('choose-audio'),
-  previewAt: frame => ipcRenderer.invoke('preview-at', frame),
+  previewAt: (frame, project) => ipcRenderer.invoke('preview-at', frame, project),
   saveProject: project => ipcRenderer.invoke('save-project', project),
   openProject: () => ipcRenderer.invoke('open-project'),
   renderMp4: (project, preset) => ipcRenderer.invoke('render-mp4', project, preset),
