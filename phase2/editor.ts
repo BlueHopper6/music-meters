@@ -1,5 +1,6 @@
-import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type SpectrumLayer } from './composition'
-import { defaultProject, spectrumLayer, normalizeProject } from './project.cjs'
+import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type SpectrumLayer,
+  type OscilloscopeLayer } from './composition'
+import { defaultProject, spectrumLayer, oscilloscopeLayer, normalizeProject } from './project.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number }
 type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null }
@@ -7,7 +8,9 @@ type Desktop = {
   initial(): Promise<Initial>
   chooseAudio(): Promise<{ path: string; metadata: Metadata } | null>
   previewAt(frame: number, project: Project): Promise<
-    { x: string; y: string; spectra: Record<string, { mid: string; side: string }>; sampleRate: number; frameIndex: number; superseded?: false }
+    { x: string; y: string; spectra: Record<string, { mid: string; side: string }>;
+      oscilloscopes: Record<string, { samples: string; detectedPitch: number; triggerIndex: number }>;
+      sampleRate: number; frameIndex: number; superseded?: false }
     | { superseded: true }>
   saveProject(project: Project): Promise<string | null>
   openProject(): Promise<Initial | null>
@@ -25,7 +28,8 @@ const stageWrap = $<HTMLDivElement>('stage-wrap')
 const status = $<HTMLDivElement>('status')
 let project = defaultProject() as Project
 let metadata: Metadata | null = null
-const emptyAnalysis = (): AnalysisFrame => ({ vectorscope: { x: new Float32Array(0), y: new Float32Array(0) }, spectra: {} })
+const emptyAnalysis = (): AnalysisFrame => ({ vectorscope: { x: new Float32Array(0), y: new Float32Array(0) },
+  spectra: {}, oscilloscopes: {} })
 let analysis = emptyAnalysis()
 let sampleRate = 48000
 let frameIndex = 0
@@ -99,6 +103,19 @@ function refreshInspector() {
   }
   const spectrum = layer?.type === 'spectrum' ? layer : null
   $('spectrum-options').hidden = !spectrum
+  const oscilloscope = layer?.type === 'oscilloscope' ? layer : null
+  $('oscilloscope-options').hidden = !oscilloscope
+  if (oscilloscope) {
+    for (const [id, value] of [
+      ['oscilloscope-pitch-lock', oscilloscope.pitchLock],
+      ['oscilloscope-underfill', oscilloscope.underfillEnabled],
+      ['oscilloscope-grid', oscilloscope.showGrid],
+    ] as const) {
+      const input = $<HTMLInputElement>(id)
+      input.checked = value
+      input.disabled = oscilloscope.locked
+    }
+  }
   if (spectrum) {
     for (const [id, value] of [
       ['spectrum-fft', spectrum.fftSize], ['spectrum-scale', spectrum.scaleType],
@@ -221,6 +238,19 @@ $<HTMLInputElement>('spectrum-side').addEventListener('change', event => {
   layer.showSideLine = (event.target as HTMLInputElement).checked
   render()
 })
+for (const [id, property] of [
+  ['oscilloscope-pitch-lock', 'pitchLock'],
+  ['oscilloscope-underfill', 'underfillEnabled'],
+  ['oscilloscope-grid', 'showGrid'],
+] as const) {
+  $<HTMLInputElement>(id).addEventListener('change', event => {
+    const layer = selected()
+    if (!layer || layer.type !== 'oscilloscope' || layer.locked) return
+    layer[property] = (event.target as HTMLInputElement).checked
+    if (property === 'pitchLock') { analysis.oscilloscopes = {}; render(); schedulePreview() }
+    else render()
+  })
+}
 for (const [id, property] of [['layer-visible', 'visible'], ['layer-locked', 'locked']] as const) {
   $<HTMLInputElement>(id).addEventListener('change', event => {
     const layer = selected(); if (!layer) return
@@ -259,9 +289,12 @@ selection.addEventListener('lostpointercapture', () => { drag = null })
 $('add-layer').addEventListener('click', () => {
   if (project.layers.length >= 32) return setStatus('The project supports at most 32 layers.')
   const type = ($<HTMLSelectElement>('add-type')).value
-  const id = nextId(type === 'spectrum' ? 'spectrum' : 'scope')
+  const id = nextId(type === 'spectrum' ? 'spectrum' : type === 'oscilloscope' ? 'oscilloscope' : 'scope')
   if (type === 'spectrum') {
     project.layers.push(spectrumLayer(id, `Spectrum ${project.layers.length + 1}`) as SpectrumLayer)
+    if (metadata) schedulePreview()
+  } else if (type === 'oscilloscope') {
+    project.layers.push(oscilloscopeLayer(id, `Oscilloscope ${project.layers.length + 1}`) as OscilloscopeLayer)
     if (metadata) schedulePreview()
   } else {
     project.layers.push({ id, type: 'vectorscope', name: `Vectorscope ${project.layers.length + 1}`,
@@ -275,7 +308,7 @@ $('duplicate-layer').addEventListener('click', () => {
   const copy = { ...layer, id: nextId(), name: `${layer.name} copy`.slice(0, 80), locked: false,
     x: Math.min(layer.x + 20, 1280 - layer.w), y: Math.min(layer.y + 20, 720 - layer.h) }
   project.layers.splice(project.layers.indexOf(layer) + 1, 0, copy)
-  if (copy.type === 'spectrum' && metadata) schedulePreview()
+  if ((copy.type === 'spectrum' || copy.type === 'oscilloscope') && metadata) schedulePreview()
   selectedId = copy.id; repaint()
 })
 $('delete-layer').addEventListener('click', () => {
@@ -352,6 +385,9 @@ $('cancel-render').addEventListener('click', async () => {
 window.desktop.onExport(event => {
   if (event.event === 'analysis-progress') {
     setStatus(`Analyzing spectrum ${event.configuration}/${event.configurations}: ${event.frames}/${event.total} frames.`)
+  }
+  if (event.event === 'oscilloscope-progress') {
+    setStatus(`Analyzing oscilloscope: ${event.frames}/${event.total} frames.`)
   }
   if (event.event === 'progress') {
     const value = 100 * Number(event.frames) / Number(event.totalFrames);

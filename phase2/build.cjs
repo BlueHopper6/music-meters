@@ -22,19 +22,22 @@ function prerequisites() {
 async function build() {
   prerequisites()
   const esbuild = require(path.join(PRISM, 'node_modules', 'esbuild'))
-  const targets = new Set(['Vectorscope.ts', 'SpectrumAnalyzer.ts'].map(name =>
+  const targets = new Set(['Vectorscope.ts', 'SpectrumAnalyzer.ts', 'Oscilloscope.ts'].map(name =>
     path.join(PRISM, 'src', 'renderer', 'visualizers', name)))
   const marker = '  private drawFrame = (): void => {'
   const outdir = path.join(ROOT, 'artifacts', 'phase2')
   fs.mkdirSync(outdir, { recursive: true })
   const plugin = {
-    name: 'explicit-vectorscope-frame',
+    name: 'explicit-meter-frame',
     setup(bundle) {
-      bundle.onLoad({ filter: /(?:Vectorscope|SpectrumAnalyzer)\.ts$/ }, args => {
+      bundle.onLoad({ filter: /(?:Vectorscope|SpectrumAnalyzer|Oscilloscope)\.ts$/ }, args => {
         if (!targets.has(path.resolve(args.path))) return null
         const source = fs.readFileSync(args.path, 'utf8')
         if (source.split(marker).length !== 2) throw new Error('Pinned Prism frame seam changed')
-        return { contents: source.replace(marker, `  renderFrame(): void { this.drawFrame() }\n\n${marker}`),
+        const seam = path.basename(args.path) === 'Oscilloscope.ts'
+          ? '  renderFrame(): void { this.samplesReceived = Math.max(this.samplesReceived, Oscilloscope.WARMUP_SAMPLES); this.drawFrame() }'
+          : '  renderFrame(): void { this.drawFrame() }'
+        return { contents: source.replace(marker, `${seam}\n\n${marker}`),
           loader: 'ts', resolveDir: path.dirname(args.path) }
       })
     },

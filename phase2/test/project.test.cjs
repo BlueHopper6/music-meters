@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { defaultProject, spectrumLayer, normalizeProject } = require('../project.cjs')
+const { defaultProject, spectrumLayer, oscilloscopeLayer, normalizeProject } = require('../project.cjs')
 
 test('default project is a valid 16:9 composition with one real meter layer', () => {
   const project = normalizeProject(defaultProject())
@@ -53,4 +53,22 @@ test('rejects invalid FFT, smoothing, frequency, and dB settings', () => {
   assert.throws(() => normalizeProject(invalid(layer => { layer.smoothing = 1 })), /smoothing/)
   assert.throws(() => normalizeProject(invalid(layer => { layer.minFrequency = 20000 })), /frequency range/)
   assert.throws(() => normalizeProject(invalid(layer => { layer.minDecibels = -5 })), /Minimum dB/)
+})
+
+test('oscilloscope modes and styles survive project normalization', () => {
+  const project = defaultProject()
+  const locked = oscilloscopeLayer()
+  const free = { ...oscilloscopeLayer('oscilloscope-2', 'Free run'), pitchLock: false,
+    underfillEnabled: true, showGrid: false }
+  project.layers.push(locked, free)
+  const value = normalizeProject(project)
+  assert.deepEqual(value.layers.slice(1), [locked, free])
+})
+
+test('rejects malformed oscilloscope settings', () => {
+  const project = defaultProject()
+  const oscilloscope = oscilloscopeLayer()
+  oscilloscope.pitchLock = 'yes'
+  project.layers.push(oscilloscope)
+  assert.throws(() => normalizeProject(project), /oscilloscope pitchLock/)
 })
