@@ -53,6 +53,8 @@
 body {
   margin: 0;
   min-width: 1000px;
+  height: 100vh;
+  overflow: hidden;
   background: var(--bg-app);
   color: var(--text-primary);
   user-select: none;
@@ -374,14 +376,17 @@ button.danger-button:hover:not(:disabled) {
 .center-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px;
+  gap: 10px;
+  padding: 12px 18px;
   min-width: 0;
-  overflow-y: auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
   background: var(--bg-app);
 }
 
 .canvas-heading {
+  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -395,6 +400,12 @@ button.danger-button:hover:not(:disabled) {
 }
 
 .stage-shell {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  container-type: size;
+  display: grid;
+  place-items: center;
   border: 1px solid var(--border-subtle);
   padding: 8px;
   border-radius: 6px;
@@ -404,7 +415,8 @@ button.danger-button:hover:not(:disabled) {
 
 .stage-wrap {
   position: relative;
-  width: 100%;
+  width: min(100cqw, calc(100cqh * 16 / 9));
+  height: min(100cqh, calc(100cqw * 9 / 16));
   aspect-ratio: 16 / 9;
   background: #050507;
   overflow: hidden;
@@ -494,6 +506,7 @@ button.danger-button:hover:not(:disabled) {
 }
 
 .timeline {
+  flex-shrink: 0;
   padding: 12px 14px;
   border: 1px solid var(--border-subtle);
   border-radius: 6px;
