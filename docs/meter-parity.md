@@ -1,6 +1,6 @@
 # Meter feature parity
 
-This table tracks the **application's** verified features after Phase 3.2. `Supported` means editor stills and exported MP4 frames use real Prism analysis and drawing. It does not claim pixel-for-pixel equivalence with MiniMeters. Prism is pinned to `49721802252b115d169e353c98b27408daa5e2b7`. MiniMeters features below are drawn from its [official feature list](https://minimeters.app/); Prism capabilities are checked against the pinned source paths named in the evidence column.
+This table tracks the **application's** verified features after Phase 3.3. `Supported` means editor stills and exported MP4 frames use real Prism analysis and drawing. It does not claim pixel-for-pixel equivalence with MiniMeters. Prism is pinned to `49721802252b115d169e353c98b27408daa5e2b7`. MiniMeters features below are drawn from its [official feature list](https://minimeters.app/); Prism capabilities are checked against the pinned source paths named in the evidence column.
 
 | Feature or mode | Status | Evidence and scope |
 | --- | --- | --- |
@@ -16,7 +16,10 @@ This table tracks the **application's** verified features after Phase 3.2. `Supp
 | Vectorscope stereo Lissajous trace | Supported | Prism `native/src/vectorscope.cpp` and `Vectorscope.ts`; Phase 2 and 3.1 regression exports. |
 | Vectorscope polar/linear modes, zoom, multiband colors | Not yet implemented | Options exist in Prism `Vectorscope.ts`; current app fixes the basic Lissajous mode. MiniMeters lists scaled, linear, Lissajous, RGB, and multiband variants. |
 | Stereo correlation and multiband correlation | Not yet implemented | MiniMeters lists single/multiband correlation. Prism has native stereo analysis modules, but this editor does not present a correlation meter. |
-| Spectrogram FFT scale/size, orientation, history | Not yet implemented | Prism `Spectrogram.ts` exists; no editor/export layer yet. MiniMeters lists Mel/log/linear, horizontal/vertical, and history options. |
+| Spectrogram FFT size and frequency scale | Supported | Prism `native/src/spectrogram.cpp` and `Spectrogram.ts`; per-layer 1024/2048/4096/8192 FFT and log/Mel/linear scale controls. Two unlike instances, native rows, editor stills, and MP4 frames verified in [Phase 3.3 report](phase-3-3-report.md). |
+| Spectrogram horizontal/vertical scrolling history | Supported | Prism's Canvas waterfall painter scrolls native columns along the selected time axis. A 440 Hz to 1 kHz transition retained both frequency rows in history; backward seek and resize replay matched, including 1080p export. |
+| Spectrogram color, clarity, range, speed, contrast, and tilt | Supported | Per-layer heat/mono scheme, Prism clarity mode, frequency/dB ranges, scroll speed, contrast, tilt, and grid controls are validated and saved. Heat uses Prism's color LUT; mono uses the layer trace color. |
+| Spectrogram DAW timeline ruler | Different behavior | Prism's timeline labels require a `daw-bridge` backend; file-based offline composition has no DAW transport, so the frequency grid is shown without that ruler. |
 | Oscilloscope sample wave and pitch trigger | Supported | Prism `native/src/oscilloscope.cpp` and `src/renderer/visualizers/Oscilloscope.ts`; Phase 3.2 native frequency and consecutive-frame trigger checks, editor stills, and MP4 frames in [Phase 3.2 report](phase-3-2-report.md). |
 | Oscilloscope free-running, underfill, and grid controls | Supported | Per-layer project settings use the same Prism Canvas painter; pitch-locked and free-running instances were tested together and independently. |
 | Oscilloscope channel routing | Different behavior | Prism's oscilloscope consumes the left channel from `AudioRouter.ts`; this application follows it. The user cannot select right, mid, or side for this meter. |

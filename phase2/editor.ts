@@ -1,6 +1,6 @@
 import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type SpectrumLayer,
-  type OscilloscopeLayer } from './composition'
-import { defaultProject, spectrumLayer, oscilloscopeLayer, normalizeProject } from './project.cjs'
+  type OscilloscopeLayer, type SpectrogramLayer } from './composition'
+import { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, normalizeProject } from './project.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number }
 type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null }
@@ -10,6 +10,8 @@ type Desktop = {
   previewAt(frame: number, project: Project): Promise<
     { x: string; y: string; spectra: Record<string, { mid: string; side: string }>;
       oscilloscopes: Record<string, { samples: string; detectedPitch: number; triggerIndex: number }>;
+      spectrograms: Record<string, { rebuild: boolean; entries: Array<{
+        columnCount: number; rowCount: number; display: string; heat: string }> }>;
       sampleRate: number; frameIndex: number; superseded?: false }
     | { superseded: true }>
   saveProject(project: Project): Promise<string | null>
@@ -29,7 +31,7 @@ const status = $<HTMLDivElement>('status')
 let project = defaultProject() as Project
 let metadata: Metadata | null = null
 const emptyAnalysis = (): AnalysisFrame => ({ vectorscope: { x: new Float32Array(0), y: new Float32Array(0) },
-  spectra: {}, oscilloscopes: {} })
+  spectra: {}, oscilloscopes: {}, spectrograms: {} })
 let analysis = emptyAnalysis()
 let sampleRate = 48000
 let frameIndex = 0
@@ -105,6 +107,24 @@ function refreshInspector() {
   $('spectrum-options').hidden = !spectrum
   const oscilloscope = layer?.type === 'oscilloscope' ? layer : null
   $('oscilloscope-options').hidden = !oscilloscope
+  const spectrogram = layer?.type === 'spectrogram' ? layer : null
+  $('spectrogram-options').hidden = !spectrogram
+  if (spectrogram) {
+    for (const [id, value] of [
+      ['spectrogram-fft', spectrogram.fftSize], ['spectrogram-scale', spectrogram.scaleMode],
+      ['spectrogram-orientation', spectrogram.orientation], ['spectrogram-color', spectrogram.colorScheme],
+      ['spectrogram-clarity', spectrogram.clarityMode], ['spectrogram-min-hz', spectrogram.minFrequency],
+      ['spectrogram-max-hz', spectrogram.maxFrequency], ['spectrogram-min-db', spectrogram.minDecibels],
+      ['spectrogram-max-db', spectrogram.maxDecibels], ['spectrogram-speed', spectrogram.scrollSpeed],
+      ['spectrogram-contrast', spectrogram.contrast], ['spectrogram-tilt', spectrogram.tiltDbPerOctave],
+    ] as const) {
+      const input = $<HTMLInputElement | HTMLSelectElement>(id)
+      input.value = String(value)
+      input.disabled = spectrogram.locked
+    }
+    ;($<HTMLInputElement>('spectrogram-grid')).checked = spectrogram.showGrid
+    ;($<HTMLInputElement>('spectrogram-grid')).disabled = spectrogram.locked
+  }
   if (oscilloscope) {
     for (const [id, value] of [
       ['oscilloscope-pitch-lock', oscilloscope.pitchLock],
@@ -187,6 +207,7 @@ for (const [id, property] of [['layer-x', 'x'], ['layer-y', 'y'], ['layer-w', 'w
     if (property === 'w') layer.w = Math.max(80, Math.min(1280 - layer.x, value))
     if (property === 'h') layer.h = Math.max(80, Math.min(720 - layer.y, value))
     repaint()
+    if (layer.type === 'spectrogram' && (property === 'w' || property === 'h')) schedulePreview()
   })
 }
 $<HTMLInputElement>('title').addEventListener('input', event => { project.title = (event.target as HTMLInputElement).value; render() })
@@ -239,6 +260,37 @@ $<HTMLInputElement>('spectrum-side').addEventListener('change', event => {
   render()
 })
 for (const [id, property] of [
+  ['spectrogram-fft', 'fftSize'], ['spectrogram-scale', 'scaleMode'],
+  ['spectrogram-orientation', 'orientation'], ['spectrogram-color', 'colorScheme'],
+  ['spectrogram-clarity', 'clarityMode'], ['spectrogram-min-hz', 'minFrequency'],
+  ['spectrogram-max-hz', 'maxFrequency'], ['spectrogram-min-db', 'minDecibels'],
+  ['spectrogram-max-db', 'maxDecibels'], ['spectrogram-speed', 'scrollSpeed'],
+  ['spectrogram-contrast', 'contrast'], ['spectrogram-tilt', 'tiltDbPerOctave'],
+] as const) {
+  $<HTMLInputElement | HTMLSelectElement>(id).addEventListener('change', event => {
+    const layer = selected()
+    if (!layer || layer.type !== 'spectrogram' || layer.locked) return
+    const previous = { ...layer }
+    const value = (event.target as HTMLInputElement).value
+    ;(layer as unknown as Record<string, string | number>)[property] =
+      ['scaleMode', 'orientation', 'colorScheme', 'clarityMode'].includes(property) ? value : Number(value)
+    try {
+      project = normalizeProject(project) as Project
+      analysis.spectrograms = {}
+      render(); refreshInspector(); schedulePreview()
+    } catch (error) {
+      Object.assign(layer, previous)
+      refreshInspector(); setStatus(String(error))
+    }
+  })
+}
+$<HTMLInputElement>('spectrogram-grid').addEventListener('change', event => {
+  const layer = selected()
+  if (!layer || layer.type !== 'spectrogram' || layer.locked) return
+  layer.showGrid = (event.target as HTMLInputElement).checked
+  render()
+})
+for (const [id, property] of [
   ['oscilloscope-pitch-lock', 'pitchLock'],
   ['oscilloscope-underfill', 'underfillEnabled'],
   ['oscilloscope-grid', 'showGrid'],
@@ -256,6 +308,7 @@ for (const [id, property] of [['layer-visible', 'visible'], ['layer-locked', 'lo
     const layer = selected(); if (!layer) return
     layer[property] = (event.target as HTMLInputElement).checked
     repaint()
+    if (property === 'visible' && layer.type === 'spectrogram' && layer.visible) schedulePreview()
   })
 }
 
@@ -283,18 +336,25 @@ selection.addEventListener('pointermove', event => {
   }
   render(); refreshInspector()
 })
-selection.addEventListener('pointerup', () => { drag = null })
-selection.addEventListener('lostpointercapture', () => { drag = null })
+function finishDrag() {
+  if (drag?.mode === 'resize' && selected()?.type === 'spectrogram') schedulePreview()
+  drag = null
+}
+selection.addEventListener('pointerup', finishDrag)
+selection.addEventListener('lostpointercapture', finishDrag)
 
 $('add-layer').addEventListener('click', () => {
   if (project.layers.length >= 32) return setStatus('The project supports at most 32 layers.')
   const type = ($<HTMLSelectElement>('add-type')).value
-  const id = nextId(type === 'spectrum' ? 'spectrum' : type === 'oscilloscope' ? 'oscilloscope' : 'scope')
+  const id = nextId(type === 'spectrum' ? 'spectrum' : type === 'oscilloscope' ? 'oscilloscope' : type === 'spectrogram' ? 'spectrogram' : 'scope')
   if (type === 'spectrum') {
     project.layers.push(spectrumLayer(id, `Spectrum ${project.layers.length + 1}`) as SpectrumLayer)
     if (metadata) schedulePreview()
   } else if (type === 'oscilloscope') {
     project.layers.push(oscilloscopeLayer(id, `Oscilloscope ${project.layers.length + 1}`) as OscilloscopeLayer)
+    if (metadata) schedulePreview()
+  } else if (type === 'spectrogram') {
+    project.layers.push(spectrogramLayer(id, `Spectrogram ${project.layers.length + 1}`) as SpectrogramLayer)
     if (metadata) schedulePreview()
   } else {
     project.layers.push({ id, type: 'vectorscope', name: `Vectorscope ${project.layers.length + 1}`,
@@ -308,7 +368,7 @@ $('duplicate-layer').addEventListener('click', () => {
   const copy = { ...layer, id: nextId(), name: `${layer.name} copy`.slice(0, 80), locked: false,
     x: Math.min(layer.x + 20, 1280 - layer.w), y: Math.min(layer.y + 20, 720 - layer.h) }
   project.layers.splice(project.layers.indexOf(layer) + 1, 0, copy)
-  if ((copy.type === 'spectrum' || copy.type === 'oscilloscope') && metadata) schedulePreview()
+  if ((copy.type === 'spectrum' || copy.type === 'oscilloscope' || copy.type === 'spectrogram') && metadata) schedulePreview()
   selectedId = copy.id; repaint()
 })
 $('delete-layer').addEventListener('click', () => {
@@ -388,6 +448,9 @@ window.desktop.onExport(event => {
   }
   if (event.event === 'oscilloscope-progress') {
     setStatus(`Analyzing oscilloscope: ${event.frames}/${event.total} frames.`)
+  }
+  if (event.event === 'spectrogram-progress') {
+    setStatus(`Analyzing spectrogram ${event.configuration}/${event.configurations}: ${event.frames}/${event.total} frames.`)
   }
   if (event.event === 'progress') {
     const value = 100 * Number(event.frames) / Number(event.totalFrames);

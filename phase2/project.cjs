@@ -17,6 +17,15 @@ function oscilloscopeLayer(id = 'oscilloscope-1', name = 'Oscilloscope') {
     pitchLock: true, underfillEnabled: false, showGrid: true }
 }
 
+function spectrogramLayer(id = 'spectrogram-1', name = 'Spectrogram') {
+  return { id, type: 'spectrogram', name, x: 190, y: 190, w: 900, h: 420,
+    visible: true, locked: false, opacity: 1, color: '#62dafa',
+    fftSize: 2048, scaleMode: 'log', orientation: 'horizontal',
+    minFrequency: 20, maxFrequency: 20000, minDecibels: -90, maxDecibels: -12,
+    scrollSpeed: 2, contrast: 1, tiltDbPerOctave: 4, clarityMode: 'sharper',
+    colorScheme: 'heat', showGrid: true }
+}
+
 function defaultProject() {
   return {
     version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
@@ -52,7 +61,7 @@ function normalizeProject(raw) {
   if (!Array.isArray(raw.layers) || raw.layers.length > 32) throw new Error('Project supports at most 32 layers')
   const seen = new Set()
   const layers = raw.layers.map((layer, index) => {
-    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope'].includes(layer.type)) {
+    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope', 'spectrogram'].includes(layer.type)) {
       throw new Error(`Layer ${index + 1} must be a supported meter`)
     }
     if (typeof layer.id !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(layer.id) || seen.has(layer.id)) {
@@ -95,6 +104,26 @@ function normalizeProject(raw) {
       return { ...normalized, pitchLock: layer.pitchLock,
         underfillEnabled: layer.underfillEnabled, showGrid: layer.showGrid }
     }
+    if (layer.type === 'spectrogram') {
+      if (!FFT_SIZES.includes(layer.fftSize)) throw new Error('Unsupported spectrogram FFT size')
+      if (!['log', 'mel', 'linear'].includes(layer.scaleMode)) throw new Error('Unsupported spectrogram frequency scale')
+      if (!['horizontal', 'vertical'].includes(layer.orientation)) throw new Error('Unsupported spectrogram orientation')
+      if (!['classic', 'focused', 'sharp', 'sharper'].includes(layer.clarityMode)) throw new Error('Unsupported spectrogram clarity mode')
+      if (!['heat', 'mono'].includes(layer.colorScheme)) throw new Error('Unsupported spectrogram color scheme')
+      const minFrequency = number(layer.minFrequency, 'Spectrogram minimum frequency', 10, 20000)
+      const maxFrequency = number(layer.maxFrequency, 'Spectrogram maximum frequency', 20, 24000)
+      if (minFrequency >= maxFrequency) throw new Error('Spectrogram frequency range is invalid')
+      const minDecibels = number(layer.minDecibels, 'Spectrogram minimum dB', -120, -20)
+      const maxDecibels = number(layer.maxDecibels, 'Spectrogram maximum dB', -60, 12)
+      if (minDecibels >= maxDecibels) throw new Error('Spectrogram dB range is invalid')
+      if (typeof layer.showGrid !== 'boolean') throw new Error('Invalid spectrogram grid setting')
+      return { ...normalized, fftSize: layer.fftSize, scaleMode: layer.scaleMode,
+        orientation: layer.orientation, minFrequency, maxFrequency,
+        minDecibels, maxDecibels, scrollSpeed: number(layer.scrollSpeed, 'Spectrogram speed', 0.5, 8),
+        contrast: number(layer.contrast, 'Spectrogram contrast', 0.5, 2),
+        tiltDbPerOctave: number(layer.tiltDbPerOctave, 'Spectrogram tilt', -2, 8),
+        clarityMode: layer.clarityMode, colorScheme: layer.colorScheme, showGrid: layer.showGrid }
+    }
     return normalized
   })
   return { version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
@@ -102,4 +131,4 @@ function normalizeProject(raw) {
     audioPath: raw.audioPath, layers }
 }
 
-module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, defaultProject, spectrumLayer, oscilloscopeLayer, normalizeProject }
+module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, normalizeProject }
