@@ -22,7 +22,7 @@ function prerequisites() {
 async function build() {
   prerequisites()
   const esbuild = require(path.join(PRISM, 'node_modules', 'esbuild'))
-  const targets = new Set(['Vectorscope.ts', 'SpectrumAnalyzer.ts', 'Oscilloscope.ts', 'Spectrogram.ts', 'Waveform.ts', 'VUMeter.ts', 'LUFSMeter.ts'].map(name =>
+  const targets = new Set(['Vectorscope.ts', 'SpectrumAnalyzer.ts', 'Oscilloscope.ts', 'Spectrogram.ts', 'Waveform.ts', 'VUMeter.ts', 'LUFSMeter.ts', 'Waterfall.ts'].map(name =>
     path.join(PRISM, 'src', 'renderer', 'visualizers', name)))
   const marker = '  private drawFrame = (): void => {'
   const outdir = path.join(ROOT, 'artifacts', 'phase2')
@@ -33,11 +33,12 @@ async function build() {
   const plugin = {
     name: 'explicit-meter-frame',
     setup(bundle) {
-      bundle.onLoad({ filter: /(?:Vectorscope|SpectrumAnalyzer|Oscilloscope|Spectrogram|Waveform|VUMeter|LUFSMeter)\.ts$/ }, args => {
+      bundle.onLoad({ filter: /(?:Vectorscope|SpectrumAnalyzer|Oscilloscope|Spectrogram|Waveform|VUMeter|LUFSMeter|Waterfall)\.ts$/ }, args => {
         if (!targets.has(path.resolve(args.path))) return null
         let source = fs.readFileSync(args.path, 'utf8')
-        if (source.split(marker).length !== 2) throw new Error('Pinned Prism frame seam changed')
         const name = path.basename(args.path)
+        const seamMarker = name === 'Waterfall.ts' ? '  private draw = (): void => {' : marker
+        if (source.split(seamMarker).length !== 2) throw new Error('Pinned Prism frame seam changed')
         if (name === 'VUMeter.ts') {
           const clock = /    const nowMs = performance\.now\(\)\r?\n    this\.processAudio\(nowMs\)/g
           if ([...source.matchAll(clock)].length !== 1) throw new Error('Pinned Prism VU clock seam changed')
@@ -45,10 +46,12 @@ async function build() {
         }
         const seam = name === 'Oscilloscope.ts'
           ? '  renderFrame(): void { this.samplesReceived = Math.max(this.samplesReceived, Oscilloscope.WARMUP_SAMPLES); this.drawFrame() }'
+          : name === 'Waterfall.ts'
+            ? '  renderFrame(): void { this.draw() }'
           : name === 'VUMeter.ts'
             ? '  private offlineNowMs: number | null = null\n  advanceFrame(nowMs: number): void { this.processAudio(nowMs); this.updateNeedleVisuals(nowMs) }\n  renderFrame(nowMs: number): void { this.offlineNowMs = nowMs; try { this.drawFrame() } finally { this.offlineNowMs = null } }'
             : '  renderFrame(): void { this.drawFrame() }'
-        return { contents: source.replace(marker, `${seam}\n\n${marker}`),
+        return { contents: source.replace(seamMarker, `${seam}\n\n${seamMarker}`),
           loader: 'ts', resolveDir: path.dirname(args.path) }
       })
     },
