@@ -26,6 +26,13 @@ function spectrogramLayer(id = 'spectrogram-1', name = 'Spectrogram') {
     colorScheme: 'heat', showGrid: true }
 }
 
+function waveformLayer(id = 'waveform-1', name = 'Waveform history') {
+  return { id, type: 'waveform', name, x: 190, y: 190, w: 900, h: 420,
+    visible: true, locked: false, opacity: 1, color: '#38bdf8',
+    mode: 'stereo', scrollSpeed: 1, multiband: false,
+    bandLowColor: '#ff4444', bandMidColor: '#44dd44', bandHighColor: '#4488ff' }
+}
+
 function defaultProject() {
   return {
     version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
@@ -61,7 +68,7 @@ function normalizeProject(raw) {
   if (!Array.isArray(raw.layers) || raw.layers.length > 32) throw new Error('Project supports at most 32 layers')
   const seen = new Set()
   const layers = raw.layers.map((layer, index) => {
-    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope', 'spectrogram'].includes(layer.type)) {
+    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope', 'spectrogram', 'waveform'].includes(layer.type)) {
       throw new Error(`Layer ${index + 1} must be a supported meter`)
     }
     if (typeof layer.id !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(layer.id) || seen.has(layer.id)) {
@@ -124,6 +131,17 @@ function normalizeProject(raw) {
         tiltDbPerOctave: number(layer.tiltDbPerOctave, 'Spectrogram tilt', -2, 8),
         clarityMode: layer.clarityMode, colorScheme: layer.colorScheme, showGrid: layer.showGrid }
     }
+    if (layer.type === 'waveform') {
+      if (!['mono', 'stereo'].includes(layer.mode)) throw new Error('Unsupported waveform mode')
+      if (!Number.isInteger(layer.scrollSpeed)) throw new Error('Waveform speed must be an integer')
+      if (typeof layer.multiband !== 'boolean') throw new Error('Invalid waveform multiband setting')
+      return { ...normalized, mode: layer.mode,
+        scrollSpeed: number(layer.scrollSpeed, 'Waveform speed', 1, 8),
+        multiband: layer.multiband,
+        bandLowColor: color(layer.bandLowColor, 'Low band color'),
+        bandMidColor: color(layer.bandMidColor, 'Mid band color'),
+        bandHighColor: color(layer.bandHighColor, 'High band color') }
+    }
     return normalized
   })
   return { version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
@@ -131,4 +149,4 @@ function normalizeProject(raw) {
     audioPath: raw.audioPath, layers }
 }
 
-module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, normalizeProject }
+module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, normalizeProject }
