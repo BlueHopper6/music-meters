@@ -11,6 +11,12 @@ function spectrumLayer(id = 'spectrum-1', name = 'Spectrum analyzer') {
     minDecibels: -90, maxDecibels: -10, showSideLine: false }
 }
 
+function oscilloscopeLayer(id = 'oscilloscope-1', name = 'Oscilloscope') {
+  return { id, type: 'oscilloscope', name, x: 190, y: 190, w: 900, h: 420,
+    visible: true, locked: false, opacity: 1, color: '#6ce8f4',
+    pitchLock: true, underfillEnabled: false, showGrid: true }
+}
+
 function defaultProject() {
   return {
     version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
@@ -46,7 +52,7 @@ function normalizeProject(raw) {
   if (!Array.isArray(raw.layers) || raw.layers.length > 32) throw new Error('Project supports at most 32 layers')
   const seen = new Set()
   const layers = raw.layers.map((layer, index) => {
-    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum'].includes(layer.type)) {
+    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope'].includes(layer.type)) {
       throw new Error(`Layer ${index + 1} must be a supported meter`)
     }
     if (typeof layer.id !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(layer.id) || seen.has(layer.id)) {
@@ -82,6 +88,13 @@ function normalizeProject(raw) {
         scaleType: layer.scaleType, minFrequency, maxFrequency,
         minDecibels, maxDecibels, showSideLine: layer.showSideLine }
     }
+    if (layer.type === 'oscilloscope') {
+      for (const setting of ['pitchLock', 'underfillEnabled', 'showGrid']) {
+        if (typeof layer[setting] !== 'boolean') throw new Error(`Invalid oscilloscope ${setting} setting`)
+      }
+      return { ...normalized, pitchLock: layer.pitchLock,
+        underfillEnabled: layer.underfillEnabled, showGrid: layer.showGrid }
+    }
     return normalized
   })
   return { version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
@@ -89,4 +102,4 @@ function normalizeProject(raw) {
     audioPath: raw.audioPath, layers }
 }
 
-module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, defaultProject, spectrumLayer, normalizeProject }
+module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, defaultProject, spectrumLayer, oscilloscopeLayer, normalizeProject }

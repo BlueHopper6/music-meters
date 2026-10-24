@@ -21,7 +21,7 @@
   <main class="workspace">
     <aside class="sidebar layers-panel">
       <div class="panel-heading"><div><span class="eyebrow">COMPOSITION</span><h2>Layers</h2></div><button id="add-layer" title="Add selected meter">＋</button></div>
-      <label class="add-meter-label">Add meter<select id="add-type" aria-label="Meter type"><option value="vectorscope">Vectorscope</option><option value="spectrum">Spectrum analyzer</option></select></label>
+      <label class="add-meter-label">Add meter<select id="add-type" aria-label="Meter type"><option value="vectorscope">Vectorscope</option><option value="spectrum">Spectrum analyzer</option><option value="oscilloscope">Oscilloscope</option></select></label>
       <div id="layers" class="layers-list" aria-label="Layers"></div>
       <div class="layer-actions">
         <button id="duplicate-layer">Duplicate</button><button id="delete-layer">Delete</button>
@@ -63,6 +63,12 @@
         <div class="number-grid"><label>Min Hz<input id="spectrum-min-hz" type="number" min="10" max="20000"></label><label>Max Hz<input id="spectrum-max-hz" type="number" min="20" max="24000"></label></div>
         <div class="number-grid"><label>Min dB<input id="spectrum-min-db" type="number" min="-120" max="-20"></label><label>Max dB<input id="spectrum-max-db" type="number" min="-60" max="12"></label></div>
         <div class="checks"><label><input id="spectrum-side" type="checkbox"> Show side channel</label></div>
+      </section>
+      <section class="property-group" id="oscilloscope-options" hidden><h3>Oscilloscope</h3>
+        <div class="checks"><label><input id="oscilloscope-pitch-lock" type="checkbox"> Follow pitch trigger</label></div>
+        <div class="checks"><label><input id="oscilloscope-underfill" type="checkbox"> Fill under wave</label></div>
+        <div class="checks"><label><input id="oscilloscope-grid" type="checkbox"> Show grid</label></div>
+        <p class="hint">The wave follows the left audio channel, as in Prism.</p>
       </section>
       <p class="hint">Preview is computed from the imported audio through the selected frame. Export uses this same canvas composition.</p>
     </aside>

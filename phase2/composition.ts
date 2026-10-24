@@ -1,6 +1,7 @@
 import { Vectorscope } from '../upstream/prism/src/renderer/visualizers/Vectorscope'
 import { SpectrumAnalyzer } from '../upstream/prism/src/renderer/visualizers/SpectrumAnalyzer'
-import type { SpectrumNativeAnalyzer } from '../upstream/prism/src/renderer/audio/native'
+import { Oscilloscope } from '../upstream/prism/src/renderer/visualizers/Oscilloscope'
+import type { SpectrumNativeAnalyzer, OscilloscopeNativeAnalyzer } from '../upstream/prism/src/renderer/audio/native'
 import { normalizeProject } from './project.cjs'
 
 type BaseLayer = {
@@ -13,14 +14,19 @@ export type SpectrumLayer = BaseLayer & {
   minFrequency: number; maxFrequency: number; minDecibels: number; maxDecibels: number
   showSideLine: boolean
 }
-export type Layer = VectorscopeLayer | SpectrumLayer
+export type OscilloscopeLayer = BaseLayer & {
+  type: 'oscilloscope'; pitchLock: boolean; underfillEnabled: boolean; showGrid: boolean
+}
+export type Layer = VectorscopeLayer | SpectrumLayer | OscilloscopeLayer
 export type Project = {
   version: number; width: number; height: number; fps: number; title: string
   background: string; audioPath: string; layers: Layer[]
 }
 export type Points = { x: Float32Array; y: Float32Array }
 export type SpectrumBins = { mid: Float32Array; side: Float32Array }
-export type AnalysisFrame = { vectorscope: Points; spectra: Record<string, SpectrumBins> }
+export type OscilloscopeWave = { samples: Float32Array; detectedPitch: number; triggerIndex: number }
+export type AnalysisFrame = { vectorscope: Points; spectra: Record<string, SpectrumBins>;
+  oscilloscopes: Record<string, OscilloscopeWave> }
 
 export function decodeFloats(encoded: string): Float32Array {
   const binary = atob(encoded)
@@ -29,12 +35,19 @@ export function decodeFloats(encoded: string): Float32Array {
   return new Float32Array(bytes.buffer)
 }
 
-export function decodeAnalysis(encoded: { x: string; y: string; spectra?: Record<string, { mid: string; side: string }> }): AnalysisFrame {
+export function decodeAnalysis(encoded: { x: string; y: string;
+  spectra?: Record<string, { mid: string; side: string }>;
+  oscilloscopes?: Record<string, { samples: string; detectedPitch: number; triggerIndex: number }> }): AnalysisFrame {
   const spectra: Record<string, SpectrumBins> = {}
   for (const [key, value] of Object.entries(encoded.spectra || {})) {
     spectra[key] = { mid: decodeFloats(value.mid), side: decodeFloats(value.side) }
   }
-  return { vectorscope: { x: decodeFloats(encoded.x), y: decodeFloats(encoded.y) }, spectra }
+  const oscilloscopes: Record<string, OscilloscopeWave> = {}
+  for (const [key, value] of Object.entries(encoded.oscilloscopes || {})) {
+    oscilloscopes[key] = { samples: decodeFloats(value.samples),
+      detectedPitch: value.detectedPitch, triggerIndex: value.triggerIndex }
+  }
+  return { vectorscope: { x: decodeFloats(encoded.x), y: decodeFloats(encoded.y) }, spectra, oscilloscopes }
 }
 
 class SpectrumSnapshot implements SpectrumNativeAnalyzer {
@@ -65,15 +78,37 @@ class SpectrumSnapshot implements SpectrumNativeAnalyzer {
   }
 }
 
+class OscilloscopeSnapshot implements OscilloscopeNativeAnalyzer {
+  wave: OscilloscopeWave = { samples: new Float32Array(0), detectedPitch: 0, triggerIndex: 0 }
+  isAvailable() { return true }
+  setSampleRate(_rate: number) {}
+  setPitchLock(_enabled: boolean) {}
+  setDisplaySamples(_count: number) {}
+  pushSamples(_samples: Float32Array) {}
+  processContinuous() {
+    if (!this.wave.samples.length) return null
+    return { samplesToShow: this.wave.samples.length, detectedPitch: this.wave.detectedPitch,
+      triggerIndex: 0, writePos: this.wave.samples.length }
+  }
+  fillSamples(_start: number, output: Float32Array) {
+    const count = Math.min(output.length, this.wave.samples.length)
+    output.set(this.wave.samples.subarray(0, count))
+    return count
+  }
+  reset() {}
+}
+
 type Meter = {
   canvas: HTMLCanvasElement; type: Layer['type']; signature: string
-  painter: Vectorscope | SpectrumAnalyzer; snapshot?: SpectrumSnapshot
+  painter: Vectorscope | SpectrumAnalyzer | Oscilloscope
+  snapshot?: SpectrumSnapshot | OscilloscopeSnapshot
 }
 
 export class Composition {
   private context: CanvasRenderingContext2D
   private meters = new Map<string, Meter>()
-  private analysis: AnalysisFrame = { vectorscope: { x: new Float32Array(0), y: new Float32Array(0) }, spectra: {} }
+  private analysis: AnalysisFrame = { vectorscope: { x: new Float32Array(0), y: new Float32Array(0) },
+    spectra: {}, oscilloscopes: {} }
   private sampleRate = 48000
   private source = {
     getSampleRate: () => this.sampleRate,
@@ -82,6 +117,7 @@ export class Composition {
     getPendingVectorscopeSamples: () => [],
     getPendingSpectrumSamples: () => [],
     getPendingSpectrumStereoSamples: () => [],
+    getPendingOscilloscopeSamples: () => [],
   }
   private vectorscopeSnapshot = {
     isAvailable: () => true,
@@ -111,6 +147,14 @@ export class Composition {
       return { canvas: surface, type: layer.type, signature,
         painter: new Vectorscope(surface, { dataSource: this.source, nativeAnalyzer: this.vectorscopeSnapshot,
           displayPoints: 1024, persistence: 0, lineColor: layer.color, lineWidth: 1.5 }) }
+    }
+    if (layer.type === 'oscilloscope') {
+      const snapshot = new OscilloscopeSnapshot()
+      return { canvas: surface, type: layer.type, signature, snapshot,
+        painter: new Oscilloscope(surface, { dataSource: this.source, nativeAnalyzer: snapshot,
+          pitchLock: layer.pitchLock, underfillEnabled: layer.underfillEnabled,
+          showGrid: layer.showGrid, lineColor: layer.color, lineWidth: 1.5,
+          backgroundColor: 'transparent' }) }
     }
     const snapshot = new SpectrumSnapshot()
     return { canvas: surface, type: layer.type, signature, snapshot,
@@ -152,8 +196,10 @@ export class Composition {
     for (const layer of project.layers) {
       if (!layer.visible || layer.opacity === 0) continue
       const signature = layer.type === 'vectorscope' ? `${layer.type}:${layer.color}`
-        : JSON.stringify([layer.type, layer.color, layer.fftSize, layer.smoothing, layer.scaleType,
-          layer.minFrequency, layer.maxFrequency, layer.minDecibels, layer.maxDecibels, layer.showSideLine])
+        : layer.type === 'oscilloscope'
+          ? JSON.stringify([layer.type, layer.color, layer.pitchLock, layer.underfillEnabled, layer.showGrid])
+          : JSON.stringify([layer.type, layer.color, layer.fftSize, layer.smoothing, layer.scaleType,
+            layer.minFrequency, layer.maxFrequency, layer.minDecibels, layer.maxDecibels, layer.showSideLine])
       const width = Math.max(1, Math.round(layer.w * sx))
       const height = Math.max(1, Math.round(layer.h * sy))
       let meter = this.meters.get(layer.id)
@@ -169,10 +215,13 @@ export class Composition {
         meter.painter.resize()
       }
       if (layer.type === 'spectrum') {
-        meter.snapshot!.bins = analysis.spectra[`${layer.fftSize}:${layer.smoothing}`]
+        ;(meter.snapshot as SpectrumSnapshot).bins = analysis.spectra[`${layer.fftSize}:${layer.smoothing}`]
           || { mid: new Float32Array(0), side: new Float32Array(0) }
+      } else if (layer.type === 'oscilloscope') {
+        ;(meter.snapshot as OscilloscopeSnapshot).wave = analysis.oscilloscopes[layer.pitchLock ? 'locked' : 'free']
+          || { samples: new Float32Array(0), detectedPitch: 0, triggerIndex: 0 }
       }
-      ;(meter.painter as (Vectorscope | SpectrumAnalyzer) & { renderFrame(): void }).renderFrame()
+      ;(meter.painter as (Vectorscope | SpectrumAnalyzer | Oscilloscope) & { renderFrame(): void }).renderFrame()
       context.save()
       context.globalAlpha = layer.opacity
       context.drawImage(meter.canvas, layer.x * sx, layer.y * sy, layer.w * sx, layer.h * sy)

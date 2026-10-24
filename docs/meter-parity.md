@@ -1,6 +1,6 @@
 # Meter feature parity
 
-This table tracks the **application's** verified features after Phase 3.1. `Supported` means editor stills and exported MP4 frames use real Prism analysis and drawing. It does not claim pixel-for-pixel equivalence with MiniMeters. Prism is pinned to `49721802252b115d169e353c98b27408daa5e2b7`. MiniMeters features below are drawn from its [official feature list](https://minimeters.app/); Prism capabilities are checked against the pinned source paths named in the evidence column.
+This table tracks the **application's** verified features after Phase 3.2. `Supported` means editor stills and exported MP4 frames use real Prism analysis and drawing. It does not claim pixel-for-pixel equivalence with MiniMeters. Prism is pinned to `49721802252b115d169e353c98b27408daa5e2b7`. MiniMeters features below are drawn from its [official feature list](https://minimeters.app/); Prism capabilities are checked against the pinned source paths named in the evidence column.
 
 | Feature or mode | Status | Evidence and scope |
 | --- | --- | --- |
@@ -17,7 +17,10 @@ This table tracks the **application's** verified features after Phase 3.1. `Supp
 | Vectorscope polar/linear modes, zoom, multiband colors | Not yet implemented | Options exist in Prism `Vectorscope.ts`; current app fixes the basic Lissajous mode. MiniMeters lists scaled, linear, Lissajous, RGB, and multiband variants. |
 | Stereo correlation and multiband correlation | Not yet implemented | MiniMeters lists single/multiband correlation. Prism has native stereo analysis modules, but this editor does not present a correlation meter. |
 | Spectrogram FFT scale/size, orientation, history | Not yet implemented | Prism `Spectrogram.ts` exists; no editor/export layer yet. MiniMeters lists Mel/log/linear, horizontal/vertical, and history options. |
-| Oscilloscope sample wave and pitch trigger | Not yet implemented | Prism `Oscilloscope.ts` and native oscilloscope exist; no editor/export layer yet. MiniMeters lists follow-pitch mode. |
+| Oscilloscope sample wave and pitch trigger | Supported | Prism `native/src/oscilloscope.cpp` and `src/renderer/visualizers/Oscilloscope.ts`; Phase 3.2 native frequency and consecutive-frame trigger checks, editor stills, and MP4 frames in [Phase 3.2 report](phase-3-2-report.md). |
+| Oscilloscope free-running, underfill, and grid controls | Supported | Per-layer project settings use the same Prism Canvas painter; pitch-locked and free-running instances were tested together and independently. |
+| Oscilloscope channel routing | Different behavior | Prism's oscilloscope consumes the left channel from `AudioRouter.ts`; this application follows it. The user cannot select right, mid, or side for this meter. |
+| Oscilloscope time-window/trigger adjustment | Not yet implemented | Prism fixes the display window through `getNormalizedOscilloscopeDisplaySamples`; the application exposes pitch lock, not an adjustable window or trigger level. |
 | Scrolling waveform modes and multiband colors | Not yet implemented | Prism `Waveform.ts` exists; no editor/export layer yet. MiniMeters lists channel selection, multiband, speed, and loop. |
 | Waterfall spectrum history | Not yet implemented | Prism `Waterfall.ts` and native waterfall exist; no editor/export layer yet. This is a Prism category, not a distinct MiniMeters module in its current official feature list. |
 | Loudness/peak windows and readouts | Not yet implemented | Prism `LUFSMeter.ts` and native `lufsmeter.cpp` exist; no editor/export layer yet. MiniMeters lists momentary/short-term LUFS and fast/slow RMS windows. |
