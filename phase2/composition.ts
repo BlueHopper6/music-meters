@@ -43,10 +43,15 @@ export type LoudnessLayer = BaseLayer & { type: 'loudness'; readout: 'momentary'
 export type WaterfallLayer = BaseLayer & { type: 'waterfall'; fftSize: number; scaleMode: 'log' | 'mel' | 'linear'
   frequencyRangeMode: 'extended' | 'audible'; historySeconds: number; density: 'sparse' | 'balanced' | 'dense'
   colorMode: 'theme' | 'heat'; smoothing: number; tiltDbPerOctave: number; showGrid: boolean }
-export type Layer = VectorscopeLayer | SpectrumLayer | OscilloscopeLayer | SpectrogramLayer | WaveformLayer | VuLayer | LoudnessLayer | WaterfallLayer
+export type ImageLayer = BaseLayer & { type: 'image'; imagePath: string; fit: 'cover' | 'contain'; rotation: number; shadow: number }
+export type TextLayer = BaseLayer & { type: 'text'; text: string; fontFamily: string; fontSize: number;
+  fontWeight: 'normal' | 'bold'; align: 'left' | 'center' | 'right'; rotation: number; shadow: number }
+export type Layer = VectorscopeLayer | SpectrumLayer | OscilloscopeLayer | SpectrogramLayer | WaveformLayer | VuLayer | LoudnessLayer | WaterfallLayer | ImageLayer | TextLayer
+type MeterLayer = Exclude<Layer, ImageLayer | TextLayer>
+export type Background = { type: 'solid' | 'gradient' | 'image'; color: string; color2: string; imagePath: string; fit: 'cover' | 'contain' }
 export type Project = {
   version: number; width: number; height: number; fps: number; title: string
-  background: string; audioPath: string; layers: Layer[]
+  background: string | Background; audioPath: string; layers: Layer[]
 }
 export type Points = { x: Float32Array; y: Float32Array }
 export type VectorscopeFrame = Points & { multiband: Float32Array }
@@ -281,6 +286,7 @@ type Meter = {
 export class Composition {
   private context: CanvasRenderingContext2D
   private meters = new Map<string, Meter>()
+  private images = new Map<string, HTMLImageElement>()
   private analysis: AnalysisFrame = { vectorscope: { x: new Float32Array(0), y: new Float32Array(0), multiband: new Float32Array(0) },
     spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {}, vus: {}, loudness: {}, waterfalls: {} }
   private sampleRate = 48000
@@ -320,7 +326,57 @@ export class Composition {
     this.context = context
   }
 
-  private createMeter(layer: Layer, width: number, height: number, signature: string): Meter {
+  async setAssets(data: Record<string, string>): Promise<void> {
+    const next = new Map<string, HTMLImageElement>()
+    for (const [path, url] of Object.entries(data)) {
+      if (!/^data:image\/(png|jpeg|webp);base64,/.test(url)) throw new Error('Invalid local image data')
+      const image = new Image()
+      image.src = url
+      await image.decode()
+      next.set(path, image)
+    }
+    this.images = next
+  }
+
+  private drawImageBox(image: HTMLImageElement, x: number, y: number, w: number, h: number, fit: 'cover' | 'contain'): void {
+    const ctx = this.context
+    const factor = fit === 'cover' ? Math.max(w / image.naturalWidth, h / image.naturalHeight)
+      : Math.min(w / image.naturalWidth, h / image.naturalHeight)
+    const iw = image.naturalWidth * factor
+    const ih = image.naturalHeight * factor
+    ctx.save()
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip()
+    ctx.drawImage(image, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih)
+    ctx.restore()
+  }
+
+  private drawGraphic(layer: ImageLayer | TextLayer): void {
+    const ctx = this.context
+    ctx.save()
+    ctx.globalAlpha = layer.opacity
+    ctx.translate(layer.x + layer.w / 2, layer.y + layer.h / 2)
+    ctx.rotate(layer.rotation * Math.PI / 180)
+    if (layer.shadow) {
+      ctx.shadowColor = 'rgba(0,0,0,0.85)'
+      ctx.shadowBlur = layer.shadow
+      ctx.shadowOffsetY = Math.min(12, layer.shadow / 3)
+    }
+    if (layer.type === 'image') {
+      const image = this.images.get(layer.imagePath)
+      if (image) this.drawImageBox(image, -layer.w / 2, -layer.h / 2, layer.w, layer.h, layer.fit)
+    } else {
+      ctx.beginPath(); ctx.rect(-layer.w / 2, -layer.h / 2, layer.w, layer.h); ctx.clip()
+      ctx.fillStyle = layer.color
+      ctx.font = `${layer.fontWeight} ${layer.fontSize}px ${JSON.stringify(layer.fontFamily)}`
+      ctx.textAlign = layer.align
+      ctx.textBaseline = 'middle'
+      const x = layer.align === 'left' ? -layer.w / 2 : layer.align === 'right' ? layer.w / 2 : 0
+      ctx.fillText(layer.text, x, 0, layer.w)
+    }
+    ctx.restore()
+  }
+
+  private createMeter(layer: MeterLayer, width: number, height: number, signature: string): Meter {
     const surface = document.createElement('canvas')
     surface.width = width
     surface.height = height
@@ -415,19 +471,29 @@ export class Composition {
     const { canvas, context } = this
     const sx = canvas.width / project.width
     const sy = canvas.height / project.height
-    context.fillStyle = project.background
+    const background = project.background
+    context.fillStyle = typeof background === 'string' ? background : background.color
     context.fillRect(0, 0, canvas.width, canvas.height)
-    context.save()
-    context.scale(sx, sy)
-    context.fillStyle = '#e7f9ff'
-    context.font = 'bold 52px Arial'
-    context.fillText(project.title, 80, 90, 1120)
-    context.font = '26px Arial'
-    context.fillStyle = '#a4b4c8'
-    context.fillText('Prism audio meters', 84, 132)
-    context.font = '23px Arial'
-    context.fillText(`t = ${(frameIndex / project.fps).toFixed(2)} s`, 84, 645)
-    context.restore()
+    if (typeof background !== 'string') {
+      if (background.type === 'gradient') {
+        const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height)
+        gradient.addColorStop(0, background.color); gradient.addColorStop(1, background.color2)
+        context.fillStyle = gradient; context.fillRect(0, 0, canvas.width, canvas.height)
+      } else if (background.type === 'image') {
+        const image = this.images.get(background.imagePath)
+        if (image) this.drawImageBox(image, 0, 0, canvas.width, canvas.height, background.fit)
+      }
+    } else {
+      context.save()
+      context.scale(sx, sy)
+      context.fillStyle = '#e7f9ff'; context.font = 'bold 52px Arial'
+      context.fillText(project.title, 80, 90, 1120)
+      context.font = '26px Arial'; context.fillStyle = '#a4b4c8'
+      context.fillText('Prism audio meters', 84, 132)
+      context.font = '23px Arial'
+      context.fillText(`t = ${(frameIndex / project.fps).toFixed(2)} s`, 84, 645)
+      context.restore()
+    }
 
     const active = new Set(project.layers.map(layer => layer.id))
     for (const [id, meter] of this.meters) {
@@ -435,6 +501,10 @@ export class Composition {
     }
     for (const layer of project.layers) {
       if (!layer.visible || layer.opacity === 0) continue
+      if (layer.type === 'image' || layer.type === 'text') {
+        context.save(); context.scale(sx, sy); this.drawGraphic(layer); context.restore()
+        continue
+      }
       const signature = layer.type === 'vectorscope' ? JSON.stringify([layer.type, layer.color,
         layer.mode, layer.zoomDb, layer.multiband, layer.showGrid, layer.showCorrelation,
         layer.bandLowColor, layer.bandMidColor, layer.bandHighColor])

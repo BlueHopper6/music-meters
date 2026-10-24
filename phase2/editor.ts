@@ -1,12 +1,15 @@
 import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type VectorscopeLayer, type SpectrumLayer,
-  type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer, type LoudnessLayer, type WaterfallLayer } from './composition'
-import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } from './project.cjs'
+  type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer, type LoudnessLayer, type WaterfallLayer,
+  type ImageLayer, type TextLayer, type Background } from './composition'
+import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject } from './project.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number }
 type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null }
 type Desktop = {
   initial(): Promise<Initial>
   chooseAudio(): Promise<{ path: string; metadata: Metadata } | null>
+  chooseImage(): Promise<string | null>
+  loadAssets(project: Project): Promise<Record<string, string>>
   previewAt(frame: number, project: Project): Promise<
     { x: string; y: string; multiband: string; spectra: Record<string, { mid: string; side: string }>;
       oscilloscopes: Record<string, { samples: string; detectedPitch: number; triggerIndex: number }>;
@@ -47,18 +50,37 @@ let projectPath: string | null = null
 
 function selected() { return project.layers.find(layer => layer.id === selectedId) }
 function setStatus(message: string) { status.textContent = message }
+function background(): Background { return project.background as Background }
+function upgradeProject() {
+  if (project.version === 2) return
+  if (project.layers.length >= 32) throw new Error('Remove one layer before enabling composition graphics')
+  const oldColor = project.background as string
+  project.version = 2
+  project.background = { type: 'solid', color: oldColor, color2: '#243750', imagePath: '', fit: 'cover' }
+  const title = textLayer(nextId('title'), 'Song title', project.title) as TextLayer
+  title.x = 80; title.y = 54; title.h = 72
+  project.layers.push(title)
+}
+async function syncAssets() {
+  try { await composition.setAssets(await window.desktop.loadAssets(project)); render() }
+  catch (error) { setStatus(`Artwork unavailable: ${String(error)}`); render() }
+}
 function render() {
   composition.render(project, analysis, frameIndex, sampleRate)
   updateSelection()
 }
 function updateSelection() {
   const layer = selected()
+  const minimum = layer?.type === 'text' ? 20 : layer?.type === 'image' ? 40 : 80
+  ;($<HTMLInputElement>('layer-w')).min = String(minimum)
+  ;($<HTMLInputElement>('layer-h')).min = String(minimum)
   selection.hidden = !layer || !layer.visible
   if (!layer) return
   selection.style.left = `${layer.x / 1280 * 100}%`
   selection.style.top = `${layer.y / 720 * 100}%`
   selection.style.width = `${layer.w / 1280 * 100}%`
   selection.style.height = `${layer.h / 720 * 100}%`
+  selection.style.transform = layer.type === 'image' || layer.type === 'text' ? `rotate(${layer.rotation}deg)` : ''
   selection.classList.toggle('locked', layer.locked)
   selection.querySelector('.selection-label')!.textContent = layer.name
 }
@@ -90,8 +112,31 @@ function refreshLayers() {
 }
 function refreshInspector() {
   ;($<HTMLInputElement>('title')).value = project.title
-  ;($<HTMLInputElement>('background')).value = project.background
+  const bg = typeof project.background === 'string' ? null : project.background
+  ;($<HTMLSelectElement>('background-type')).value = bg?.type ?? 'solid'
+  ;($<HTMLInputElement>('background')).value = bg?.color ?? project.background as string
+  ;($<HTMLInputElement>('background-color2')).value = bg?.color2 ?? '#243750'
+  ;($<HTMLSelectElement>('background-fit')).value = bg?.fit ?? 'cover'
+  $('background-color2-row').hidden = bg?.type !== 'gradient'
+  $('background-image-row').hidden = bg?.type !== 'image'
+  $('background-image-name').textContent = bg?.imagePath.split(/[\\/]/).pop() || 'No image selected'
   const layer = selected()
+  $('image-options').hidden = layer?.type !== 'image'
+  $('text-options').hidden = layer?.type !== 'text'
+  $('layer-color-row').hidden = layer?.type === 'image'
+  if (layer?.type === 'image') {
+    ;($<HTMLSelectElement>('image-fit')).value = layer.fit
+    ;($<HTMLInputElement>('image-rotation')).value = String(layer.rotation)
+    ;($<HTMLInputElement>('image-shadow')).value = String(layer.shadow)
+    $('image-name').textContent = layer.imagePath.split(/[\\/]/).pop() || 'No image selected'
+  }
+  if (layer?.type === 'text') {
+    for (const [id, value] of [['text-content', layer.text], ['text-font', layer.fontFamily],
+      ['text-size', layer.fontSize], ['text-weight', layer.fontWeight], ['text-align', layer.align],
+      ['text-rotation', layer.rotation], ['text-shadow', layer.shadow]] as const) {
+      ;($<HTMLInputElement | HTMLSelectElement>(id)).value = String(value)
+    }
+  }
   for (const [id, value] of [
     ['layer-name', layer?.name ?? ''], ['layer-x', layer?.x ?? ''], ['layer-y', layer?.y ?? ''],
     ['layer-w', layer?.w ?? ''], ['layer-h', layer?.h ?? ''],
@@ -284,14 +329,63 @@ for (const [id, property] of [['layer-x', 'x'], ['layer-y', 'y'], ['layer-w', 'w
     if (!Number.isFinite(value)) return refreshInspector()
     if (property === 'x') layer.x = Math.max(0, Math.min(1280 - layer.w, value))
     if (property === 'y') layer.y = Math.max(0, Math.min(720 - layer.h, value))
-    if (property === 'w') layer.w = Math.max(80, Math.min(1280 - layer.x, value))
-    if (property === 'h') layer.h = Math.max(80, Math.min(720 - layer.y, value))
+    const minimum = layer.type === 'text' ? 20 : layer.type === 'image' ? 40 : 80
+    if (property === 'w') layer.w = Math.max(minimum, Math.min(1280 - layer.x, value))
+    if (property === 'h') layer.h = Math.max(minimum, Math.min(720 - layer.y, value))
     repaint()
     if ((layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'waterfall') && (property === 'w' || property === 'h')) schedulePreview()
   })
 }
 $<HTMLInputElement>('title').addEventListener('input', event => { project.title = (event.target as HTMLInputElement).value; render() })
-$<HTMLInputElement>('background').addEventListener('input', event => { project.background = (event.target as HTMLInputElement).value; render() })
+$<HTMLInputElement>('background').addEventListener('input', event => {
+  if (project.version === 1) project.background = (event.target as HTMLInputElement).value
+  else background().color = (event.target as HTMLInputElement).value
+  render()
+})
+$<HTMLSelectElement>('background-type').addEventListener('change', event => {
+  try { upgradeProject(); background().type = (event.target as HTMLSelectElement).value as Background['type']; repaint() }
+  catch (error) { refreshInspector(); setStatus(String(error)) }
+})
+$<HTMLInputElement>('background-color2').addEventListener('input', event => {
+  upgradeProject(); background().color2 = (event.target as HTMLInputElement).value; render()
+})
+$<HTMLSelectElement>('background-fit').addEventListener('change', event => {
+  upgradeProject(); background().fit = (event.target as HTMLSelectElement).value as Background['fit']; render()
+})
+$('background-choose-image').addEventListener('click', async () => {
+  try {
+    const path = await window.desktop.chooseImage(); if (!path) return
+    upgradeProject(); background().imagePath = path; background().type = 'image'
+    refreshInspector(); await syncAssets()
+  } catch (error) { setStatus(String(error)) }
+})
+$('image-choose').addEventListener('click', async () => {
+  const layer = selected(); if (!layer || layer.type !== 'image' || layer.locked) return
+  try {
+    const path = await window.desktop.chooseImage(); if (!path) return
+    layer.imagePath = path; refreshInspector(); await syncAssets()
+  } catch (error) { setStatus(String(error)) }
+})
+for (const [id, property] of [['image-fit', 'fit'], ['image-rotation', 'rotation'], ['image-shadow', 'shadow']] as const) {
+  $<HTMLInputElement | HTMLSelectElement>(id).addEventListener('change', event => {
+    const layer = selected(); if (!layer || layer.type !== 'image' || layer.locked) return
+    const previous = { ...layer }
+    ;(layer as unknown as Record<string, string | number>)[property] = property === 'fit'
+      ? (event.target as HTMLInputElement).value : Number((event.target as HTMLInputElement).value)
+    try { repaint() } catch (error) { Object.assign(layer, previous); refreshInspector(); setStatus(String(error)) }
+  })
+}
+for (const [id, property] of [['text-content', 'text'], ['text-font', 'fontFamily'],
+  ['text-size', 'fontSize'], ['text-weight', 'fontWeight'], ['text-align', 'align'],
+  ['text-rotation', 'rotation'], ['text-shadow', 'shadow']] as const) {
+  $<HTMLInputElement | HTMLSelectElement>(id).addEventListener('change', event => {
+    const layer = selected(); if (!layer || layer.type !== 'text' || layer.locked) return
+    const previous = { ...layer }
+    ;(layer as unknown as Record<string, string | number>)[property] = ['fontSize', 'rotation', 'shadow'].includes(property)
+      ? Number((event.target as HTMLInputElement).value) : (event.target as HTMLInputElement).value
+    try { repaint() } catch (error) { Object.assign(layer, previous); refreshInspector(); setStatus(String(error)) }
+  })
+}
 $<HTMLInputElement>('layer-name').addEventListener('change', event => {
   const layer = selected(); if (!layer) return
   layer.name = (event.target as HTMLInputElement).value.trim() || layer.name
@@ -524,8 +618,9 @@ selection.addEventListener('pointermove', event => {
     layer.x = Math.max(0, Math.min(1280 - layer.w, drag.startX + dx))
     layer.y = Math.max(0, Math.min(720 - layer.h, drag.startY + dy))
   } else {
-    layer.w = Math.max(80, Math.min(1280 - layer.x, drag.startW + dx))
-    layer.h = Math.max(80, Math.min(720 - layer.y, drag.startH + dy))
+    const minimum = layer.type === 'text' ? 20 : layer.type === 'image' ? 40 : 80
+    layer.w = Math.max(minimum, Math.min(1280 - layer.x, drag.startW + dx))
+    layer.h = Math.max(minimum, Math.min(720 - layer.y, drag.startH + dy))
   }
   render(); refreshInspector()
 })
@@ -539,6 +634,9 @@ selection.addEventListener('lostpointercapture', finishDrag)
 $('add-layer').addEventListener('click', () => {
   if (project.layers.length >= 32) return setStatus('The project supports at most 32 layers.')
   const type = ($<HTMLSelectElement>('add-type')).value
+  if (project.version === 1 && (type === 'image' || type === 'text') && project.layers.length >= 31) {
+    return setStatus('Remove a layer before adding graphics to this older project.')
+  }
   const id = nextId(type === 'spectrum' ? 'spectrum' : type === 'oscilloscope' ? 'oscilloscope' : type === 'spectrogram' ? 'spectrogram' : type === 'waveform' ? 'waveform' : type === 'vu' ? 'vu' : type === 'loudness' ? 'loudness' : type === 'waterfall' ? 'waterfall' : 'scope')
   if (type === 'spectrum') {
     project.layers.push(spectrumLayer(id, `Spectrum ${project.layers.length + 1}`) as SpectrumLayer)
@@ -561,6 +659,12 @@ $('add-layer').addEventListener('click', () => {
   } else if (type === 'waterfall') {
     project.layers.push(waterfallLayer(id, `Waterfall ${project.layers.length + 1}`) as WaterfallLayer)
     if (metadata) schedulePreview()
+  } else if (type === 'image') {
+    upgradeProject()
+    project.layers.push(imageLayer(id, `Artwork ${project.layers.length + 1}`) as ImageLayer)
+  } else if (type === 'text') {
+    upgradeProject()
+    project.layers.push(textLayer(id, `Text ${project.layers.length + 1}`, 'Artist name') as TextLayer)
   } else {
     project.layers.push(vectorscopeLayer(id, `Vectorscope ${project.layers.length + 1}`) as VectorscopeLayer)
   }
@@ -625,7 +729,7 @@ $('open-project').addEventListener('click', async () => {
     metadata = loaded.metadata; projectPath = loaded.projectPath
     selectedId = project.layers.at(-1)?.id || null; frameIndex = 0
     analysis = emptyAnalysis()
-    refreshInspector(); refreshLayers(); refreshAudio(); render()
+    refreshInspector(); refreshLayers(); refreshAudio(); await syncAssets()
     if (metadata) await refreshPreview()
     else setStatus('Project opened. Audio is missing; import a replacement file.')
   } catch (error) { setStatus(String(error)) }
@@ -686,7 +790,7 @@ async function start() {
   project = normalizeProject(initial.project) as Project
   metadata = initial.metadata; projectPath = initial.projectPath
   selectedId = project.layers.at(-1)?.id || null
-  refreshInspector(); refreshLayers(); refreshAudio(); render()
+  refreshInspector(); refreshLayers(); refreshAudio(); await syncAssets()
   if (metadata) await refreshPreview()
 }
 start().catch(error => setStatus(String(error)))

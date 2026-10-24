@@ -1,6 +1,19 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } = require('../project.cjs')
+const { defaultProject, compositionProject, imageLayer, textLayer, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } = require('../project.cjs')
+
+test('version 2 composition keeps ordered graphics and meter layers with validated settings', () => {
+  const project = compositionProject()
+  const artwork = { ...imageLayer(), imagePath: 'C:/art/cover.png', fit: 'contain', rotation: -12, opacity: 0.7 }
+  const artist = { ...textLayer('artist-1', 'Artist', 'Fixture Artist'), align: 'right', fontFamily: 'Georgia', shadow: 8 }
+  project.background = { type: 'gradient', color: '#102030', color2: '#304050', imagePath: '', fit: 'cover' }
+  project.layers = [artwork, spectrumLayer(), artist, vectorscopeLayer()]
+  assert.deepEqual(normalizeProject(project).layers, project.layers)
+  assert.equal(normalizeProject(project).background.type, 'gradient')
+  assert.throws(() => normalizeProject({ ...project, layers: [{ ...artwork, imagePath: 'https://example.com/cover.png' }] }), /local PNG/)
+  assert.throws(() => normalizeProject({ ...project, layers: [{ ...artist, fontFamily: 'url(evil)' }] }), /Unsupported font/)
+  assert.throws(() => normalizeProject({ ...project, layers: [{ ...artwork, rotation: 181 }] }), /Rotation/)
+})
 
 test('two vectorscopes retain independent projection, zoom, band, and correlation settings', () => {
   const first = { ...vectorscopeLayer('scope-a'), x: 40, y: 170, w: 550, h: 450,
@@ -112,7 +125,7 @@ test('rejects invalid geometry and duplicate layer IDs before saving or renderin
 
 test('rejects unsupported project versions and unsafe color values', () => {
   const old = defaultProject()
-  old.version = 2
+  old.version = 3
   assert.throws(() => normalizeProject(old), /Unsupported project version/)
   const badColor = defaultProject()
   badColor.layers[0].color = 'url(file:///secret)'

@@ -1,6 +1,6 @@
 # Meter feature parity
 
-This table tracks the **application's** verified features after Phase 3.8. `Supported` means editor stills and exported MP4 frames use real Prism analysis and drawing. It does not claim pixel-for-pixel equivalence with MiniMeters. Prism is pinned to `49721802252b115d169e353c98b27408daa5e2b7`. MiniMeters features below are drawn from its [official feature list](https://minimeters.app/); Prism capabilities are checked against the pinned source paths named in the evidence column.
+This table tracks the **application's** meter features after Phase 4. `Supported` means editor stills and exported MP4 frames use real Prism analysis and drawing. It does not claim pixel-for-pixel equivalence with MiniMeters. Prism is pinned to `49721802252b115d169e353c98b27408daa5e2b7`. MiniMeters features below are drawn from its [official feature list](https://minimeters.app/); Prism capabilities are checked against the pinned source paths named in the evidence column. Phase 4 left meter controls unchanged and rerendered all eight categories together; see the [Phase 4 report](phase-4-report.md).
 
 | Feature or mode | Status | Evidence and scope |
 | --- | --- | --- |
