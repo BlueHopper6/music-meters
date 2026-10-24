@@ -7,7 +7,9 @@ declare global {
       render: (x: string, y: string, spectra: Record<string, { mid: string; side: string }>,
         oscilloscopes: Record<string, { samples: string; detectedPitch: number; triggerIndex: number }>,
         spectrograms: Record<string, { rebuild: boolean; entries: Array<{
-          columnCount: number; rowCount: number; display: string; heat: string }> }>, frameIndex: number) => string
+          columnCount: number; rowCount: number; display: string; heat: string }> }>,
+        waveforms: Record<string, { rebuild: boolean; entries: Array<{ columns: number; summary: string }> }>,
+        frameIndex: number) => string
     }
   }
 }
@@ -26,9 +28,9 @@ window.phase2Export = {
     project = nextProject
     sampleRate = nextSampleRate
   },
-  render(x, y, spectra, oscilloscopes, spectrograms, frameIndex) {
+  render(x, y, spectra, oscilloscopes, spectrograms, waveforms, frameIndex) {
     if (!composition) throw new Error('Export composition was not initialized')
-    composition.render(project, decodeAnalysis({ x, y, spectra, oscilloscopes, spectrograms }), frameIndex, sampleRate)
+    composition.render(project, decodeAnalysis({ x, y, spectra, oscilloscopes, spectrograms, waveforms }), frameIndex, sampleRate)
     return canvas.toDataURL('image/png').split(',')[1]
   },
 }

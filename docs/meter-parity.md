@@ -1,6 +1,6 @@
 # Meter feature parity
 
-This table tracks the **application's** verified features after Phase 3.3. `Supported` means editor stills and exported MP4 frames use real Prism analysis and drawing. It does not claim pixel-for-pixel equivalence with MiniMeters. Prism is pinned to `49721802252b115d169e353c98b27408daa5e2b7`. MiniMeters features below are drawn from its [official feature list](https://minimeters.app/); Prism capabilities are checked against the pinned source paths named in the evidence column.
+This table tracks the **application's** verified features after Phase 3.4. `Supported` means editor stills and exported MP4 frames use real Prism analysis and drawing. It does not claim pixel-for-pixel equivalence with MiniMeters. Prism is pinned to `49721802252b115d169e353c98b27408daa5e2b7`. MiniMeters features below are drawn from its [official feature list](https://minimeters.app/); Prism capabilities are checked against the pinned source paths named in the evidence column.
 
 | Feature or mode | Status | Evidence and scope |
 | --- | --- | --- |
@@ -24,7 +24,10 @@ This table tracks the **application's** verified features after Phase 3.3. `Supp
 | Oscilloscope free-running, underfill, and grid controls | Supported | Per-layer project settings use the same Prism Canvas painter; pitch-locked and free-running instances were tested together and independently. |
 | Oscilloscope channel routing | Different behavior | Prism's oscilloscope consumes the left channel from `AudioRouter.ts`; this application follows it. The user cannot select right, mid, or side for this meter. |
 | Oscilloscope time-window/trigger adjustment | Not yet implemented | Prism fixes the display window through `getNormalizedOscilloscopeDisplaySamples`; the application exposes pitch lock, not an adjustable window or trigger level. |
-| Scrolling waveform modes and multiband colors | Not yet implemented | Prism `Waveform.ts` exists; no editor/export layer yet. MiniMeters lists channel selection, multiband, speed, and loop. |
+| Scrolling waveform mono and stereo history | Supported | Prism `native/src/waveform.cpp` peak summaries and `src/renderer/visualizers/Waveform.ts` Canvas painter; independently configured mono and stereo layers, editor stills, and 720p/1080p MP4 in [Phase 3.4 report](phase-3-4-report.md). Mono follows Prism's left-channel routing. |
+| Waveform peaks, speed 1–8, and multiband colors | Supported | Native min/max and low/mid/high RMS columns drive Prism's painter. A pulse reached 0.977 peak; 100 Hz favored low red and 5 kHz high blue; speeds 1 and 4 produced 4 and 17 columns in a sampled frame. Per-layer colors and speed save/reopen. |
+| Waveform L/R/M/S selection and loop | Different behavior | The app follows Prism's waveform `mono` left-channel and `stereo` L/R modes. MiniMeters lists L/R/M/S channel selection and loop; selectable M/S and loop are not exposed by pinned Prism's waveform painter. |
+| Waveform DAW timeline ruler | Different behavior | Prism's timeline depends on a DAW transport. This file-based offline editor retains its waveform grid without DAW bar/beat labels. |
 | Waterfall spectrum history | Not yet implemented | Prism `Waterfall.ts` and native waterfall exist; no editor/export layer yet. This is a Prism category, not a distinct MiniMeters module in its current official feature list. |
 | Loudness/peak windows and readouts | Not yet implemented | Prism `LUFSMeter.ts` and native `lufsmeter.cpp` exist; no editor/export layer yet. MiniMeters lists momentary/short-term LUFS and fast/slow RMS windows. |
 | VU ballistics, channel selection, and calibration | Not yet implemented | Prism `VUMeter.ts` and native `vumeter.cpp` exist; no editor/export layer yet. MiniMeters lists L/R/M/S channel options and input calibration. |

@@ -2,7 +2,8 @@ import { Vectorscope } from '../upstream/prism/src/renderer/visualizers/Vectorsc
 import { SpectrumAnalyzer } from '../upstream/prism/src/renderer/visualizers/SpectrumAnalyzer'
 import { Oscilloscope } from '../upstream/prism/src/renderer/visualizers/Oscilloscope'
 import { Spectrogram } from '../upstream/prism/src/renderer/visualizers/Spectrogram'
-import type { SpectrumNativeAnalyzer, OscilloscopeNativeAnalyzer, SpectrogramNativeAnalyzer } from '../upstream/prism/src/renderer/audio/native'
+import { Waveform } from '../upstream/prism/src/renderer/visualizers/Waveform'
+import type { SpectrumNativeAnalyzer, OscilloscopeNativeAnalyzer, SpectrogramNativeAnalyzer, WaveformNativeAnalyzer } from '../upstream/prism/src/renderer/audio/native'
 import type { SpectrogramNativeOptions, SpectrogramNativeResult } from '../upstream/prism/src/renderer/audio/native/visualizer-dsp'
 import { normalizeProject } from './project.cjs'
 
@@ -26,7 +27,9 @@ export type SpectrogramLayer = BaseLayer & {
   tiltDbPerOctave: number; clarityMode: 'classic' | 'focused' | 'sharp' | 'sharper'
   colorScheme: 'heat' | 'mono'; showGrid: boolean
 }
-export type Layer = VectorscopeLayer | SpectrumLayer | OscilloscopeLayer | SpectrogramLayer
+export type WaveformLayer = BaseLayer & { type: 'waveform'; mode: 'mono' | 'stereo'
+  scrollSpeed: number; multiband: boolean; bandLowColor: string; bandMidColor: string; bandHighColor: string }
+export type Layer = VectorscopeLayer | SpectrumLayer | OscilloscopeLayer | SpectrogramLayer | WaveformLayer
 export type Project = {
   version: number; width: number; height: number; fps: number; title: string
   background: string; audioPath: string; layers: Layer[]
@@ -36,8 +39,10 @@ export type SpectrumBins = { mid: Float32Array; side: Float32Array }
 export type OscilloscopeWave = { samples: Float32Array; detectedPitch: number; triggerIndex: number }
 export type SpectrogramColumns = SpectrogramNativeResult
 export type SpectrogramFrame = { rebuild: boolean; entries: SpectrogramColumns[] }
+export type WaveformFrame = { rebuild: boolean; entries: Float32Array[] }
 export type AnalysisFrame = { vectorscope: Points; spectra: Record<string, SpectrumBins>;
-  oscilloscopes: Record<string, OscilloscopeWave>; spectrograms: Record<string, SpectrogramFrame> }
+  oscilloscopes: Record<string, OscilloscopeWave>; spectrograms: Record<string, SpectrogramFrame>;
+  waveforms: Record<string, WaveformFrame> }
 
 export function decodeFloats(encoded: string): Float32Array {
   const binary = atob(encoded)
@@ -50,7 +55,8 @@ export function decodeAnalysis(encoded: { x: string; y: string;
   spectra?: Record<string, { mid: string; side: string }>;
   oscilloscopes?: Record<string, { samples: string; detectedPitch: number; triggerIndex: number }>;
   spectrograms?: Record<string, { rebuild: boolean; entries: Array<{
-    columnCount: number; rowCount: number; display: string; heat: string }> }> }): AnalysisFrame {
+    columnCount: number; rowCount: number; display: string; heat: string }> }>;
+  waveforms?: Record<string, { rebuild: boolean; entries: Array<{ columns: number; summary: string }> }> }): AnalysisFrame {
   const spectra: Record<string, SpectrumBins> = {}
   for (const [key, value] of Object.entries(encoded.spectra || {})) {
     spectra[key] = { mid: decodeFloats(value.mid), side: decodeFloats(value.side) }
@@ -66,7 +72,11 @@ export function decodeAnalysis(encoded: { x: string; y: string;
       columnCount: entry.columnCount, rowCount: entry.rowCount,
       display: decodeFloats(entry.display), heat: decodeFloats(entry.heat) })) }
   }
-  return { vectorscope: { x: decodeFloats(encoded.x), y: decodeFloats(encoded.y) }, spectra, oscilloscopes, spectrograms }
+  const waveforms: Record<string, WaveformFrame> = {}
+  for (const [key, value] of Object.entries(encoded.waveforms || {})) {
+    waveforms[key] = { rebuild: value.rebuild, entries: value.entries.map(entry => decodeFloats(entry.summary)) }
+  }
+  return { vectorscope: { x: decodeFloats(encoded.x), y: decodeFloats(encoded.y) }, spectra, oscilloscopes, spectrograms, waveforms }
 }
 
 class SpectrumSnapshot implements SpectrumNativeAnalyzer {
@@ -130,18 +140,30 @@ class SpectrogramSnapshot implements SpectrogramNativeAnalyzer {
   }
 }
 
+class WaveformSnapshot implements WaveformNativeAnalyzer {
+  queue: Float32Array[] = []
+  private readonly trigger = new Float32Array(1)
+  isAvailable() { return true }
+  configure(_sampleRate: number, _samplesPerColumn: number) {}
+  processMono(_samples: Float32Array) { return this.queue.shift() || new Float32Array(0) }
+  processStereo(_left: Float32Array, _right: Float32Array) { return this.queue.shift() || new Float32Array(0) }
+  reset() { this.queue = [] }
+  pending() { return this.queue.map(() => ({ left: this.trigger, right: this.trigger })) }
+}
+
 type Meter = {
   canvas: HTMLCanvasElement; type: Layer['type']; signature: string
-  painter: Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram
-  snapshot?: SpectrumSnapshot | OscilloscopeSnapshot | SpectrogramSnapshot
+  painter: Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform
+  snapshot?: SpectrumSnapshot | OscilloscopeSnapshot | SpectrogramSnapshot | WaveformSnapshot
   lastSpectrogramFrame?: SpectrogramFrame
+  lastWaveformFrame?: WaveformFrame
 }
 
 export class Composition {
   private context: CanvasRenderingContext2D
   private meters = new Map<string, Meter>()
   private analysis: AnalysisFrame = { vectorscope: { x: new Float32Array(0), y: new Float32Array(0) },
-    spectra: {}, oscilloscopes: {}, spectrograms: {} }
+    spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {} }
   private sampleRate = 48000
   private source = {
     getSampleRate: () => this.sampleRate,
@@ -204,6 +226,18 @@ export class Composition {
           colorScheme: layer.colorScheme, showGrid: layer.showGrid,
           lineColor: layer.color, backgroundColor: 'transparent' }) }
     }
+    if (layer.type === 'waveform') {
+      const snapshot = new WaveformSnapshot()
+      const source = { ...this.source,
+        getPendingWaveformSamples: () => [],
+        getPendingWaveformStereoSamples: () => [],
+        getPendingWaveformAnnotatedSamples: () => snapshot.pending() }
+      return { canvas: surface, type: layer.type, signature, snapshot,
+        painter: new Waveform(surface, { dataSource: source, nativeAnalyzer: snapshot,
+          mode: layer.mode, scrollSpeed: layer.scrollSpeed, multiband: layer.multiband,
+          lineColor: layer.color, bandColors: { low: layer.bandLowColor,
+            mid: layer.bandMidColor, high: layer.bandHighColor }, backgroundColor: 'transparent' }) }
+    }
     const snapshot = new SpectrumSnapshot()
     return { canvas: surface, type: layer.type, signature, snapshot,
       painter: new SpectrumAnalyzer(surface, { dataSource: this.source, nativeAnalyzer: snapshot,
@@ -251,6 +285,9 @@ export class Composition {
               layer.minFrequency, layer.maxFrequency, layer.minDecibels, layer.maxDecibels,
               layer.scrollSpeed, layer.contrast, layer.tiltDbPerOctave, layer.clarityMode,
               layer.colorScheme, layer.showGrid])
+          : layer.type === 'waveform'
+            ? JSON.stringify([layer.type, layer.color, layer.mode, layer.scrollSpeed, layer.multiband,
+              layer.bandLowColor, layer.bandMidColor, layer.bandHighColor])
           : JSON.stringify([layer.type, layer.color, layer.fftSize, layer.smoothing, layer.scaleType,
             layer.minFrequency, layer.maxFrequency, layer.minDecibels, layer.maxDecibels, layer.showSideLine])
       const width = Math.max(1, Math.round(layer.w * sx))
@@ -260,6 +297,10 @@ export class Composition {
         meter.painter.dispose(); this.meters.delete(layer.id); meter = undefined
       }
       if (!meter) {
+        meter = this.createMeter(layer, width, height, signature)
+        this.meters.set(layer.id, meter)
+      } else if (layer.type === 'waveform' && (meter.canvas.width !== width || meter.canvas.height !== height)) {
+        meter.painter.dispose()
         meter = this.createMeter(layer, width, height, signature)
         this.meters.set(layer.id, meter)
       } else if (meter.canvas.width !== width || meter.canvas.height !== height) {
@@ -284,8 +325,19 @@ export class Composition {
           ;(meter.snapshot as SpectrogramSnapshot).queue = [...frame.entries]
           meter.lastSpectrogramFrame = frame
         }
+      } else if (layer.type === 'waveform') {
+        const frame = analysis.waveforms[layer.id]
+        if (frame && frame !== meter.lastWaveformFrame) {
+          if (frame.rebuild && meter.lastWaveformFrame) {
+            meter.painter.dispose()
+            meter = this.createMeter(layer, width, height, signature)
+            this.meters.set(layer.id, meter)
+          }
+          ;(meter.snapshot as WaveformSnapshot).queue = [...frame.entries]
+          meter.lastWaveformFrame = frame
+        }
       }
-      ;(meter.painter as (Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram) & { renderFrame(): void }).renderFrame()
+      ;(meter.painter as (Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform) & { renderFrame(): void }).renderFrame()
       context.save()
       context.globalAlpha = layer.opacity
       context.drawImage(meter.canvas, layer.x * sx, layer.y * sy, layer.w * sx, layer.h * sy)

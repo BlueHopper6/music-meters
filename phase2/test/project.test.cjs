@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, normalizeProject } = require('../project.cjs')
+const { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, normalizeProject } = require('../project.cjs')
 
 test('default project is a valid 16:9 composition with one real meter layer', () => {
   const project = normalizeProject(defaultProject())
@@ -95,4 +95,28 @@ test('rejects invalid spectrogram DSP and history settings', () => {
   assert.throws(() => normalizeProject(invalid(layer => { layer.fftSize = 999 })), /FFT size/)
   assert.throws(() => normalizeProject(invalid(layer => { layer.scrollSpeed = 100 })), /speed/)
   assert.throws(() => normalizeProject(invalid(layer => { layer.maxFrequency = 10 })), /frequency/)
+})
+
+test('two waveform layers retain independent channel, speed, and band settings in version 1', () => {
+  const project = defaultProject()
+  const mono = { ...waveformLayer(), mode: 'mono', multiband: true }
+  const stereo = { ...waveformLayer('waveform-2', 'Stereo'), x: 20, y: 20, w: 400, h: 200,
+    scrollSpeed: 8, color: '#123456', bandHighColor: '#abcdef' }
+  project.layers.push(mono, stereo)
+  assert.deepEqual(normalizeProject(project).layers.slice(1), [mono, stereo])
+})
+
+test('rejects malformed waveform mode, speed, multiband, and color settings', () => {
+  const invalid = change => {
+    const project = defaultProject()
+    const layer = waveformLayer()
+    change(layer)
+    project.layers.push(layer)
+    return project
+  }
+  assert.throws(() => normalizeProject(invalid(layer => { layer.mode = 'mid' })), /waveform mode/)
+  assert.throws(() => normalizeProject(invalid(layer => { layer.scrollSpeed = 2.5 })), /speed/)
+  assert.throws(() => normalizeProject(invalid(layer => { layer.scrollSpeed = 9 })), /speed/)
+  assert.throws(() => normalizeProject(invalid(layer => { layer.multiband = 'yes' })), /multiband/)
+  assert.throws(() => normalizeProject(invalid(layer => { layer.bandLowColor = 'red' })), /hex color/)
 })
