@@ -84,6 +84,47 @@ function updateSelection() {
   selection.classList.toggle('locked', layer.locked)
   selection.querySelector('.selection-label')!.textContent = layer.name
 }
+function layerIconSvg(type: Project['layers'][number]['type']): SVGSVGElement {
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('viewBox', '0 0 16 16')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '1.35')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  svg.setAttribute('aria-hidden', 'true')
+  const back = document.createElementNS(ns, 'path')
+  back.setAttribute('d', 'M4.2 14.8H13.1C14 14.8 14.8 14 14.8 13.1V4.2')
+  back.setAttribute('opacity', '0.65')
+  const card = document.createElementNS(ns, 'rect')
+  card.setAttribute('x', '1.2')
+  card.setAttribute('y', '1.2')
+  card.setAttribute('width', '11')
+  card.setAttribute('height', '11')
+  card.setAttribute('rx', '1.8')
+  svg.append(back, card)
+  if (type === 'image') {
+    const sun = document.createElementNS(ns, 'circle')
+    sun.setAttribute('cx', '4.6')
+    sun.setAttribute('cy', '4.5')
+    sun.setAttribute('r', '1')
+    sun.setAttribute('fill', 'currentColor')
+    sun.setAttribute('stroke', 'none')
+    const mountain = document.createElementNS(ns, 'path')
+    mountain.setAttribute('d', 'M2 10.3L5.4 6.8L7.8 9.1L9.6 7.3L11.6 9.9')
+    svg.append(sun, mountain)
+  } else if (type === 'text') {
+    const glyph = document.createElementNS(ns, 'path')
+    glyph.setAttribute('d', 'M3.9 4H9.5M6.7 4V9.6M5.2 9.6H8.2')
+    svg.append(glyph)
+  } else {
+    const wave = document.createElementNS(ns, 'path')
+    wave.setAttribute('d', 'M3.4 5.6V7.8M5 3.9V9.5M6.7 2.8V10.6M8.4 4.3V9.1M10 5.5V7.9')
+    svg.append(wave)
+  }
+  return svg
+}
 function refreshLayers() {
   const list = $('layers')
   list.replaceChildren()
@@ -94,7 +135,7 @@ function refreshLayers() {
     button.dataset.id = layer.id
     const icon = document.createElement('span')
     icon.className = 'layer-icon'
-    icon.textContent = '◉'
+    icon.append(layerIconSvg(layer.type))
     const name = document.createElement('span')
     name.className = 'layer-name'
     name.textContent = layer.name

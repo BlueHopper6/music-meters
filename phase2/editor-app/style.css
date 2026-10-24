@@ -328,12 +328,23 @@ button.danger-button:hover:not(:disabled) {
 }
 
 .layer-item .layer-icon {
-  color: var(--text-muted);
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
 }
 
 .layer-item.selected .layer-icon {
   color: var(--accent);
+}
+
+.layer-item .layer-icon svg {
+  width: 19px;
+  height: 19px;
+  display: block;
 }
 
 .layer-item .layer-name {
