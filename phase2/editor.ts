@@ -1,6 +1,6 @@
 import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type SpectrumLayer,
-  type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer } from './composition'
-import { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, normalizeProject } from './project.cjs'
+  type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer } from './composition'
+import { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, normalizeProject } from './project.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number }
 type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null }
@@ -13,6 +13,7 @@ type Desktop = {
       spectrograms: Record<string, { rebuild: boolean; entries: Array<{
         columnCount: number; rowCount: number; display: string; heat: string }> }>;
       waveforms: Record<string, { rebuild: boolean; entries: Array<{ columns: number; summary: string }> }>;
+      vus: Record<string, { rebuild: boolean; startFrame: number; values: string }>;
       sampleRate: number; frameIndex: number; superseded?: false }
     | { superseded: true }>
   saveProject(project: Project): Promise<string | null>
@@ -32,7 +33,7 @@ const status = $<HTMLDivElement>('status')
 let project = defaultProject() as Project
 let metadata: Metadata | null = null
 const emptyAnalysis = (): AnalysisFrame => ({ vectorscope: { x: new Float32Array(0), y: new Float32Array(0) },
-  spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {} })
+  spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {}, vus: {} })
 let analysis = emptyAnalysis()
 let sampleRate = 48000
 let frameIndex = 0
@@ -124,6 +125,22 @@ function refreshInspector() {
     }
     ;($<HTMLInputElement>('waveform-multiband')).checked = waveform.multiband
     ;($<HTMLInputElement>('waveform-multiband')).disabled = waveform.locked
+  }
+  const vu = layer?.type === 'vu' ? layer : null
+  $('vu-options').hidden = !vu
+  if (vu) {
+    for (const [id, value] of [
+      ['vu-mode', vu.mode], ['vu-orientation', vu.orientation],
+      ['vu-needle-channels', vu.needleChannels], ['vu-reference', vu.referenceDb],
+      ['vu-peak-color', vu.peakColor], ['vu-left-color', vu.needleLeftColor],
+      ['vu-right-color', vu.needleRightColor], ['vu-combined-color', vu.needleCombinedColor],
+    ] as const) {
+      const input = $<HTMLInputElement | HTMLSelectElement>(id)
+      input.value = String(value)
+      input.disabled = vu.locked
+    }
+    $('vu-orientation-row').hidden = vu.mode !== 'bar'
+    $('vu-needle-channels-row').hidden = vu.mode !== 'needle'
   }
   if (spectrogram) {
     for (const [id, value] of [
@@ -335,6 +352,27 @@ $<HTMLInputElement>('waveform-multiband').addEventListener('change', event => {
   render()
 })
 for (const [id, property] of [
+  ['vu-mode', 'mode'], ['vu-orientation', 'orientation'],
+  ['vu-needle-channels', 'needleChannels'], ['vu-reference', 'referenceDb'],
+  ['vu-peak-color', 'peakColor'], ['vu-left-color', 'needleLeftColor'],
+  ['vu-right-color', 'needleRightColor'], ['vu-combined-color', 'needleCombinedColor'],
+] as const) {
+  $<HTMLInputElement | HTMLSelectElement>(id).addEventListener('change', event => {
+    const layer = selected()
+    if (!layer || layer.type !== 'vu' || layer.locked) return
+    const previous = { ...layer }
+    const value = (event.target as HTMLInputElement).value
+    ;(layer as unknown as Record<string, string | number>)[property] = property === 'referenceDb' ? Number(value) : value
+    try {
+      project = normalizeProject(project) as Project
+      render(); refreshInspector()
+    } catch (error) {
+      Object.assign(layer, previous)
+      refreshInspector(); setStatus(String(error))
+    }
+  })
+}
+for (const [id, property] of [
   ['oscilloscope-pitch-lock', 'pitchLock'],
   ['oscilloscope-underfill', 'underfillEnabled'],
   ['oscilloscope-grid', 'showGrid'],
@@ -352,7 +390,7 @@ for (const [id, property] of [['layer-visible', 'visible'], ['layer-locked', 'lo
     const layer = selected(); if (!layer) return
     layer[property] = (event.target as HTMLInputElement).checked
     repaint()
-    if (property === 'visible' && (layer.type === 'spectrogram' || layer.type === 'waveform') && layer.visible) schedulePreview()
+    if (property === 'visible' && (layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'vu') && layer.visible) schedulePreview()
   })
 }
 
@@ -390,7 +428,7 @@ selection.addEventListener('lostpointercapture', finishDrag)
 $('add-layer').addEventListener('click', () => {
   if (project.layers.length >= 32) return setStatus('The project supports at most 32 layers.')
   const type = ($<HTMLSelectElement>('add-type')).value
-  const id = nextId(type === 'spectrum' ? 'spectrum' : type === 'oscilloscope' ? 'oscilloscope' : type === 'spectrogram' ? 'spectrogram' : type === 'waveform' ? 'waveform' : 'scope')
+  const id = nextId(type === 'spectrum' ? 'spectrum' : type === 'oscilloscope' ? 'oscilloscope' : type === 'spectrogram' ? 'spectrogram' : type === 'waveform' ? 'waveform' : type === 'vu' ? 'vu' : 'scope')
   if (type === 'spectrum') {
     project.layers.push(spectrumLayer(id, `Spectrum ${project.layers.length + 1}`) as SpectrumLayer)
     if (metadata) schedulePreview()
@@ -402,6 +440,9 @@ $('add-layer').addEventListener('click', () => {
     if (metadata) schedulePreview()
   } else if (type === 'waveform') {
     project.layers.push(waveformLayer(id, `Waveform ${project.layers.length + 1}`) as WaveformLayer)
+    if (metadata) schedulePreview()
+  } else if (type === 'vu') {
+    project.layers.push(vuLayer(id, `VU meter ${project.layers.length + 1}`) as VuLayer)
     if (metadata) schedulePreview()
   } else {
     project.layers.push({ id, type: 'vectorscope', name: `Vectorscope ${project.layers.length + 1}`,
@@ -415,7 +456,7 @@ $('duplicate-layer').addEventListener('click', () => {
   const copy = { ...layer, id: nextId(), name: `${layer.name} copy`.slice(0, 80), locked: false,
     x: Math.min(layer.x + 20, 1280 - layer.w), y: Math.min(layer.y + 20, 720 - layer.h) }
   project.layers.splice(project.layers.indexOf(layer) + 1, 0, copy)
-  if ((copy.type === 'spectrum' || copy.type === 'oscilloscope' || copy.type === 'spectrogram' || copy.type === 'waveform') && metadata) schedulePreview()
+  if ((copy.type === 'spectrum' || copy.type === 'oscilloscope' || copy.type === 'spectrogram' || copy.type === 'waveform' || copy.type === 'vu') && metadata) schedulePreview()
   selectedId = copy.id; repaint()
 })
 $('delete-layer').addEventListener('click', () => {
@@ -501,6 +542,9 @@ window.desktop.onExport(event => {
   }
   if (event.event === 'waveform-progress') {
     setStatus(`Analyzing waveform ${event.configuration}/${event.configurations}: ${event.frames}/${event.total} frames.`)
+  }
+  if (event.event === 'vu-progress') {
+    setStatus(`Analyzing VU: ${event.frames}/${event.total} frames.`)
   }
   if (event.event === 'progress') {
     const value = 100 * Number(event.frames) / Number(event.totalFrames);

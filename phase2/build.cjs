@@ -22,21 +22,32 @@ function prerequisites() {
 async function build() {
   prerequisites()
   const esbuild = require(path.join(PRISM, 'node_modules', 'esbuild'))
-  const targets = new Set(['Vectorscope.ts', 'SpectrumAnalyzer.ts', 'Oscilloscope.ts', 'Spectrogram.ts', 'Waveform.ts'].map(name =>
+  const targets = new Set(['Vectorscope.ts', 'SpectrumAnalyzer.ts', 'Oscilloscope.ts', 'Spectrogram.ts', 'Waveform.ts', 'VUMeter.ts'].map(name =>
     path.join(PRISM, 'src', 'renderer', 'visualizers', name)))
   const marker = '  private drawFrame = (): void => {'
   const outdir = path.join(ROOT, 'artifacts', 'phase2')
   fs.mkdirSync(outdir, { recursive: true })
+  await esbuild.build({ entryPoints: [path.join(PRISM, 'src', 'renderer', 'visualizers', 'vuMeterBallistics.ts')],
+    outfile: path.join(outdir, 'vu-ballistics.cjs'), bundle: true,
+    platform: 'node', format: 'cjs', target: 'node20' })
   const plugin = {
     name: 'explicit-meter-frame',
     setup(bundle) {
-      bundle.onLoad({ filter: /(?:Vectorscope|SpectrumAnalyzer|Oscilloscope|Spectrogram|Waveform)\.ts$/ }, args => {
+      bundle.onLoad({ filter: /(?:Vectorscope|SpectrumAnalyzer|Oscilloscope|Spectrogram|Waveform|VUMeter)\.ts$/ }, args => {
         if (!targets.has(path.resolve(args.path))) return null
-        const source = fs.readFileSync(args.path, 'utf8')
+        let source = fs.readFileSync(args.path, 'utf8')
         if (source.split(marker).length !== 2) throw new Error('Pinned Prism frame seam changed')
-        const seam = path.basename(args.path) === 'Oscilloscope.ts'
+        const name = path.basename(args.path)
+        if (name === 'VUMeter.ts') {
+          const clock = /    const nowMs = performance\.now\(\)\r?\n    this\.processAudio\(nowMs\)/g
+          if ([...source.matchAll(clock)].length !== 1) throw new Error('Pinned Prism VU clock seam changed')
+          source = source.replace(clock, '    const nowMs = this.offlineNowMs ?? performance.now()\n    this.processAudio(nowMs)')
+        }
+        const seam = name === 'Oscilloscope.ts'
           ? '  renderFrame(): void { this.samplesReceived = Math.max(this.samplesReceived, Oscilloscope.WARMUP_SAMPLES); this.drawFrame() }'
-          : '  renderFrame(): void { this.drawFrame() }'
+          : name === 'VUMeter.ts'
+            ? '  private offlineNowMs: number | null = null\n  advanceFrame(nowMs: number): void { this.processAudio(nowMs); this.updateNeedleVisuals(nowMs) }\n  renderFrame(nowMs: number): void { this.offlineNowMs = nowMs; try { this.drawFrame() } finally { this.offlineNowMs = null } }'
+            : '  renderFrame(): void { this.drawFrame() }'
         return { contents: source.replace(marker, `${seam}\n\n${marker}`),
           loader: 'ts', resolveDir: path.dirname(args.path) }
       })
