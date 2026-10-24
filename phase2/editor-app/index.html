@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Music Visualizer Editor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="toolbar">
+    <div class="brand"><span class="brand-mark">◈</span><div><strong>Music Visualizer</strong><small>Static layout editor</small></div></div>
+    <div class="toolbar-actions">
+      <button id="import-audio">Import audio</button>
+      <button id="open-project">Open project</button>
+      <button id="save-project">Save project</button>
+      <select id="export-preset" aria-label="Export size"><option value="1080p">1080p</option><option value="720p">720p</option></select>
+      <button id="render-mp4" class="primary">Render MP4</button>
+      <button id="cancel-render" hidden>Cancel render</button>
+    </div>
+  </header>
+  <main class="workspace">
+    <aside class="sidebar layers-panel">
+      <div class="panel-heading"><div><span class="eyebrow">COMPOSITION</span><h2>Layers</h2></div><button id="add-layer" title="Add vectorscope">＋</button></div>
+      <div id="layers" class="layers-list" aria-label="Layers"></div>
+      <div class="layer-actions">
+        <button id="duplicate-layer">Duplicate</button><button id="delete-layer">Delete</button>
+        <button id="layer-up">Move up</button><button id="layer-down">Move down</button>
+      </div>
+      <p class="hint">Select a layer, then drag or resize its frame on the canvas.</p>
+    </aside>
+    <section class="center-panel">
+      <div class="canvas-heading"><div><span class="eyebrow">PREVIEW</span><h1>Composition</h1></div><span class="resolution">1280 × 720 · 16:9</span></div>
+      <div class="stage-shell"><div class="stage-wrap" id="stage-wrap">
+        <canvas id="stage" width="1280" height="720" aria-label="Composition preview"></canvas>
+        <div id="selection" class="selection" hidden><span class="selection-label"></span><span class="resize-handle" data-handle="resize" title="Resize layer"></span></div>
+        <div id="preview-busy" class="preview-busy" hidden>Analyzing audio…</div>
+      </div></div>
+      <div class="timeline">
+        <div class="timeline-top"><div><span class="eyebrow">AUDIO STILL</span><strong id="audio-name">No audio imported</strong></div><span id="audio-details">Choose a WAV, MP3, or FLAC file</span></div>
+        <div class="time-controls"><input id="time-slider" type="range" min="0" max="0" step="1" value="0" aria-label="Preview timestamp"><label>Time <input id="time-input" type="number" min="0" step="0.033333" value="0"> s</label><button id="refresh-still">Refresh still</button></div>
+        <div id="status" class="status" role="status">Ready. Import audio to see a real vectorscope still.</div>
+        <div class="progress-track"><div id="progress-bar"></div></div>
+      </div>
+    </section>
+    <aside class="sidebar properties-panel">
+      <div class="panel-heading"><div><span class="eyebrow">INSPECTOR</span><h2>Properties</h2></div></div>
+      <section class="property-group"><h3>Composition</h3>
+        <label>Title<input id="title" type="text" maxlength="200"></label>
+        <label>Background<input id="background" type="color"></label>
+      </section>
+      <section class="property-group"><h3>Selected layer</h3>
+        <label>Name<input id="layer-name" type="text" maxlength="80"></label>
+        <div class="number-grid"><label>X<input id="layer-x" type="number" min="0" max="1280"></label><label>Y<input id="layer-y" type="number" min="0" max="720"></label><label>Width<input id="layer-w" type="number" min="80" max="1280"></label><label>Height<input id="layer-h" type="number" min="80" max="720"></label></div>
+        <label>Opacity %<input id="layer-opacity" type="number" min="0" max="100" step="1"></label>
+        <label>Trace color<input id="layer-color" type="color"></label>
+        <div class="checks"><label><input id="layer-visible" type="checkbox"> Visible</label><label><input id="layer-locked" type="checkbox"> Locked</label></div>
+      </section>
+      <p class="hint">Preview is computed from the imported audio through the selected frame. Export uses this same canvas composition.</p>
+    </aside>
+  </main>
+  <script src="../../artifacts/phase2/editor.js"></script>
+</body>
+</html>

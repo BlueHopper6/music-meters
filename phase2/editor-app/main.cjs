@@ -1,0 +1,212 @@
+const { app, BrowserWindow, dialog, ipcMain } = require('electron')
+const { join, resolve, dirname, extname, relative, isAbsolute } = require('node:path')
+const { spawn } = require('node:child_process')
+const { randomUUID } = require('node:crypto')
+const fs = require('node:fs')
+const { defaultProject, normalizeProject } = require('../project.cjs')
+const { probeAudio, analyzeFrame } = require('../audio.cjs')
+
+const ROOT = resolve(__dirname, '..', '..')
+const PRISM = join(ROOT, 'upstream', 'prism')
+const native = require(join(PRISM, 'native', 'build', 'Release', 'visualizer_dsp.node')).vectorscope
+const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.flac'])
+let win
+let project = defaultProject()
+let metadata = null
+let activeAudio = ''
+let projectPath = null
+let previewGeneration = 0
+let previewQueue = Promise.resolve()
+let exportJob = null
+let closingAfterExport = false
+
+function audioInfo(input) {
+  const absolute = resolve(input)
+  if (!AUDIO_EXTENSIONS.has(extname(absolute).toLowerCase())) throw new Error('Choose a WAV, MP3, or FLAC file')
+  if (!fs.statSync(absolute).isFile()) throw new Error('Audio path is not a file')
+  return { path: absolute, metadata: probeAudio(absolute) }
+}
+
+function sendExport(value) {
+  if (win && !win.isDestroyed()) win.webContents.send('export-event', value)
+}
+
+function validateActiveProject(raw) {
+  const normalized = normalizeProject(raw)
+  if (normalized.audioPath !== activeAudio && normalized.audioPath !== project.audioPath) {
+    throw new Error('Project audio does not match the imported file')
+  }
+  return normalized
+}
+
+ipcMain.handle('initial', () => ({ project, metadata, projectPath }))
+ipcMain.handle('choose-audio', async () => {
+  let selected = process.env.PHASE2_TEST_IMPORT_PATH || ''
+  if (!selected) {
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Import audio', properties: ['openFile'],
+      filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'flac'] }],
+    })
+    if (result.canceled) return null
+    selected = result.filePaths[0]
+  }
+  const chosen = audioInfo(selected)
+  activeAudio = chosen.path
+  metadata = chosen.metadata
+  previewGeneration++
+  project.audioPath = activeAudio
+  return chosen
+})
+ipcMain.handle('preview-at', async (_event, frame) => {
+  if (!metadata || !activeAudio) throw new Error('Import audio before previewing')
+  if (!Number.isSafeInteger(frame) || frame < 0 || frame >= metadata.totalFrames) {
+    throw new Error('Preview frame is outside the song')
+  }
+  const generation = ++previewGeneration
+  const job = previewQueue.catch(() => {}).then(() =>
+    analyzeFrame(activeAudio, metadata, frame, native, () => generation === previewGeneration))
+  previewQueue = job
+  return job
+})
+ipcMain.handle('save-project', async (_event, raw) => {
+  const value = validateActiveProject(raw)
+  let target = process.env.PHASE2_TEST_PROJECT_PATH || projectPath
+  if (!target) {
+    const result = await dialog.showSaveDialog(win, {
+      title: 'Save project', defaultPath: 'visualizer-project.json',
+      filters: [{ name: 'Visualizer project', extensions: ['json'] }],
+    })
+    if (result.canceled) return null
+    target = result.filePath
+  }
+  if (extname(target).toLowerCase() !== '.json') throw new Error('Project file must end in .json')
+  const reference = activeAudio || value.audioPath
+  const document = { ...value, audioPath: undefined,
+    audioRelativePath: reference ? relative(dirname(target), reference).replaceAll('\\', '/') : '' }
+  fs.mkdirSync(dirname(target), { recursive: true })
+  fs.writeFileSync(target, JSON.stringify(document, null, 2) + '\n', { flag: 'w' })
+  project = value
+  projectPath = target
+  return target
+})
+ipcMain.handle('open-project', async () => {
+  let target = process.env.PHASE2_TEST_PROJECT_PATH || ''
+  if (!target) {
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Open project', properties: ['openFile'],
+      filters: [{ name: 'Visualizer project', extensions: ['json'] }],
+    })
+    if (result.canceled) return null
+    target = result.filePaths[0]
+  }
+  if (fs.statSync(target).size > 1024 * 1024) throw new Error('Project file is too large')
+  const stored = JSON.parse(fs.readFileSync(target, 'utf8'))
+  const ref = stored.audioRelativePath
+  if (typeof ref !== 'string' || ref.length > 4096 || isAbsolute(ref)) {
+    throw new Error('Project audio reference is invalid')
+  }
+  const candidate = ref ? resolve(dirname(target), ref) : ''
+  const value = normalizeProject({ ...stored, audioPath: candidate })
+  let nextMetadata = null
+  let nextAudio = ''
+  if (candidate && fs.existsSync(candidate)) {
+    const info = audioInfo(candidate)
+    nextMetadata = info.metadata
+    nextAudio = info.path
+  }
+  previewGeneration++
+  project = value
+  metadata = nextMetadata
+  activeAudio = nextAudio
+  projectPath = target
+  return { project, metadata, projectPath }
+})
+ipcMain.handle('render-mp4', async (_event, raw, preset) => {
+  if (exportJob) throw new Error('An export is already running')
+  if (!metadata || !activeAudio) throw new Error('Import audio before rendering')
+  if (!['720p', '1080p'].includes(preset)) throw new Error('Unsupported export preset')
+  const value = validateActiveProject(raw)
+  let output = process.env.PHASE2_TEST_OUTPUT_PATH || ''
+  if (!output) {
+    const result = await dialog.showSaveDialog(win, {
+      title: 'Render MP4', defaultPath: 'visualizer.mp4',
+      filters: [{ name: 'MP4 video', extensions: ['mp4'] }],
+    })
+    if (result.canceled) return null
+    output = result.filePath
+  }
+  output = resolve(output)
+  if (extname(output).toLowerCase() !== '.mp4') throw new Error('Output must end in .mp4')
+  if (fs.existsSync(output)) throw new Error(`Output already exists: ${output}`)
+  const controlDir = join(ROOT, 'artifacts', 'phase2', 'jobs')
+  fs.mkdirSync(controlDir, { recursive: true })
+  const cancelFile = join(controlDir, `${randomUUID()}.cancel`)
+  const child = spawn(process.execPath, [join(ROOT, 'phase2', 'export-app')], {
+    env: { ...process.env, PHASE2_JOB: JSON.stringify({ project: value, output, cancelFile, preset }) },
+    stdio: ['ignore', 'pipe', 'pipe'], shell: false, detached: true, windowsHide: true,
+  })
+  const job = { child, cancelFile, output, finished: false, errors: '' }
+  exportJob = job
+  let lineBuffer = ''
+  child.stdout.on('data', chunk => {
+    lineBuffer += chunk.toString()
+    let end
+    while ((end = lineBuffer.indexOf('\n')) >= 0) {
+      const line = lineBuffer.slice(0, end).trim()
+      lineBuffer = lineBuffer.slice(end + 1)
+      if (!line) continue
+      try {
+        const value = JSON.parse(line)
+        if (value.event === 'finished') job.finished = true
+        sendExport(value)
+      } catch { job.errors = (job.errors + line).slice(-4096) }
+    }
+  })
+  child.stderr.on('data', chunk => { job.errors = (job.errors + chunk.toString()).slice(-4096) })
+  child.once('error', error => { job.errors = error.message })
+  child.once('close', code => {
+    fs.rmSync(cancelFile, { force: true })
+    exportJob = null
+    if (!job.finished) sendExport({ event: code === 2 ? 'cancelled' : 'failed',
+      message: job.errors.trim() || `Exporter exited ${code}`, output })
+    if (closingAfterExport) app.quit()
+  })
+  return output
+})
+ipcMain.handle('cancel-render', () => {
+  if (exportJob) fs.writeFileSync(exportJob.cancelFile, 'cancel')
+})
+
+app.disableHardwareAcceleration()
+app.whenReady().then(() => {
+  if (process.env.PHASE2_TEST_INPUT) {
+    const info = audioInfo(process.env.PHASE2_TEST_INPUT)
+    activeAudio = info.path
+    metadata = info.metadata
+    project.audioPath = activeAudio
+  }
+  win = new BrowserWindow({
+    width: 1480, height: 900, minWidth: 1000, minHeight: 700,
+    show: process.env.PHASE2_HEADLESS !== '1',
+    webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true,
+      nodeIntegration: false, sandbox: true, backgroundThrottling: false },
+  })
+  return win.loadFile(join(__dirname, 'index.html')).then(async () => {
+    if (process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1') {
+      try {
+        if (process.env.PHASE2_MISSING_SMOKE === '1') await require('../test/missing-audio.cjs')(win)
+        else if (process.env.PHASE2_LONG_PREVIEW === '1') await require('../test/long-preview.cjs')(win)
+        else await require('../test/editor-smoke.cjs')(win)
+      }
+      catch (error) { console.error(error.stack || error); app.exit(1) }
+    }
+  })
+}).catch(error => { console.error(error); app.exit(1) })
+app.on('window-all-closed', () => app.quit())
+app.on('before-quit', event => {
+  if (exportJob) {
+    event.preventDefault()
+    closingAfterExport = true
+    fs.writeFileSync(exportJob.cancelFile, 'cancel')
+  }
+})
