@@ -1,6 +1,6 @@
 import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type SpectrumLayer,
-  type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer } from './composition'
-import { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, normalizeProject } from './project.cjs'
+  type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer, type LoudnessLayer } from './composition'
+import { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, normalizeProject } from './project.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number }
 type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null }
@@ -14,6 +14,7 @@ type Desktop = {
         columnCount: number; rowCount: number; display: string; heat: string }> }>;
       waveforms: Record<string, { rebuild: boolean; entries: Array<{ columns: number; summary: string }> }>;
       vus: Record<string, { rebuild: boolean; startFrame: number; values: string }>;
+      loudness: Record<string, string>;
       sampleRate: number; frameIndex: number; superseded?: false }
     | { superseded: true }>
   saveProject(project: Project): Promise<string | null>
@@ -33,7 +34,7 @@ const status = $<HTMLDivElement>('status')
 let project = defaultProject() as Project
 let metadata: Metadata | null = null
 const emptyAnalysis = (): AnalysisFrame => ({ vectorscope: { x: new Float32Array(0), y: new Float32Array(0) },
-  spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {}, vus: {} })
+  spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {}, vus: {}, loudness: {} })
 let analysis = emptyAnalysis()
 let sampleRate = 48000
 let frameIndex = 0
@@ -141,6 +142,14 @@ function refreshInspector() {
     }
     $('vu-orientation-row').hidden = vu.mode !== 'bar'
     $('vu-needle-channels-row').hidden = vu.mode !== 'needle'
+  }
+  const loudness = layer?.type === 'loudness' ? layer : null
+  $('loudness-options').hidden = !loudness
+  if (loudness) {
+    ;($<HTMLSelectElement>('loudness-readout')).value = loudness.readout
+    ;($<HTMLSelectElement>('loudness-readout')).disabled = loudness.locked
+    ;($<HTMLInputElement>('loudness-target-color')).value = loudness.targetColor
+    ;($<HTMLInputElement>('loudness-target-color')).disabled = loudness.locked
   }
   if (spectrogram) {
     for (const [id, value] of [
@@ -372,6 +381,16 @@ for (const [id, property] of [
     }
   })
 }
+for (const [id, property] of [['loudness-readout', 'readout'], ['loudness-target-color', 'targetColor']] as const) {
+  $<HTMLInputElement | HTMLSelectElement>(id).addEventListener('change', event => {
+    const layer = selected()
+    if (!layer || layer.type !== 'loudness' || layer.locked) return
+    const previous = { ...layer }
+    ;(layer as unknown as Record<string, string>)[property] = (event.target as HTMLInputElement).value
+    try { project = normalizeProject(project) as Project; render(); refreshInspector() }
+    catch (error) { Object.assign(layer, previous); refreshInspector(); setStatus(String(error)) }
+  })
+}
 for (const [id, property] of [
   ['oscilloscope-pitch-lock', 'pitchLock'],
   ['oscilloscope-underfill', 'underfillEnabled'],
@@ -390,7 +409,7 @@ for (const [id, property] of [['layer-visible', 'visible'], ['layer-locked', 'lo
     const layer = selected(); if (!layer) return
     layer[property] = (event.target as HTMLInputElement).checked
     repaint()
-    if (property === 'visible' && (layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'vu') && layer.visible) schedulePreview()
+    if (property === 'visible' && (layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'vu' || layer.type === 'loudness') && layer.visible) schedulePreview()
   })
 }
 
@@ -428,7 +447,7 @@ selection.addEventListener('lostpointercapture', finishDrag)
 $('add-layer').addEventListener('click', () => {
   if (project.layers.length >= 32) return setStatus('The project supports at most 32 layers.')
   const type = ($<HTMLSelectElement>('add-type')).value
-  const id = nextId(type === 'spectrum' ? 'spectrum' : type === 'oscilloscope' ? 'oscilloscope' : type === 'spectrogram' ? 'spectrogram' : type === 'waveform' ? 'waveform' : type === 'vu' ? 'vu' : 'scope')
+  const id = nextId(type === 'spectrum' ? 'spectrum' : type === 'oscilloscope' ? 'oscilloscope' : type === 'spectrogram' ? 'spectrogram' : type === 'waveform' ? 'waveform' : type === 'vu' ? 'vu' : type === 'loudness' ? 'loudness' : 'scope')
   if (type === 'spectrum') {
     project.layers.push(spectrumLayer(id, `Spectrum ${project.layers.length + 1}`) as SpectrumLayer)
     if (metadata) schedulePreview()
@@ -444,6 +463,9 @@ $('add-layer').addEventListener('click', () => {
   } else if (type === 'vu') {
     project.layers.push(vuLayer(id, `VU meter ${project.layers.length + 1}`) as VuLayer)
     if (metadata) schedulePreview()
+  } else if (type === 'loudness') {
+    project.layers.push(loudnessLayer(id, `Loudness ${project.layers.length + 1}`) as LoudnessLayer)
+    if (metadata) schedulePreview()
   } else {
     project.layers.push({ id, type: 'vectorscope', name: `Vectorscope ${project.layers.length + 1}`,
       x: 390, y: 170, w: 500, h: 500, visible: true, locked: false, opacity: 1, color: '#55f4e8' })
@@ -456,7 +478,7 @@ $('duplicate-layer').addEventListener('click', () => {
   const copy = { ...layer, id: nextId(), name: `${layer.name} copy`.slice(0, 80), locked: false,
     x: Math.min(layer.x + 20, 1280 - layer.w), y: Math.min(layer.y + 20, 720 - layer.h) }
   project.layers.splice(project.layers.indexOf(layer) + 1, 0, copy)
-  if ((copy.type === 'spectrum' || copy.type === 'oscilloscope' || copy.type === 'spectrogram' || copy.type === 'waveform' || copy.type === 'vu') && metadata) schedulePreview()
+  if ((copy.type === 'spectrum' || copy.type === 'oscilloscope' || copy.type === 'spectrogram' || copy.type === 'waveform' || copy.type === 'vu' || copy.type === 'loudness') && metadata) schedulePreview()
   selectedId = copy.id; repaint()
 })
 $('delete-layer').addEventListener('click', () => {
@@ -545,6 +567,9 @@ window.desktop.onExport(event => {
   }
   if (event.event === 'vu-progress') {
     setStatus(`Analyzing VU: ${event.frames}/${event.total} frames.`)
+  }
+  if (event.event === 'loudness-progress') {
+    setStatus(`Analyzing loudness: ${event.frames}/${event.total} frames.`)
   }
   if (event.event === 'progress') {
     const value = 100 * Number(event.frames) / Number(event.totalFrames);

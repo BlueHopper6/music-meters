@@ -22,7 +22,7 @@ function prerequisites() {
 async function build() {
   prerequisites()
   const esbuild = require(path.join(PRISM, 'node_modules', 'esbuild'))
-  const targets = new Set(['Vectorscope.ts', 'SpectrumAnalyzer.ts', 'Oscilloscope.ts', 'Spectrogram.ts', 'Waveform.ts', 'VUMeter.ts'].map(name =>
+  const targets = new Set(['Vectorscope.ts', 'SpectrumAnalyzer.ts', 'Oscilloscope.ts', 'Spectrogram.ts', 'Waveform.ts', 'VUMeter.ts', 'LUFSMeter.ts'].map(name =>
     path.join(PRISM, 'src', 'renderer', 'visualizers', name)))
   const marker = '  private drawFrame = (): void => {'
   const outdir = path.join(ROOT, 'artifacts', 'phase2')
@@ -33,7 +33,7 @@ async function build() {
   const plugin = {
     name: 'explicit-meter-frame',
     setup(bundle) {
-      bundle.onLoad({ filter: /(?:Vectorscope|SpectrumAnalyzer|Oscilloscope|Spectrogram|Waveform|VUMeter)\.ts$/ }, args => {
+      bundle.onLoad({ filter: /(?:Vectorscope|SpectrumAnalyzer|Oscilloscope|Spectrogram|Waveform|VUMeter|LUFSMeter)\.ts$/ }, args => {
         if (!targets.has(path.resolve(args.path))) return null
         let source = fs.readFileSync(args.path, 'utf8')
         if (source.split(marker).length !== 2) throw new Error('Pinned Prism frame seam changed')

@@ -4,8 +4,9 @@ import { Oscilloscope } from '../upstream/prism/src/renderer/visualizers/Oscillo
 import { Spectrogram } from '../upstream/prism/src/renderer/visualizers/Spectrogram'
 import { Waveform } from '../upstream/prism/src/renderer/visualizers/Waveform'
 import { VUMeter } from '../upstream/prism/src/renderer/visualizers/VUMeter'
-import type { SpectrumNativeAnalyzer, OscilloscopeNativeAnalyzer, SpectrogramNativeAnalyzer, WaveformNativeAnalyzer, VUMeterNativeAnalyzer } from '../upstream/prism/src/renderer/audio/native'
-import type { SpectrogramNativeOptions, SpectrogramNativeResult, VUMeterNativeSnapshot } from '../upstream/prism/src/renderer/audio/native/visualizer-dsp'
+import { LUFSMeter } from '../upstream/prism/src/renderer/visualizers/LUFSMeter'
+import type { SpectrumNativeAnalyzer, OscilloscopeNativeAnalyzer, SpectrogramNativeAnalyzer, WaveformNativeAnalyzer, VUMeterNativeAnalyzer, LUFSMeterNativeAnalyzer } from '../upstream/prism/src/renderer/audio/native'
+import type { SpectrogramNativeOptions, SpectrogramNativeResult, VUMeterNativeSnapshot, LUFSMeterNativeSnapshot } from '../upstream/prism/src/renderer/audio/native/visualizer-dsp'
 import { normalizeProject } from './project.cjs'
 
 type BaseLayer = {
@@ -33,7 +34,8 @@ export type WaveformLayer = BaseLayer & { type: 'waveform'; mode: 'mono' | 'ster
 export type VuLayer = BaseLayer & { type: 'vu'; mode: 'bar' | 'needle'; orientation: 'horizontal' | 'vertical'
   needleChannels: 'stereo' | 'combined'; referenceDb: number; peakColor: string
   needleLeftColor: string; needleRightColor: string; needleCombinedColor: string }
-export type Layer = VectorscopeLayer | SpectrumLayer | OscilloscopeLayer | SpectrogramLayer | WaveformLayer | VuLayer
+export type LoudnessLayer = BaseLayer & { type: 'loudness'; readout: 'momentary' | 'shortTerm' | 'integrated'; targetColor: string }
+export type Layer = VectorscopeLayer | SpectrumLayer | OscilloscopeLayer | SpectrogramLayer | WaveformLayer | VuLayer | LoudnessLayer
 export type Project = {
   version: number; width: number; height: number; fps: number; title: string
   background: string; audioPath: string; layers: Layer[]
@@ -47,7 +49,8 @@ export type WaveformFrame = { rebuild: boolean; entries: Float32Array[] }
 export type VuFrame = { rebuild: boolean; startFrame: number; values: Float32Array }
 export type AnalysisFrame = { vectorscope: Points; spectra: Record<string, SpectrumBins>;
   oscilloscopes: Record<string, OscilloscopeWave>; spectrograms: Record<string, SpectrogramFrame>;
-  waveforms: Record<string, WaveformFrame>; vus: Record<string, VuFrame> }
+  waveforms: Record<string, WaveformFrame>; vus: Record<string, VuFrame>;
+  loudness: Record<string, Float32Array> }
 
 export function decodeFloats(encoded: string): Float32Array {
   const binary = atob(encoded)
@@ -62,7 +65,8 @@ export function decodeAnalysis(encoded: { x: string; y: string;
   spectrograms?: Record<string, { rebuild: boolean; entries: Array<{
     columnCount: number; rowCount: number; display: string; heat: string }> }>;
   waveforms?: Record<string, { rebuild: boolean; entries: Array<{ columns: number; summary: string }> }>;
-  vus?: Record<string, { rebuild: boolean; startFrame: number; values: string }> }): AnalysisFrame {
+  vus?: Record<string, { rebuild: boolean; startFrame: number; values: string }>;
+  loudness?: Record<string, string> }): AnalysisFrame {
   const spectra: Record<string, SpectrumBins> = {}
   for (const [key, value] of Object.entries(encoded.spectra || {})) {
     spectra[key] = { mid: decodeFloats(value.mid), side: decodeFloats(value.side) }
@@ -86,7 +90,9 @@ export function decodeAnalysis(encoded: { x: string; y: string;
   for (const [key, value] of Object.entries(encoded.vus || {})) {
     vus[key] = { rebuild: value.rebuild, startFrame: value.startFrame, values: decodeFloats(value.values) }
   }
-  return { vectorscope: { x: decodeFloats(encoded.x), y: decodeFloats(encoded.y) }, spectra, oscilloscopes, spectrograms, waveforms, vus }
+  const loudness: Record<string, Float32Array> = {}
+  for (const [key, value] of Object.entries(encoded.loudness || {})) loudness[key] = decodeFloats(value)
+  return { vectorscope: { x: decodeFloats(encoded.x), y: decodeFloats(encoded.y) }, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness }
 }
 
 class SpectrumSnapshot implements SpectrumNativeAnalyzer {
@@ -177,10 +183,28 @@ class VuSnapshot implements VUMeterNativeAnalyzer {
   }
 }
 
+class LoudnessSnapshot implements LUFSMeterNativeAnalyzer {
+  current: LUFSMeterNativeSnapshot = { momentaryLUFS: -60, shortTermLUFS: -60,
+    integratedLUFS: -60, vuLDb: -60, vuRDb: -60, barLDb: -60, barRDb: -60,
+    truePeakLDb: -60, truePeakRDb: -60, maxTruePeakDb: -60, correlation: 0 }
+  isAvailable() { return true }
+  setSampleRate(_sampleRate: number) {}
+  pushSamples(_left: Float32Array, _right: Float32Array) {}
+  getSnapshot() { return this.current }
+  reset() {}
+  set(values: Float32Array) {
+    if (values.length !== 11) throw new Error('Invalid loudness frame data')
+    this.current = { momentaryLUFS: values[0], shortTermLUFS: values[1], integratedLUFS: values[2],
+      vuLDb: values[3], vuRDb: values[4], barLDb: values[5], barRDb: values[6],
+      truePeakLDb: values[7], truePeakRDb: values[8], maxTruePeakDb: values[9],
+      correlation: values[10] }
+  }
+}
+
 type Meter = {
   canvas: HTMLCanvasElement; type: Layer['type']; signature: string
-  painter: Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform | VUMeter
-  snapshot?: SpectrumSnapshot | OscilloscopeSnapshot | SpectrogramSnapshot | WaveformSnapshot | VuSnapshot
+  painter: Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform | VUMeter | LUFSMeter
+  snapshot?: SpectrumSnapshot | OscilloscopeSnapshot | SpectrogramSnapshot | WaveformSnapshot | VuSnapshot | LoudnessSnapshot
   lastSpectrogramFrame?: SpectrogramFrame
   lastWaveformFrame?: WaveformFrame
   lastVuFrame?: VuFrame
@@ -190,7 +214,7 @@ export class Composition {
   private context: CanvasRenderingContext2D
   private meters = new Map<string, Meter>()
   private analysis: AnalysisFrame = { vectorscope: { x: new Float32Array(0), y: new Float32Array(0) },
-    spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {}, vus: {} }
+    spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {}, vus: {}, loudness: {} }
   private sampleRate = 48000
   private source = {
     getSampleRate: () => this.sampleRate,
@@ -276,6 +300,14 @@ export class Composition {
           needleLeftColor: layer.needleLeftColor, needleRightColor: layer.needleRightColor,
           needleCombinedColor: layer.needleCombinedColor, backgroundColor: 'transparent' }) }
     }
+    if (layer.type === 'loudness') {
+      const snapshot = new LoudnessSnapshot()
+      const source = { ...this.source, getPendingLUFSMeterSamples: () => [] }
+      return { canvas: surface, type: layer.type, signature, snapshot,
+        painter: new LUFSMeter(surface, { dataSource: source, nativeAnalyzer: snapshot,
+          mode: 'bar', readout: layer.readout, lineColor: layer.color,
+          targetColor: layer.targetColor, backgroundColor: 'transparent' }) }
+    }
     const snapshot = new SpectrumSnapshot()
     return { canvas: surface, type: layer.type, signature, snapshot,
       painter: new SpectrumAnalyzer(surface, { dataSource: this.source, nativeAnalyzer: snapshot,
@@ -330,6 +362,8 @@ export class Composition {
             ? JSON.stringify([layer.type, layer.color, layer.mode, layer.orientation,
               layer.needleChannels, layer.referenceDb, layer.peakColor,
               layer.needleLeftColor, layer.needleRightColor, layer.needleCombinedColor])
+          : layer.type === 'loudness'
+            ? JSON.stringify([layer.type, layer.color, layer.readout, layer.targetColor])
           : JSON.stringify([layer.type, layer.color, layer.fftSize, layer.smoothing, layer.scaleType,
             layer.minFrequency, layer.maxFrequency, layer.minDecibels, layer.maxDecibels, layer.showSideLine])
       const width = Math.max(1, Math.round(layer.w * sx))
@@ -396,11 +430,14 @@ export class Composition {
           }
           meter.lastVuFrame = frame
         }
+      } else if (layer.type === 'loudness') {
+        const frame = analysis.loudness[layer.id]
+        if (frame) (meter.snapshot as LoudnessSnapshot).set(frame)
       }
       if (layer.type === 'vu') {
         ;(meter.painter as VUMeter & { renderFrame(nowMs: number): void }).renderFrame(frameIndex * 1000 / project.fps)
       } else {
-        ;(meter.painter as (Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform) & { renderFrame(): void }).renderFrame()
+        ;(meter.painter as (Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform | LUFSMeter) & { renderFrame(): void }).renderFrame()
       }
       context.save()
       context.globalAlpha = layer.opacity
