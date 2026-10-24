@@ -1,6 +1,29 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, normalizeProject } = require('../project.cjs')
+const { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, normalizeProject } = require('../project.cjs')
+
+test('two loudness meters retain distinct readouts and target colors in version 1', () => {
+  const project = defaultProject()
+  const momentary = { ...loudnessLayer('loudness-m', 'Momentary'), x: 30, y: 160,
+    w: 580, h: 440, readout: 'momentary' }
+  const integrated = { ...loudnessLayer('loudness-i', 'Integrated'), x: 650, y: 160,
+    w: 580, h: 440, readout: 'integrated', targetColor: '#b83268' }
+  project.layers.push(momentary, integrated)
+  const saved = normalizeProject(project)
+  assert.equal(saved.version, 1)
+  assert.deepEqual(saved.layers.slice(1), [momentary, integrated])
+})
+
+test('rejects invalid loudness readout and target color', () => {
+  const project = defaultProject()
+  const layer = loudnessLayer()
+  project.layers.push(layer)
+  layer.readout = 'hourly'
+  assert.throws(() => normalizeProject(project), /loudness readout/)
+  layer.readout = 'shortTerm'
+  layer.targetColor = 'orange'
+  assert.throws(() => normalizeProject(project), /Loudness target color/)
+})
 
 test('two VU meters retain independent display and calibration settings in version 1', () => {
   const project = defaultProject()

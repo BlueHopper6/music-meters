@@ -42,6 +42,12 @@ function vuLayer(id = 'vu-1', name = 'VU meter') {
     needleCombinedColor: '#f4f8ff' }
 }
 
+function loudnessLayer(id = 'loudness-1', name = 'Loudness and peak') {
+  return { id, type: 'loudness', name, x: 190, y: 190, w: 900, h: 420,
+    visible: true, locked: false, opacity: 1, color: '#38bdf8',
+    readout: 'shortTerm', targetColor: '#426a87' }
+}
+
 function defaultProject() {
   return {
     version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
@@ -77,7 +83,7 @@ function normalizeProject(raw) {
   if (!Array.isArray(raw.layers) || raw.layers.length > 32) throw new Error('Project supports at most 32 layers')
   const seen = new Set()
   const layers = raw.layers.map((layer, index) => {
-    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope', 'spectrogram', 'waveform', 'vu'].includes(layer.type)) {
+    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope', 'spectrogram', 'waveform', 'vu', 'loudness'].includes(layer.type)) {
       throw new Error(`Layer ${index + 1} must be a supported meter`)
     }
     if (typeof layer.id !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(layer.id) || seen.has(layer.id)) {
@@ -163,6 +169,13 @@ function normalizeProject(raw) {
         needleRightColor: color(layer.needleRightColor, 'VU right needle color'),
         needleCombinedColor: color(layer.needleCombinedColor, 'VU combined needle color') }
     }
+    if (layer.type === 'loudness') {
+      if (!['momentary', 'shortTerm', 'integrated'].includes(layer.readout)) {
+        throw new Error('Unsupported loudness readout')
+      }
+      return { ...normalized, readout: layer.readout,
+        targetColor: color(layer.targetColor, 'Loudness target color') }
+    }
     return normalized
   })
   return { version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
@@ -170,4 +183,4 @@ function normalizeProject(raw) {
     audioPath: raw.audioPath, layers }
 }
 
-module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, normalizeProject }
+module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, normalizeProject }

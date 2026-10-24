@@ -21,7 +21,7 @@
   <main class="workspace">
     <aside class="sidebar layers-panel">
       <div class="panel-heading"><div><span class="eyebrow">COMPOSITION</span><h2>Layers</h2></div><button id="add-layer" title="Add selected meter">＋</button></div>
-      <label class="add-meter-label">Add meter<select id="add-type" aria-label="Meter type"><option value="vectorscope">Vectorscope</option><option value="spectrum">Spectrum analyzer</option><option value="oscilloscope">Oscilloscope</option><option value="spectrogram">Spectrogram</option><option value="waveform">Waveform history</option><option value="vu">VU meter</option></select></label>
+      <label class="add-meter-label">Add meter<select id="add-type" aria-label="Meter type"><option value="vectorscope">Vectorscope</option><option value="spectrum">Spectrum analyzer</option><option value="oscilloscope">Oscilloscope</option><option value="spectrogram">Spectrogram</option><option value="waveform">Waveform history</option><option value="vu">VU meter</option><option value="loudness">Loudness and peak</option></select></label>
       <div id="layers" class="layers-list" aria-label="Layers"></div>
       <div class="layer-actions">
         <button id="duplicate-layer">Duplicate</button><button id="delete-layer">Delete</button>
@@ -100,6 +100,11 @@
         <label>Right needle<input id="vu-right-color" type="color"></label>
         <label>Combined needle<input id="vu-combined-color" type="color"></label>
         <p class="hint">Bar and needle share Prism's 300 ms VU integration and the selected 0 VU reference.</p>
+      </section>
+      <section class="property-group" id="loudness-options" hidden><h3>Loudness and peak</h3>
+        <label>Loudness readout<select id="loudness-readout"><option value="momentary">Momentary (400 ms)</option><option value="shortTerm">Short-term (3 s)</option><option value="integrated">Integrated (gated)</option></select></label>
+        <label>Target line color<input id="loudness-target-color" type="color"></label>
+        <p class="hint">Prism measures K-weighted loudness and oversampled true peak. The readout changes per layer; the audio analysis is shared.</p>
       </section>
       <p class="hint">Preview is computed from the imported audio through the selected frame. Export uses this same canvas composition.</p>
     </aside>

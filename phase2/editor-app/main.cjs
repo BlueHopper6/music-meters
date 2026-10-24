@@ -10,6 +10,7 @@ const { previewOscilloscopes } = require('../../phase3/oscilloscope.cjs')
 const { previewSpectrograms } = require('../../phase3/spectrogram.cjs')
 const { previewWaveforms } = require('../../phase3/waveform.cjs')
 const { previewVus } = require('../../phase3/vu.cjs')
+const { previewLoudness } = require('../../phase3/loudness.cjs')
 
 const ROOT = resolve(__dirname, '..', '..')
 const PRISM = join(ROOT, 'upstream', 'prism')
@@ -20,6 +21,7 @@ const nativeOscilloscope = nativeModule.oscilloscope
 const nativeSpectrogram = nativeModule.spectrogram
 const nativeWaveform = nativeModule.waveform
 const nativeVu = nativeModule.vumeter
+const nativeLoudness = nativeModule.lufsmeter
 const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.flac'])
 let win
 let project = defaultProject()
@@ -85,7 +87,8 @@ ipcMain.handle('preview-at', async (_event, frame, raw) => {
     const spectrograms = await previewSpectrograms(input, info, frame, value, nativeSpectrogram, current)
     const waveforms = await previewWaveforms(input, info, frame, value, nativeWaveform, current)
     const vus = await previewVus(input, info, frame, value, nativeVu, current)
-    return { ...vectorscope, spectra, oscilloscopes, spectrograms, waveforms, vus }
+    const loudness = await previewLoudness(input, info, frame, value, nativeLoudness, current)
+    return { ...vectorscope, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness }
   }).catch(error => {
     if (error.message === 'Preview superseded') return { superseded: true }
     throw error
@@ -217,9 +220,10 @@ app.whenReady().then(() => {
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   })
   return win.loadFile(join(__dirname, 'index.html')).then(async () => {
-    if (process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1') {
+    if (process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1') {
       try {
-        if (process.env.PHASE3_VU_SMOKE === '1') await require('../../phase3/test/vu-smoke.cjs')(win)
+        if (process.env.PHASE3_LOUDNESS_SMOKE === '1') await require('../../phase3/test/loudness-smoke.cjs')(win)
+        else if (process.env.PHASE3_VU_SMOKE === '1') await require('../../phase3/test/vu-smoke.cjs')(win)
         else if (process.env.PHASE3_WAVEFORM_SMOKE === '1') await require('../../phase3/test/waveform-smoke.cjs')(win)
         else if (process.env.PHASE3_SPECTROGRAM_SMOKE === '1') await require('../../phase3/test/spectrogram-smoke.cjs')(win)
         else if (process.env.PHASE3_OSCILLOSCOPE_LONG === '1') await require('../../phase3/test/oscilloscope-long-preview.cjs')(win)
