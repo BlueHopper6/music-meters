@@ -9,6 +9,7 @@ const { normalizeProject } = require('../project.cjs')
 const { probeAudio } = require('../audio.cjs')
 const { precomputeSpectra } = require('../../phase3/spectrum.cjs')
 const { precomputeOscilloscopes } = require('../../phase3/oscilloscope.cjs')
+const { precomputeSpectrograms } = require('../../phase3/spectrogram.cjs')
 
 const ROOT = resolve(__dirname, '..', '..')
 const PRISM = join(ROOT, 'upstream', 'prism')
@@ -16,6 +17,7 @@ const nativeModule = require(join(PRISM, 'native', 'build', 'Release', 'visualiz
 const native = nativeModule.vectorscope
 const nativeSpectrum = nativeModule.spectrum
 const nativeOscilloscope = nativeModule.oscilloscope
+const nativeSpectrogram = nativeModule.spectrogram
 const config = JSON.parse(process.env.PHASE2_JOB || '{}')
 const FPS = 30
 
@@ -87,8 +89,10 @@ async function exportVideo() {
   fs.mkdirSync(dirname(config.output), { recursive: true })
   const spectrumDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
   const oscilloscopeDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
+  const spectrogramDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
   let spectrumCache
   let oscilloscopeCache
+  let spectrogramCache
   let reader
   let encoder
   let win
@@ -109,6 +113,10 @@ async function exportVideo() {
     oscilloscopeCache = await precomputeOscilloscopes(project.audioPath, metadata, project, nativeOscilloscope,
       oscilloscopeDirectory, () => !fs.existsSync(config.cancelFile),
       (frames, total) => console.log(JSON.stringify({ event: 'oscilloscope-progress', frames, total })))
+    spectrogramCache = await precomputeSpectrograms(project.audioPath, metadata, project, nativeSpectrogram,
+      spectrogramDirectory, width / project.width, () => !fs.existsSync(config.cancelFile),
+      (configuration, configurations, frames, total) => console.log(JSON.stringify({
+        event: 'spectrogram-progress', configuration, configurations, frames, total })))
     reader = new PcmReader(project.audioPath, metadata.sampleRate)
     win = new BrowserWindow({ show: false, width, height,
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
@@ -140,7 +148,8 @@ async function exportVideo() {
       const renderStart = performance.now()
       const spectra = spectrumCache.frame()
       const oscilloscopes = oscilloscopeCache.frame()
-      const encoded = await win.webContents.executeJavaScript(`window.phase2Export.render(${JSON.stringify(x)},${JSON.stringify(y)},${JSON.stringify(spectra)},${JSON.stringify(oscilloscopes)},${index})`)
+      const spectrograms = spectrogramCache.frame()
+      const encoded = await win.webContents.executeJavaScript(`window.phase2Export.render(${JSON.stringify(x)},${JSON.stringify(y)},${JSON.stringify(spectra)},${JSON.stringify(oscilloscopes)},${JSON.stringify(spectrograms)},${index})`)
       renderMs += performance.now() - renderStart
       const png = Buffer.from(encoded, 'base64')
       const backpressureStart = performance.now()
@@ -172,7 +181,7 @@ async function exportVideo() {
       }
       fs.rmSync(temp, { force: true })
     }
-    try { await reader?.close() } finally { spectrumCache?.close(); oscilloscopeCache?.close(); win?.destroy() }
+    try { await reader?.close() } finally { spectrumCache?.close(); oscilloscopeCache?.close(); spectrogramCache?.close(); win?.destroy() }
   }
 }
 

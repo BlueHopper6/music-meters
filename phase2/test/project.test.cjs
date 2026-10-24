@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { defaultProject, spectrumLayer, oscilloscopeLayer, normalizeProject } = require('../project.cjs')
+const { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, normalizeProject } = require('../project.cjs')
 
 test('default project is a valid 16:9 composition with one real meter layer', () => {
   const project = normalizeProject(defaultProject())
@@ -71,4 +71,28 @@ test('rejects malformed oscilloscope settings', () => {
   oscilloscope.pitchLock = 'yes'
   project.layers.push(oscilloscope)
   assert.throws(() => normalizeProject(project), /oscilloscope pitchLock/)
+})
+
+test('two spectrograms retain independent scale, orientation, and color settings', () => {
+  const project = defaultProject()
+  const horizontal = spectrogramLayer()
+  const vertical = { ...spectrogramLayer('spectrogram-2', 'Vertical'),
+    x: 10, y: 20, w: 400, h: 350, fftSize: 4096,
+    scaleMode: 'mel', orientation: 'vertical', colorScheme: 'mono', showGrid: false }
+  project.layers.push(horizontal, vertical)
+  assert.deepEqual(normalizeProject(project).layers.slice(1), [horizontal, vertical])
+})
+
+test('rejects invalid spectrogram DSP and history settings', () => {
+  const invalid = change => {
+    const project = defaultProject()
+    const layer = spectrogramLayer()
+    change(layer)
+    project.layers.push(layer)
+    return project
+  }
+  assert.throws(() => normalizeProject(invalid(layer => { layer.orientation = 'diagonal' })), /orientation/)
+  assert.throws(() => normalizeProject(invalid(layer => { layer.fftSize = 999 })), /FFT size/)
+  assert.throws(() => normalizeProject(invalid(layer => { layer.scrollSpeed = 100 })), /speed/)
+  assert.throws(() => normalizeProject(invalid(layer => { layer.maxFrequency = 10 })), /frequency/)
 })
