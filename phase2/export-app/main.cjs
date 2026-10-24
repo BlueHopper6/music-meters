@@ -92,6 +92,7 @@ async function exportVideo() {
   const project = validate()
   const metadata = probeAudio(project.audioPath)
   const totalFrames = metadata.totalFrames
+  const vectorscopeMultiband = project.layers.some(layer => layer.type === 'vectorscope' && layer.visible && layer.multiband)
   const [width, height] = config.preset === '1080p' ? [1920, 1080] : [1280, 720]
   const temp = `${config.output}.partial-${randomUUID()}.mp4`
   fs.mkdirSync(dirname(config.output), { recursive: true })
@@ -169,12 +170,17 @@ async function exportVideo() {
       const analysisStart = performance.now()
       const pcm = await reader.readFrames(wanted)
       if (pcm.frames === 0 && index < totalFrames - 1) throw new Error(`Decoder ended early at frame ${index}`)
-      if (pcm.frames > 0) native.pushSamples(pcm.left, pcm.right)
+      if (pcm.frames > 0) {
+        native.pushSamples(pcm.left, pcm.right)
+        if (vectorscopeMultiband) native.pushMultibandSamples(pcm.left, pcm.right)
+      }
       decodedFrames += pcm.frames
       const result = native.getPoints(1024)
+      const bands = vectorscopeMultiband ? native.getMultibandPoints(1024) : null
       analyzeMs += performance.now() - analysisStart
       const x = Buffer.from(result.x.buffer, result.x.byteOffset, result.count * 4).toString('base64')
       const y = Buffer.from(result.y.buffer, result.y.byteOffset, result.count * 4).toString('base64')
+      const multiband = bands ? Buffer.from(bands.data.buffer, bands.data.byteOffset, bands.count * 6 * 4).toString('base64') : ''
       const renderStart = performance.now()
       const spectra = spectrumCache.frame()
       const oscilloscopes = oscilloscopeCache.frame()
@@ -183,7 +189,7 @@ async function exportVideo() {
       const vus = vuCache.frame()
       const loudness = loudnessCache.frame()
       const waterfalls = waterfallCache.frame()
-      const encoded = await win.webContents.executeJavaScript(`window.phase2Export.render(${JSON.stringify(x)},${JSON.stringify(y)},${JSON.stringify(spectra)},${JSON.stringify(oscilloscopes)},${JSON.stringify(spectrograms)},${JSON.stringify(waveforms)},${JSON.stringify(vus)},${JSON.stringify(loudness)},${JSON.stringify(waterfalls)},${index})`)
+      const encoded = await win.webContents.executeJavaScript(`window.phase2Export.render(${JSON.stringify(x)},${JSON.stringify(y)},${JSON.stringify(multiband)},${JSON.stringify(spectra)},${JSON.stringify(oscilloscopes)},${JSON.stringify(spectrograms)},${JSON.stringify(waveforms)},${JSON.stringify(vus)},${JSON.stringify(loudness)},${JSON.stringify(waterfalls)},${index})`)
       renderMs += performance.now() - renderStart
       const png = Buffer.from(encoded, 'base64')
       const backpressureStart = performance.now()

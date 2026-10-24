@@ -1,6 +1,6 @@
-import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type SpectrumLayer,
+import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type VectorscopeLayer, type SpectrumLayer,
   type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer, type LoudnessLayer, type WaterfallLayer } from './composition'
-import { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } from './project.cjs'
+import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } from './project.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number }
 type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null }
@@ -8,7 +8,7 @@ type Desktop = {
   initial(): Promise<Initial>
   chooseAudio(): Promise<{ path: string; metadata: Metadata } | null>
   previewAt(frame: number, project: Project): Promise<
-    { x: string; y: string; spectra: Record<string, { mid: string; side: string }>;
+    { x: string; y: string; multiband: string; spectra: Record<string, { mid: string; side: string }>;
       oscilloscopes: Record<string, { samples: string; detectedPitch: number; triggerIndex: number }>;
       spectrograms: Record<string, { rebuild: boolean; entries: Array<{
         columnCount: number; rowCount: number; display: string; heat: string }> }>;
@@ -34,7 +34,7 @@ const stageWrap = $<HTMLDivElement>('stage-wrap')
 const status = $<HTMLDivElement>('status')
 let project = defaultProject() as Project
 let metadata: Metadata | null = null
-const emptyAnalysis = (): AnalysisFrame => ({ vectorscope: { x: new Float32Array(0), y: new Float32Array(0) },
+const emptyAnalysis = (): AnalysisFrame => ({ vectorscope: { x: new Float32Array(0), y: new Float32Array(0), multiband: new Float32Array(0) },
   spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {}, vus: {}, loudness: {}, waterfalls: {} })
 let analysis = emptyAnalysis()
 let sampleRate = 48000
@@ -109,6 +109,27 @@ function refreshInspector() {
   }
   const spectrum = layer?.type === 'spectrum' ? layer : null
   $('spectrum-options').hidden = !spectrum
+  const vectorscope = layer?.type === 'vectorscope' ? layer : null
+  $('vectorscope-options').hidden = !vectorscope
+  if (vectorscope) {
+    for (const [id, value] of [
+      ['vectorscope-mode', vectorscope.mode], ['vectorscope-zoom', vectorscope.zoomDb],
+      ['vectorscope-low-color', vectorscope.bandLowColor], ['vectorscope-mid-color', vectorscope.bandMidColor],
+      ['vectorscope-high-color', vectorscope.bandHighColor],
+    ] as const) {
+      const input = $<HTMLInputElement | HTMLSelectElement>(id)
+      input.value = String(value)
+      input.disabled = vectorscope.locked
+    }
+    for (const [id, value] of [
+      ['vectorscope-multiband', vectorscope.multiband], ['vectorscope-grid', vectorscope.showGrid],
+      ['vectorscope-correlation', vectorscope.showCorrelation],
+    ] as const) {
+      const input = $<HTMLInputElement>(id)
+      input.checked = value
+      input.disabled = vectorscope.locked
+    }
+  }
   const oscilloscope = layer?.type === 'oscilloscope' ? layer : null
   $('oscilloscope-options').hidden = !oscilloscope
   const spectrogram = layer?.type === 'spectrogram' ? layer : null
@@ -287,6 +308,33 @@ $<HTMLInputElement>('layer-color').addEventListener('input', event => {
   render()
 })
 for (const [id, property] of [
+  ['vectorscope-mode', 'mode'], ['vectorscope-zoom', 'zoomDb'],
+  ['vectorscope-low-color', 'bandLowColor'], ['vectorscope-mid-color', 'bandMidColor'],
+  ['vectorscope-high-color', 'bandHighColor'],
+] as const) {
+  $<HTMLInputElement | HTMLSelectElement>(id).addEventListener('change', event => {
+    const layer = selected()
+    if (!layer || layer.type !== 'vectorscope' || layer.locked) return
+    const previous = { ...layer }
+    ;(layer as unknown as Record<string, string | number>)[property] = property === 'zoomDb'
+      ? Number((event.target as HTMLInputElement).value) : (event.target as HTMLInputElement).value
+    try { project = normalizeProject(project) as Project; render(); refreshInspector() }
+    catch (error) { Object.assign(layer, previous); refreshInspector(); setStatus(String(error)) }
+  })
+}
+for (const [id, property] of [
+  ['vectorscope-multiband', 'multiband'], ['vectorscope-grid', 'showGrid'],
+  ['vectorscope-correlation', 'showCorrelation'],
+] as const) {
+  $<HTMLInputElement>(id).addEventListener('change', event => {
+    const layer = selected()
+    if (!layer || layer.type !== 'vectorscope' || layer.locked) return
+    layer[property] = (event.target as HTMLInputElement).checked
+    render()
+    if (property === 'multiband' && layer.multiband && metadata) schedulePreview()
+  })
+}
+for (const [id, property] of [
   ['spectrum-fft', 'fftSize'], ['spectrum-scale', 'scaleType'],
   ['spectrum-smoothing', 'smoothing'], ['spectrum-min-hz', 'minFrequency'],
   ['spectrum-max-hz', 'maxFrequency'], ['spectrum-min-db', 'minDecibels'],
@@ -453,7 +501,7 @@ for (const [id, property] of [['layer-visible', 'visible'], ['layer-locked', 'lo
     const layer = selected(); if (!layer) return
     layer[property] = (event.target as HTMLInputElement).checked
     repaint()
-    if (property === 'visible' && (layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'vu' || layer.type === 'loudness' || layer.type === 'waterfall') && layer.visible) schedulePreview()
+    if (property === 'visible' && (layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'vu' || layer.type === 'loudness' || layer.type === 'waterfall' || (layer.type === 'vectorscope' && layer.multiband)) && layer.visible) schedulePreview()
   })
 }
 
@@ -514,8 +562,7 @@ $('add-layer').addEventListener('click', () => {
     project.layers.push(waterfallLayer(id, `Waterfall ${project.layers.length + 1}`) as WaterfallLayer)
     if (metadata) schedulePreview()
   } else {
-    project.layers.push({ id, type: 'vectorscope', name: `Vectorscope ${project.layers.length + 1}`,
-      x: 390, y: 170, w: 500, h: 500, visible: true, locked: false, opacity: 1, color: '#55f4e8' })
+    project.layers.push(vectorscopeLayer(id, `Vectorscope ${project.layers.length + 1}`) as VectorscopeLayer)
   }
   selectedId = id; repaint()
 })
@@ -525,7 +572,7 @@ $('duplicate-layer').addEventListener('click', () => {
   const copy = { ...layer, id: nextId(), name: `${layer.name} copy`.slice(0, 80), locked: false,
     x: Math.min(layer.x + 20, 1280 - layer.w), y: Math.min(layer.y + 20, 720 - layer.h) }
   project.layers.splice(project.layers.indexOf(layer) + 1, 0, copy)
-  if ((copy.type === 'spectrum' || copy.type === 'oscilloscope' || copy.type === 'spectrogram' || copy.type === 'waveform' || copy.type === 'vu' || copy.type === 'loudness' || copy.type === 'waterfall') && metadata) schedulePreview()
+  if ((copy.type === 'spectrum' || copy.type === 'oscilloscope' || copy.type === 'spectrogram' || copy.type === 'waveform' || copy.type === 'vu' || copy.type === 'loudness' || copy.type === 'waterfall' || (copy.type === 'vectorscope' && copy.multiband)) && metadata) schedulePreview()
   selectedId = copy.id; repaint()
 })
 $('delete-layer').addEventListener('click', () => {

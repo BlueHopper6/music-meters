@@ -1,4 +1,4 @@
-import { Vectorscope } from '../upstream/prism/src/renderer/visualizers/Vectorscope'
+import { Vectorscope, type VectorscopeMode } from '../upstream/prism/src/renderer/visualizers/Vectorscope'
 import { SpectrumAnalyzer } from '../upstream/prism/src/renderer/visualizers/SpectrumAnalyzer'
 import { Oscilloscope } from '../upstream/prism/src/renderer/visualizers/Oscilloscope'
 import { Spectrogram } from '../upstream/prism/src/renderer/visualizers/Spectrogram'
@@ -10,12 +10,15 @@ import type { WaterfallFrame, WaterfallNativeAnalyzer } from '../upstream/prism/
 import type { SpectrumNativeAnalyzer, OscilloscopeNativeAnalyzer, SpectrogramNativeAnalyzer, WaveformNativeAnalyzer, VUMeterNativeAnalyzer, LUFSMeterNativeAnalyzer } from '../upstream/prism/src/renderer/audio/native'
 import type { SpectrogramNativeOptions, SpectrogramNativeResult, VUMeterNativeSnapshot, LUFSMeterNativeSnapshot } from '../upstream/prism/src/renderer/audio/native/visualizer-dsp'
 import { normalizeProject } from './project.cjs'
+import { vectorscopeCorrelations } from '../phase3/vectorscope-correlation.cjs'
 
 type BaseLayer = {
   id: string; name: string; x: number; y: number; w: number; h: number
   visible: boolean; locked: boolean; opacity: number; color: string
 }
-export type VectorscopeLayer = BaseLayer & { type: 'vectorscope' }
+export type VectorscopeLayer = BaseLayer & { type: 'vectorscope'; mode: VectorscopeMode;
+  zoomDb: number; multiband: boolean; showGrid: boolean; showCorrelation: boolean;
+  bandLowColor: string; bandMidColor: string; bandHighColor: string }
 export type SpectrumLayer = BaseLayer & {
   type: 'spectrum'; fftSize: number; smoothing: number; scaleType: 'log' | 'mel' | 'linear'
   minFrequency: number; maxFrequency: number; minDecibels: number; maxDecibels: number
@@ -46,13 +49,14 @@ export type Project = {
   background: string; audioPath: string; layers: Layer[]
 }
 export type Points = { x: Float32Array; y: Float32Array }
+export type VectorscopeFrame = Points & { multiband: Float32Array }
 export type SpectrumBins = { mid: Float32Array; side: Float32Array }
 export type OscilloscopeWave = { samples: Float32Array; detectedPitch: number; triggerIndex: number }
 export type SpectrogramColumns = SpectrogramNativeResult
 export type SpectrogramFrame = { rebuild: boolean; entries: SpectrogramColumns[] }
 export type WaveformFrame = { rebuild: boolean; entries: Float32Array[] }
 export type VuFrame = { rebuild: boolean; startFrame: number; values: Float32Array }
-export type AnalysisFrame = { vectorscope: Points; spectra: Record<string, SpectrumBins>;
+export type AnalysisFrame = { vectorscope: VectorscopeFrame; spectra: Record<string, SpectrumBins>;
   oscilloscopes: Record<string, OscilloscopeWave>; spectrograms: Record<string, SpectrogramFrame>;
   waveforms: Record<string, WaveformFrame>; vus: Record<string, VuFrame>;
   loudness: Record<string, Float32Array>; waterfalls: Record<string, WaterfallFrame> }
@@ -64,7 +68,7 @@ export function decodeFloats(encoded: string): Float32Array {
   return new Float32Array(bytes.buffer)
 }
 
-export function decodeAnalysis(encoded: { x: string; y: string;
+export function decodeAnalysis(encoded: { x: string; y: string; multiband?: string;
   spectra?: Record<string, { mid: string; side: string }>;
   oscilloscopes?: Record<string, { samples: string; detectedPitch: number; triggerIndex: number }>;
   spectrograms?: Record<string, { rebuild: boolean; entries: Array<{
@@ -103,7 +107,51 @@ export function decodeAnalysis(encoded: { x: string; y: string;
     waterfalls[key] = { columns: value.columns, audioSeconds: value.audioSeconds,
       levels: decodeFloats(value.levels), ages: decodeFloats(value.ages), frequencies: decodeFloats(value.frequencies) }
   }
-  return { vectorscope: { x: decodeFloats(encoded.x), y: decodeFloats(encoded.y) }, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness, waterfalls }
+  return { vectorscope: { x: decodeFloats(encoded.x), y: decodeFloats(encoded.y),
+    multiband: decodeFloats(encoded.multiband || '') }, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness, waterfalls }
+}
+
+function drawCorrelationOverlay(canvas: HTMLCanvasElement, layer: VectorscopeLayer, frame: VectorscopeFrame): void {
+  const ctx = canvas.getContext('2d')!
+  const values = vectorscopeCorrelations(frame.x, frame.y, layer.multiband ? frame.multiband : null)
+  const rows: Array<{ label: string; value: number; color: string }> = [
+    { label: 'CORR', value: values.overall, color: layer.color },
+  ]
+  if (layer.multiband && values.bands) {
+    for (const [index, label, color] of [
+      [0, 'LOW', layer.bandLowColor], [1, 'MID', layer.bandMidColor],
+      [2, 'HIGH', layer.bandHighColor],
+    ] as const) rows.push({ label, value: values.bands[index], color })
+  }
+  const panelWidth = Math.min(layer.w - 8, 230)
+  const rowHeight = 17
+  const panelHeight = rows.length * rowHeight + 10
+  const left = 4, top = layer.h - panelHeight - 4
+  const barX = left + 52, barWidth = Math.max(18, panelWidth - 95)
+  ctx.save()
+  ctx.setTransform(canvas.width / layer.w, 0, 0, canvas.height / layer.h, 0, 0)
+  ctx.fillStyle = 'rgba(8, 18, 34, 0.88)'
+  ctx.fillRect(left, top, panelWidth, panelHeight)
+  ctx.font = '10px Arial'
+  ctx.textBaseline = 'middle'
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index], y = top + 13 + index * rowHeight
+    ctx.fillStyle = '#dbeafe'
+    ctx.textAlign = 'left'
+    ctx.fillText(row.label, left + 7, y)
+    ctx.fillStyle = 'rgba(205, 220, 240, 0.22)'
+    ctx.fillRect(barX, y - 3, barWidth, 6)
+    ctx.fillStyle = 'rgba(231, 241, 255, 0.7)'
+    ctx.fillRect(barX + barWidth / 2, y - 5, 1, 10)
+    ctx.fillStyle = row.value < 0 ? '#ffb45c' : row.color
+    const half = barWidth / 2
+    ctx.fillRect(barX + half + (row.value < 0 ? row.value * half : 0), y - 3,
+      Math.max(1, Math.abs(row.value) * half), 6)
+    ctx.fillStyle = '#e7f1ff'
+    ctx.textAlign = 'right'
+    ctx.fillText(`${row.value >= 0 ? '+' : ''}${row.value.toFixed(2)}`, left + panelWidth - 6, y)
+  }
+  ctx.restore()
 }
 
 class SpectrumSnapshot implements SpectrumNativeAnalyzer {
@@ -233,7 +281,7 @@ type Meter = {
 export class Composition {
   private context: CanvasRenderingContext2D
   private meters = new Map<string, Meter>()
-  private analysis: AnalysisFrame = { vectorscope: { x: new Float32Array(0), y: new Float32Array(0) },
+  private analysis: AnalysisFrame = { vectorscope: { x: new Float32Array(0), y: new Float32Array(0), multiband: new Float32Array(0) },
     spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {}, vus: {}, loudness: {}, waterfalls: {} }
   private sampleRate = 48000
   private source = {
@@ -250,6 +298,13 @@ export class Composition {
     setSampleRate: (_rate: number) => {},
     reset: () => {},
     pushSamples: (_left: Float32Array, _right: Float32Array) => {},
+    pushMultibandSamples: (_left: Float32Array, _right: Float32Array) => {},
+    isMultibandAvailable: () => true,
+    getMultibandPoints: (maxPoints: number) => {
+      const data = this.analysis.vectorscope.multiband
+      const count = Math.min(Math.floor(data.length / 6), maxPoints)
+      return { count, data: data.subarray(0, count * 6) }
+    },
     fillPoints: (x: Float32Array, y: Float32Array) => {
       const points = this.analysis.vectorscope
       const count = Math.min(points.x.length, points.y.length, x.length, y.length)
@@ -272,7 +327,10 @@ export class Composition {
     if (layer.type === 'vectorscope') {
       return { canvas: surface, type: layer.type, signature,
         painter: new Vectorscope(surface, { dataSource: this.source, nativeAnalyzer: this.vectorscopeSnapshot,
-          displayPoints: 1024, persistence: 0, lineColor: layer.color, lineWidth: 1.5 }) }
+          displayPoints: 1024, persistence: 0, lineColor: layer.color, lineWidth: 1.5,
+          mode: layer.mode, zoomDb: layer.zoomDb, multiband: layer.multiband,
+          showGrid: layer.showGrid, bandColors: { low: layer.bandLowColor,
+            mid: layer.bandMidColor, high: layer.bandHighColor } }) }
     }
     if (layer.type === 'oscilloscope') {
       const snapshot = new OscilloscopeSnapshot()
@@ -377,7 +435,9 @@ export class Composition {
     }
     for (const layer of project.layers) {
       if (!layer.visible || layer.opacity === 0) continue
-      const signature = layer.type === 'vectorscope' ? `${layer.type}:${layer.color}`
+      const signature = layer.type === 'vectorscope' ? JSON.stringify([layer.type, layer.color,
+        layer.mode, layer.zoomDb, layer.multiband, layer.showGrid, layer.showCorrelation,
+        layer.bandLowColor, layer.bandMidColor, layer.bandHighColor])
         : layer.type === 'oscilloscope'
           ? JSON.stringify([layer.type, layer.color, layer.pitchLock, layer.underfillEnabled, layer.showGrid])
           : layer.type === 'spectrogram'
@@ -474,6 +534,9 @@ export class Composition {
         ;(meter.painter as VUMeter & { renderFrame(nowMs: number): void }).renderFrame(frameIndex * 1000 / project.fps)
       } else {
         ;(meter.painter as (Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform | LUFSMeter | Waterfall) & { renderFrame(): void }).renderFrame()
+      }
+      if (layer.type === 'vectorscope' && layer.showCorrelation) {
+        drawCorrelationOverlay(meter.canvas, layer, analysis.vectorscope)
       }
       context.save()
       context.globalAlpha = layer.opacity

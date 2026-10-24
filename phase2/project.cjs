@@ -2,6 +2,15 @@ const WIDTH = 1280
 const HEIGHT = 720
 const FPS = 30
 const FFT_SIZES = [1024, 2048, 4096, 8192]
+const VECTORSCOPE_MODES = ['lissajous', 'polar-unipolar', 'polar-bipolar', 'linear-unipolar', 'linear-bipolar']
+
+function vectorscopeLayer(id = 'scope-1', name = 'Vectorscope') {
+  return { id, type: 'vectorscope', name, x: 390, y: 170, w: 500, h: 500,
+    visible: true, locked: false, opacity: 1, color: '#55f4e8',
+    mode: 'lissajous', zoomDb: 0, multiband: false, showGrid: true,
+    showCorrelation: false, bandLowColor: '#ff4444',
+    bandMidColor: '#44dd44', bandHighColor: '#4488ff' }
+}
 
 function spectrumLayer(id = 'spectrum-1', name = 'Spectrum analyzer') {
   return { id, type: 'spectrum', name, x: 190, y: 190, w: 900, h: 420,
@@ -60,9 +69,7 @@ function defaultProject() {
   return {
     version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
     title: 'Untitled track', background: '#101628', audioPath: '',
-    layers: [{ id: 'scope-1', type: 'vectorscope', name: 'Vectorscope',
-      x: 390, y: 170, w: 500, h: 500, visible: true, locked: false,
-      opacity: 1, color: '#55f4e8' }],
+    layers: [vectorscopeLayer()],
   }
 }
 
@@ -112,6 +119,23 @@ function normalizeProject(raw) {
     const normalized = { id: layer.id, type: layer.type, name: layer.name,
       x, y, w, h, visible: layer.visible, locked: layer.locked,
       opacity: number(layer.opacity, 'Opacity', 0, 1), color: color(layer.color, 'Meter color') }
+    if (layer.type === 'vectorscope') {
+      const defaults = vectorscopeLayer()
+      const setting = key => layer[key] === undefined ? defaults[key] : layer[key]
+      const mode = setting('mode')
+      if (!VECTORSCOPE_MODES.includes(mode)) throw new Error('Unsupported vectorscope mode')
+      const zoomDb = number(setting('zoomDb'), 'Vectorscope zoom dB', -12, 24)
+      if (!Number.isInteger(zoomDb)) throw new Error('Vectorscope zoom dB must be an integer')
+      const multiband = setting('multiband')
+      const showGrid = setting('showGrid')
+      const showCorrelation = setting('showCorrelation')
+      if (typeof multiband !== 'boolean' || typeof showGrid !== 'boolean'
+          || typeof showCorrelation !== 'boolean') throw new Error('Invalid vectorscope display setting')
+      return { ...normalized, mode, zoomDb, multiband, showGrid, showCorrelation,
+        bandLowColor: color(setting('bandLowColor'), 'Vectorscope low band color'),
+        bandMidColor: color(setting('bandMidColor'), 'Vectorscope mid band color'),
+        bandHighColor: color(setting('bandHighColor'), 'Vectorscope high band color') }
+    }
     if (layer.type === 'spectrum') {
       if (!FFT_SIZES.includes(layer.fftSize)) throw new Error('Unsupported spectrum FFT size')
       if (!['log', 'mel', 'linear'].includes(layer.scaleType)) throw new Error('Unsupported spectrum frequency scale')
@@ -205,4 +229,4 @@ function normalizeProject(raw) {
     audioPath: raw.audioPath, layers }
 }
 
-module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject }
+module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, VECTORSCOPE_MODES, defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject }
