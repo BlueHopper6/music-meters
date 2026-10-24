@@ -1,6 +1,15 @@
 const WIDTH = 1280
 const HEIGHT = 720
 const FPS = 30
+const FFT_SIZES = [1024, 2048, 4096, 8192]
+
+function spectrumLayer(id = 'spectrum-1', name = 'Spectrum analyzer') {
+  return { id, type: 'spectrum', name, x: 190, y: 190, w: 900, h: 420,
+    visible: true, locked: false, opacity: 1, color: '#f8bb66',
+    fftSize: 2048, smoothing: 0.9, scaleType: 'log',
+    minFrequency: 20, maxFrequency: 20000,
+    minDecibels: -90, maxDecibels: -10, showSideLine: false }
+}
 
 function defaultProject() {
   return {
@@ -37,8 +46,8 @@ function normalizeProject(raw) {
   if (!Array.isArray(raw.layers) || raw.layers.length > 32) throw new Error('Project supports at most 32 layers')
   const seen = new Set()
   const layers = raw.layers.map((layer, index) => {
-    if (!layer || typeof layer !== 'object' || layer.type !== 'vectorscope') {
-      throw new Error(`Layer ${index + 1} must be a vectorscope`)
+    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum'].includes(layer.type)) {
+      throw new Error(`Layer ${index + 1} must be a supported meter`)
     }
     if (typeof layer.id !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(layer.id) || seen.has(layer.id)) {
       throw new Error(`Layer ${index + 1} has an invalid or duplicate ID`)
@@ -55,13 +64,29 @@ function normalizeProject(raw) {
     if (typeof layer.visible !== 'boolean' || typeof layer.locked !== 'boolean') {
       throw new Error(`Layer ${index + 1} has invalid visibility or lock state`)
     }
-    return { id: layer.id, type: 'vectorscope', name: layer.name,
+    const normalized = { id: layer.id, type: layer.type, name: layer.name,
       x, y, w, h, visible: layer.visible, locked: layer.locked,
       opacity: number(layer.opacity, 'Opacity', 0, 1), color: color(layer.color, 'Meter color') }
+    if (layer.type === 'spectrum') {
+      if (!FFT_SIZES.includes(layer.fftSize)) throw new Error('Unsupported spectrum FFT size')
+      if (!['log', 'mel', 'linear'].includes(layer.scaleType)) throw new Error('Unsupported spectrum frequency scale')
+      const minFrequency = number(layer.minFrequency, 'Minimum frequency', 10, 20000)
+      const maxFrequency = number(layer.maxFrequency, 'Maximum frequency', 20, 24000)
+      if (minFrequency >= maxFrequency) throw new Error('Spectrum frequency range is invalid')
+      const minDecibels = number(layer.minDecibels, 'Minimum dB', -120, -20)
+      const maxDecibels = number(layer.maxDecibels, 'Maximum dB', -60, 12)
+      if (minDecibels >= maxDecibels) throw new Error('Spectrum dB range is invalid')
+      if (typeof layer.showSideLine !== 'boolean') throw new Error('Invalid spectrum side-line setting')
+      return { ...normalized, fftSize: layer.fftSize,
+        smoothing: number(layer.smoothing, 'Spectrum smoothing', 0, 0.99),
+        scaleType: layer.scaleType, minFrequency, maxFrequency,
+        minDecibels, maxDecibels, showSideLine: layer.showSideLine }
+    }
+    return normalized
   })
   return { version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
     title: raw.title, background: color(raw.background, 'Background'),
     audioPath: raw.audioPath, layers }
 }
 
-module.exports = { WIDTH, HEIGHT, FPS, defaultProject, normalizeProject }
+module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, defaultProject, spectrumLayer, normalizeProject }

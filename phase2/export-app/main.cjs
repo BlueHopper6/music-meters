@@ -7,10 +7,13 @@ const fs = require('node:fs')
 const { PcmReader } = require('../../phase1/pcm-reader.cjs')
 const { normalizeProject } = require('../project.cjs')
 const { probeAudio } = require('../audio.cjs')
+const { precomputeSpectra } = require('../../phase3/spectrum.cjs')
 
 const ROOT = resolve(__dirname, '..', '..')
 const PRISM = join(ROOT, 'upstream', 'prism')
-const native = require(join(PRISM, 'native', 'build', 'Release', 'visualizer_dsp.node')).vectorscope
+const nativeModule = require(join(PRISM, 'native', 'build', 'Release', 'visualizer_dsp.node'))
+const native = nativeModule.vectorscope
+const nativeSpectrum = nativeModule.spectrum
 const config = JSON.parse(process.env.PHASE2_JOB || '{}')
 const FPS = 30
 
@@ -80,7 +83,9 @@ async function exportVideo() {
   const [width, height] = config.preset === '1080p' ? [1920, 1080] : [1280, 720]
   const temp = `${config.output}.partial-${randomUUID()}.mp4`
   fs.mkdirSync(dirname(config.output), { recursive: true })
-  const reader = new PcmReader(project.audioPath, metadata.sampleRate)
+  const spectrumDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
+  let spectrumCache
+  let reader
   let encoder
   let win
   let success = false
@@ -92,6 +97,12 @@ async function exportVideo() {
   let decodedFrames = 0
   let renderedFrames = 0
   try {
+    spectrumCache = await precomputeSpectra(project.audioPath, metadata, project, nativeSpectrum,
+      spectrumDirectory, () => !fs.existsSync(config.cancelFile),
+      (configuration, configurations, frames, total) => console.log(JSON.stringify({
+        event: 'analysis-progress', configuration, configurations, frames, total,
+      })))
+    reader = new PcmReader(project.audioPath, metadata.sampleRate)
     win = new BrowserWindow({ show: false, width, height,
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
         backgroundThrottling: false } })
@@ -120,7 +131,8 @@ async function exportVideo() {
       const x = Buffer.from(result.x.buffer, result.x.byteOffset, result.count * 4).toString('base64')
       const y = Buffer.from(result.y.buffer, result.y.byteOffset, result.count * 4).toString('base64')
       const renderStart = performance.now()
-      const encoded = await win.webContents.executeJavaScript(`window.phase2Export.render(${JSON.stringify(x)},${JSON.stringify(y)},${index})`)
+      const spectra = spectrumCache.frame()
+      const encoded = await win.webContents.executeJavaScript(`window.phase2Export.render(${JSON.stringify(x)},${JSON.stringify(y)},${JSON.stringify(spectra)},${index})`)
       renderMs += performance.now() - renderStart
       const png = Buffer.from(encoded, 'base64')
       const backpressureStart = performance.now()
@@ -152,7 +164,7 @@ async function exportVideo() {
       }
       fs.rmSync(temp, { force: true })
     }
-    try { await reader.close() } finally { win?.destroy() }
+    try { await reader?.close() } finally { spectrumCache?.close(); win?.destroy() }
   }
 }
 

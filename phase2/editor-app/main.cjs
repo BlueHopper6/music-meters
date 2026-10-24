@@ -5,10 +5,13 @@ const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
 const { defaultProject, normalizeProject } = require('../project.cjs')
 const { probeAudio, analyzeFrame } = require('../audio.cjs')
+const { previewSpectra } = require('../../phase3/spectrum.cjs')
 
 const ROOT = resolve(__dirname, '..', '..')
 const PRISM = join(ROOT, 'upstream', 'prism')
-const native = require(join(PRISM, 'native', 'build', 'Release', 'visualizer_dsp.node')).vectorscope
+const nativeModule = require(join(PRISM, 'native', 'build', 'Release', 'visualizer_dsp.node'))
+const native = nativeModule.vectorscope
+const nativeSpectrum = nativeModule.spectrum
 const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.flac'])
 let win
 let project = defaultProject()
@@ -57,14 +60,24 @@ ipcMain.handle('choose-audio', async () => {
   project.audioPath = activeAudio
   return chosen
 })
-ipcMain.handle('preview-at', async (_event, frame) => {
+ipcMain.handle('preview-at', async (_event, frame, raw) => {
   if (!metadata || !activeAudio) throw new Error('Import audio before previewing')
   if (!Number.isSafeInteger(frame) || frame < 0 || frame >= metadata.totalFrames) {
     throw new Error('Preview frame is outside the song')
   }
+  const value = validateActiveProject(raw)
   const generation = ++previewGeneration
-  const job = previewQueue.catch(() => {}).then(() =>
-    analyzeFrame(activeAudio, metadata, frame, native, () => generation === previewGeneration))
+  const input = activeAudio
+  const info = metadata
+  const current = () => generation === previewGeneration
+  const job = previewQueue.catch(() => {}).then(async () => {
+    const vectorscope = await analyzeFrame(input, info, frame, native, current)
+    const spectra = await previewSpectra(input, info, frame, value, nativeSpectrum, current)
+    return { ...vectorscope, spectra }
+  }).catch(error => {
+    if (error.message === 'Preview superseded') return { superseded: true }
+    throw error
+  })
   previewQueue = job
   return job
 })
@@ -192,9 +205,10 @@ app.whenReady().then(() => {
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   })
   return win.loadFile(join(__dirname, 'index.html')).then(async () => {
-    if (process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1') {
+    if (process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1') {
       try {
-        if (process.env.PHASE2_MISSING_SMOKE === '1') await require('../test/missing-audio.cjs')(win)
+        if (process.env.PHASE3_SPECTRUM_SMOKE === '1') await require('../../phase3/test/editor-smoke.cjs')(win)
+        else if (process.env.PHASE2_MISSING_SMOKE === '1') await require('../test/missing-audio.cjs')(win)
         else if (process.env.PHASE2_LONG_PREVIEW === '1') await require('../test/long-preview.cjs')(win)
         else await require('../test/editor-smoke.cjs')(win)
       }

@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { defaultProject, normalizeProject } = require('../project.cjs')
+const { defaultProject, spectrumLayer, normalizeProject } = require('../project.cjs')
 
 test('default project is a valid 16:9 composition with one real meter layer', () => {
   const project = normalizeProject(defaultProject())
@@ -26,4 +26,31 @@ test('rejects unsupported project versions and unsafe color values', () => {
   const badColor = defaultProject()
   badColor.layers[0].color = 'url(file:///secret)'
   assert.throws(() => normalizeProject(badColor), /hex color/)
+})
+
+test('spectrum settings survive project normalization alongside vectorscope layers', () => {
+  const project = defaultProject()
+  const spectrum = spectrumLayer()
+  spectrum.fftSize = 4096
+  spectrum.smoothing = 0.75
+  spectrum.scaleType = 'mel'
+  spectrum.showSideLine = true
+  project.layers.push(spectrum)
+  const value = normalizeProject(project)
+  assert.equal(value.layers[0].type, 'vectorscope')
+  assert.deepEqual(value.layers[1], spectrum)
+})
+
+test('rejects invalid FFT, smoothing, frequency, and dB settings', () => {
+  const invalid = change => {
+    const project = defaultProject()
+    const spectrum = spectrumLayer()
+    change(spectrum)
+    project.layers.push(spectrum)
+    return project
+  }
+  assert.throws(() => normalizeProject(invalid(layer => { layer.fftSize = 1234 })), /FFT size/)
+  assert.throws(() => normalizeProject(invalid(layer => { layer.smoothing = 1 })), /smoothing/)
+  assert.throws(() => normalizeProject(invalid(layer => { layer.minFrequency = 20000 })), /frequency range/)
+  assert.throws(() => normalizeProject(invalid(layer => { layer.minDecibels = -5 })), /Minimum dB/)
 })

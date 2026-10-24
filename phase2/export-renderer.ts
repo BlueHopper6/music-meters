@@ -1,10 +1,10 @@
-import { Composition, decodePoints, type Project } from './composition'
+import { Composition, decodeAnalysis, type Project } from './composition'
 
 declare global {
   interface Window {
     phase2Export: {
       initialize: (project: Project, width: number, height: number, sampleRate: number) => void
-      render: (x: string, y: string, frameIndex: number) => string
+      render: (x: string, y: string, spectra: Record<string, { mid: string; side: string }>, frameIndex: number) => string
     }
   }
 }
@@ -23,9 +23,9 @@ window.phase2Export = {
     project = nextProject
     sampleRate = nextSampleRate
   },
-  render(x, y, frameIndex) {
+  render(x, y, spectra, frameIndex) {
     if (!composition) throw new Error('Export composition was not initialized')
-    composition.render(project, decodePoints({ x, y }), frameIndex, sampleRate)
+    composition.render(project, decodeAnalysis({ x, y, spectra }), frameIndex, sampleRate)
     return canvas.toDataURL('image/png').split(',')[1]
   },
 }
