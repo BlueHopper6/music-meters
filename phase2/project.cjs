@@ -48,6 +48,14 @@ function loudnessLayer(id = 'loudness-1', name = 'Loudness and peak') {
     readout: 'shortTerm', targetColor: '#426a87' }
 }
 
+function waterfallLayer(id = 'waterfall-1', name = 'Waterfall spectrum') {
+  return { id, type: 'waterfall', name, x: 190, y: 190, w: 900, h: 420,
+    visible: true, locked: false, opacity: 1, color: '#38e5ef',
+    fftSize: 2048, scaleMode: 'log', frequencyRangeMode: 'extended',
+    historySeconds: 5, density: 'balanced', colorMode: 'theme',
+    smoothing: 0.9, tiltDbPerOctave: 2, showGrid: true }
+}
+
 function defaultProject() {
   return {
     version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
@@ -83,7 +91,7 @@ function normalizeProject(raw) {
   if (!Array.isArray(raw.layers) || raw.layers.length > 32) throw new Error('Project supports at most 32 layers')
   const seen = new Set()
   const layers = raw.layers.map((layer, index) => {
-    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope', 'spectrogram', 'waveform', 'vu', 'loudness'].includes(layer.type)) {
+    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope', 'spectrogram', 'waveform', 'vu', 'loudness', 'waterfall'].includes(layer.type)) {
       throw new Error(`Layer ${index + 1} must be a supported meter`)
     }
     if (typeof layer.id !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(layer.id) || seen.has(layer.id)) {
@@ -176,6 +184,20 @@ function normalizeProject(raw) {
       return { ...normalized, readout: layer.readout,
         targetColor: color(layer.targetColor, 'Loudness target color') }
     }
+    if (layer.type === 'waterfall') {
+      if (![...FFT_SIZES, 16384].includes(layer.fftSize)) throw new Error('Unsupported waterfall FFT size')
+      if (!['log', 'mel', 'linear'].includes(layer.scaleMode)) throw new Error('Unsupported waterfall frequency scale')
+      if (!['extended', 'audible'].includes(layer.frequencyRangeMode)) throw new Error('Unsupported waterfall frequency range')
+      if (!['sparse', 'balanced', 'dense'].includes(layer.density)) throw new Error('Unsupported waterfall density')
+      if (!['theme', 'heat'].includes(layer.colorMode)) throw new Error('Unsupported waterfall color mode')
+      if (typeof layer.showGrid !== 'boolean') throw new Error('Invalid waterfall grid setting')
+      const historySeconds = number(layer.historySeconds, 'Waterfall history seconds', 1, 30)
+      if (!Number.isInteger(historySeconds)) throw new Error('Waterfall history seconds must be an integer')
+      return { ...normalized, fftSize: layer.fftSize, scaleMode: layer.scaleMode,
+        frequencyRangeMode: layer.frequencyRangeMode, historySeconds, density: layer.density,
+        colorMode: layer.colorMode, smoothing: number(layer.smoothing, 'Waterfall smoothing', 0, 0.99),
+        tiltDbPerOctave: number(layer.tiltDbPerOctave, 'Waterfall tilt', -2, 8), showGrid: layer.showGrid }
+    }
     return normalized
   })
   return { version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
@@ -183,4 +205,4 @@ function normalizeProject(raw) {
     audioPath: raw.audioPath, layers }
 }
 
-module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, normalizeProject }
+module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject }

@@ -1,6 +1,25 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, normalizeProject } = require('../project.cjs')
+const { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } = require('../project.cjs')
+
+test('two waterfall layers retain independent native history and appearance settings', () => {
+  const first = { ...waterfallLayer('waterfall-a'), x: 30, y: 160, w: 580, h: 440 }
+  const second = { ...waterfallLayer('waterfall-b'), x: 650, y: 160, w: 580, h: 440,
+    fftSize: 4096, scaleMode: 'mel', frequencyRangeMode: 'audible',
+    historySeconds: 8, density: 'dense', colorMode: 'heat', smoothing: 0.4, showGrid: false }
+  const saved = normalizeProject({ ...defaultProject(), layers: [first, second] })
+  assert.deepEqual(saved.layers, [first, second])
+})
+
+test('rejects malformed waterfall DSP, history, and display settings', () => {
+  const project = { ...defaultProject(), layers: [waterfallLayer()] }
+  for (const [key, value] of [['fftSize', 999], ['scaleMode', 'other'], ['frequencyRangeMode', 'other'],
+    ['historySeconds', 2.5], ['density', 'other'], ['colorMode', 'other'],
+    ['smoothing', 1], ['tiltDbPerOctave', 9], ['showGrid', 'yes']]) {
+    project.layers[0] = { ...waterfallLayer(), [key]: value }
+    assert.throws(() => normalizeProject(project), /waterfall|Waterfall/i, key)
+  }
+})
 
 test('two loudness meters retain distinct readouts and target colors in version 1', () => {
   const project = defaultProject()

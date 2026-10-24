@@ -5,6 +5,8 @@ import { Spectrogram } from '../upstream/prism/src/renderer/visualizers/Spectrog
 import { Waveform } from '../upstream/prism/src/renderer/visualizers/Waveform'
 import { VUMeter } from '../upstream/prism/src/renderer/visualizers/VUMeter'
 import { LUFSMeter } from '../upstream/prism/src/renderer/visualizers/LUFSMeter'
+import { Waterfall } from '../upstream/prism/src/renderer/visualizers/Waterfall'
+import type { WaterfallFrame, WaterfallNativeAnalyzer } from '../upstream/prism/src/types/waterfall'
 import type { SpectrumNativeAnalyzer, OscilloscopeNativeAnalyzer, SpectrogramNativeAnalyzer, WaveformNativeAnalyzer, VUMeterNativeAnalyzer, LUFSMeterNativeAnalyzer } from '../upstream/prism/src/renderer/audio/native'
 import type { SpectrogramNativeOptions, SpectrogramNativeResult, VUMeterNativeSnapshot, LUFSMeterNativeSnapshot } from '../upstream/prism/src/renderer/audio/native/visualizer-dsp'
 import { normalizeProject } from './project.cjs'
@@ -35,7 +37,10 @@ export type VuLayer = BaseLayer & { type: 'vu'; mode: 'bar' | 'needle'; orientat
   needleChannels: 'stereo' | 'combined'; referenceDb: number; peakColor: string
   needleLeftColor: string; needleRightColor: string; needleCombinedColor: string }
 export type LoudnessLayer = BaseLayer & { type: 'loudness'; readout: 'momentary' | 'shortTerm' | 'integrated'; targetColor: string }
-export type Layer = VectorscopeLayer | SpectrumLayer | OscilloscopeLayer | SpectrogramLayer | WaveformLayer | VuLayer | LoudnessLayer
+export type WaterfallLayer = BaseLayer & { type: 'waterfall'; fftSize: number; scaleMode: 'log' | 'mel' | 'linear'
+  frequencyRangeMode: 'extended' | 'audible'; historySeconds: number; density: 'sparse' | 'balanced' | 'dense'
+  colorMode: 'theme' | 'heat'; smoothing: number; tiltDbPerOctave: number; showGrid: boolean }
+export type Layer = VectorscopeLayer | SpectrumLayer | OscilloscopeLayer | SpectrogramLayer | WaveformLayer | VuLayer | LoudnessLayer | WaterfallLayer
 export type Project = {
   version: number; width: number; height: number; fps: number; title: string
   background: string; audioPath: string; layers: Layer[]
@@ -50,7 +55,7 @@ export type VuFrame = { rebuild: boolean; startFrame: number; values: Float32Arr
 export type AnalysisFrame = { vectorscope: Points; spectra: Record<string, SpectrumBins>;
   oscilloscopes: Record<string, OscilloscopeWave>; spectrograms: Record<string, SpectrogramFrame>;
   waveforms: Record<string, WaveformFrame>; vus: Record<string, VuFrame>;
-  loudness: Record<string, Float32Array> }
+  loudness: Record<string, Float32Array>; waterfalls: Record<string, WaterfallFrame> }
 
 export function decodeFloats(encoded: string): Float32Array {
   const binary = atob(encoded)
@@ -66,7 +71,8 @@ export function decodeAnalysis(encoded: { x: string; y: string;
     columnCount: number; rowCount: number; display: string; heat: string }> }>;
   waveforms?: Record<string, { rebuild: boolean; entries: Array<{ columns: number; summary: string }> }>;
   vus?: Record<string, { rebuild: boolean; startFrame: number; values: string }>;
-  loudness?: Record<string, string> }): AnalysisFrame {
+  loudness?: Record<string, string>;
+  waterfalls?: Record<string, { columns: number; audioSeconds: number; levels: string; ages: string; frequencies: string }> }): AnalysisFrame {
   const spectra: Record<string, SpectrumBins> = {}
   for (const [key, value] of Object.entries(encoded.spectra || {})) {
     spectra[key] = { mid: decodeFloats(value.mid), side: decodeFloats(value.side) }
@@ -92,7 +98,12 @@ export function decodeAnalysis(encoded: { x: string; y: string;
   }
   const loudness: Record<string, Float32Array> = {}
   for (const [key, value] of Object.entries(encoded.loudness || {})) loudness[key] = decodeFloats(value)
-  return { vectorscope: { x: decodeFloats(encoded.x), y: decodeFloats(encoded.y) }, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness }
+  const waterfalls: Record<string, WaterfallFrame> = {}
+  for (const [key, value] of Object.entries(encoded.waterfalls || {})) {
+    waterfalls[key] = { columns: value.columns, audioSeconds: value.audioSeconds,
+      levels: decodeFloats(value.levels), ages: decodeFloats(value.ages), frequencies: decodeFloats(value.frequencies) }
+  }
+  return { vectorscope: { x: decodeFloats(encoded.x), y: decodeFloats(encoded.y) }, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness, waterfalls }
 }
 
 class SpectrumSnapshot implements SpectrumNativeAnalyzer {
@@ -201,10 +212,19 @@ class LoudnessSnapshot implements LUFSMeterNativeAnalyzer {
   }
 }
 
+class WaterfallSnapshot implements WaterfallNativeAnalyzer {
+  current: WaterfallFrame | null = null
+  configure(_options: Parameters<WaterfallNativeAnalyzer['configure']>[0]) {}
+  processStereo(_left: Float32Array, _right: Float32Array) {}
+  getFrame(_ridges: number, _columns: number) { return this.current }
+  reset() { this.current = null }
+  isAvailable() { return true }
+}
+
 type Meter = {
   canvas: HTMLCanvasElement; type: Layer['type']; signature: string
-  painter: Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform | VUMeter | LUFSMeter
-  snapshot?: SpectrumSnapshot | OscilloscopeSnapshot | SpectrogramSnapshot | WaveformSnapshot | VuSnapshot | LoudnessSnapshot
+  painter: Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform | VUMeter | LUFSMeter | Waterfall
+  snapshot?: SpectrumSnapshot | OscilloscopeSnapshot | SpectrogramSnapshot | WaveformSnapshot | VuSnapshot | LoudnessSnapshot | WaterfallSnapshot
   lastSpectrogramFrame?: SpectrogramFrame
   lastWaveformFrame?: WaveformFrame
   lastVuFrame?: VuFrame
@@ -214,7 +234,7 @@ export class Composition {
   private context: CanvasRenderingContext2D
   private meters = new Map<string, Meter>()
   private analysis: AnalysisFrame = { vectorscope: { x: new Float32Array(0), y: new Float32Array(0) },
-    spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {}, vus: {}, loudness: {} }
+    spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {}, vus: {}, loudness: {}, waterfalls: {} }
   private sampleRate = 48000
   private source = {
     getSampleRate: () => this.sampleRate,
@@ -308,6 +328,16 @@ export class Composition {
           mode: 'bar', readout: layer.readout, lineColor: layer.color,
           targetColor: layer.targetColor, backgroundColor: 'transparent' }) }
     }
+    if (layer.type === 'waterfall') {
+      const snapshot = new WaterfallSnapshot()
+      const source = { ...this.source, getPendingWaterfallSamples: () => [] }
+      return { canvas: surface, type: layer.type, signature, snapshot,
+        painter: new Waterfall(surface, { dataSource: source, nativeAnalyzer: snapshot,
+          fftSize: layer.fftSize, scaleMode: layer.scaleMode, frequencyRangeMode: layer.frequencyRangeMode,
+          historySeconds: layer.historySeconds, density: layer.density, colorMode: layer.colorMode,
+          smoothing: layer.smoothing, tiltDbPerOctave: layer.tiltDbPerOctave, showGrid: layer.showGrid,
+          lineColor: layer.color, backgroundColor: 'transparent' }) }
+    }
     const snapshot = new SpectrumSnapshot()
     return { canvas: surface, type: layer.type, signature, snapshot,
       painter: new SpectrumAnalyzer(surface, { dataSource: this.source, nativeAnalyzer: snapshot,
@@ -364,6 +394,10 @@ export class Composition {
               layer.needleLeftColor, layer.needleRightColor, layer.needleCombinedColor])
           : layer.type === 'loudness'
             ? JSON.stringify([layer.type, layer.color, layer.readout, layer.targetColor])
+          : layer.type === 'waterfall'
+            ? JSON.stringify([layer.type, layer.color, layer.fftSize, layer.scaleMode,
+              layer.frequencyRangeMode, layer.historySeconds, layer.density, layer.colorMode,
+              layer.smoothing, layer.tiltDbPerOctave, layer.showGrid])
           : JSON.stringify([layer.type, layer.color, layer.fftSize, layer.smoothing, layer.scaleType,
             layer.minFrequency, layer.maxFrequency, layer.minDecibels, layer.maxDecibels, layer.showSideLine])
       const width = Math.max(1, Math.round(layer.w * sx))
@@ -433,11 +467,13 @@ export class Composition {
       } else if (layer.type === 'loudness') {
         const frame = analysis.loudness[layer.id]
         if (frame) (meter.snapshot as LoudnessSnapshot).set(frame)
+      } else if (layer.type === 'waterfall') {
+        ;(meter.snapshot as WaterfallSnapshot).current = analysis.waterfalls[layer.id] || null
       }
       if (layer.type === 'vu') {
         ;(meter.painter as VUMeter & { renderFrame(nowMs: number): void }).renderFrame(frameIndex * 1000 / project.fps)
       } else {
-        ;(meter.painter as (Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform | LUFSMeter) & { renderFrame(): void }).renderFrame()
+        ;(meter.painter as (Vectorscope | SpectrumAnalyzer | Oscilloscope | Spectrogram | Waveform | LUFSMeter | Waterfall) & { renderFrame(): void }).renderFrame()
       }
       context.save()
       context.globalAlpha = layer.opacity

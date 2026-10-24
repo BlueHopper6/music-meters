@@ -1,6 +1,6 @@
 import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type SpectrumLayer,
-  type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer, type LoudnessLayer } from './composition'
-import { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, normalizeProject } from './project.cjs'
+  type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer, type LoudnessLayer, type WaterfallLayer } from './composition'
+import { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } from './project.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number }
 type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null }
@@ -15,6 +15,7 @@ type Desktop = {
       waveforms: Record<string, { rebuild: boolean; entries: Array<{ columns: number; summary: string }> }>;
       vus: Record<string, { rebuild: boolean; startFrame: number; values: string }>;
       loudness: Record<string, string>;
+      waterfalls: Record<string, { columns: number; audioSeconds: number; levels: string; ages: string; frequencies: string }>;
       sampleRate: number; frameIndex: number; superseded?: false }
     | { superseded: true }>
   saveProject(project: Project): Promise<string | null>
@@ -34,7 +35,7 @@ const status = $<HTMLDivElement>('status')
 let project = defaultProject() as Project
 let metadata: Metadata | null = null
 const emptyAnalysis = (): AnalysisFrame => ({ vectorscope: { x: new Float32Array(0), y: new Float32Array(0) },
-  spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {}, vus: {}, loudness: {} })
+  spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {}, vus: {}, loudness: {}, waterfalls: {} })
 let analysis = emptyAnalysis()
 let sampleRate = 48000
 let frameIndex = 0
@@ -151,6 +152,22 @@ function refreshInspector() {
     ;($<HTMLInputElement>('loudness-target-color')).value = loudness.targetColor
     ;($<HTMLInputElement>('loudness-target-color')).disabled = loudness.locked
   }
+  const waterfall = layer?.type === 'waterfall' ? layer : null
+  $('waterfall-options').hidden = !waterfall
+  if (waterfall) {
+    for (const [id, value] of [
+      ['waterfall-fft', waterfall.fftSize], ['waterfall-scale', waterfall.scaleMode],
+      ['waterfall-range', waterfall.frequencyRangeMode], ['waterfall-history', waterfall.historySeconds],
+      ['waterfall-smoothing', waterfall.smoothing], ['waterfall-density', waterfall.density],
+      ['waterfall-color-mode', waterfall.colorMode], ['waterfall-tilt', waterfall.tiltDbPerOctave],
+    ] as const) {
+      const input = $<HTMLInputElement | HTMLSelectElement>(id)
+      input.value = String(value)
+      input.disabled = waterfall.locked
+    }
+    ;($<HTMLInputElement>('waterfall-grid')).checked = waterfall.showGrid
+    ;($<HTMLInputElement>('waterfall-grid')).disabled = waterfall.locked
+  }
   if (spectrogram) {
     for (const [id, value] of [
       ['spectrogram-fft', spectrogram.fftSize], ['spectrogram-scale', spectrogram.scaleMode],
@@ -249,7 +266,7 @@ for (const [id, property] of [['layer-x', 'x'], ['layer-y', 'y'], ['layer-w', 'w
     if (property === 'w') layer.w = Math.max(80, Math.min(1280 - layer.x, value))
     if (property === 'h') layer.h = Math.max(80, Math.min(720 - layer.y, value))
     repaint()
-    if ((layer.type === 'spectrogram' || layer.type === 'waveform') && (property === 'w' || property === 'h')) schedulePreview()
+    if ((layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'waterfall') && (property === 'w' || property === 'h')) schedulePreview()
   })
 }
 $<HTMLInputElement>('title').addEventListener('input', event => { project.title = (event.target as HTMLInputElement).value; render() })
@@ -392,6 +409,33 @@ for (const [id, property] of [['loudness-readout', 'readout'], ['loudness-target
   })
 }
 for (const [id, property] of [
+  ['waterfall-fft', 'fftSize'], ['waterfall-scale', 'scaleMode'],
+  ['waterfall-range', 'frequencyRangeMode'], ['waterfall-history', 'historySeconds'],
+  ['waterfall-smoothing', 'smoothing'], ['waterfall-density', 'density'],
+  ['waterfall-color-mode', 'colorMode'], ['waterfall-tilt', 'tiltDbPerOctave'],
+] as const) {
+  $<HTMLInputElement | HTMLSelectElement>(id).addEventListener('change', event => {
+    const layer = selected()
+    if (!layer || layer.type !== 'waterfall' || layer.locked) return
+    const previous = { ...layer }
+    const value = (event.target as HTMLInputElement).value
+    ;(layer as unknown as Record<string, string | number>)[property] =
+      ['scaleMode', 'frequencyRangeMode', 'density', 'colorMode'].includes(property) ? value : Number(value)
+    try {
+      project = normalizeProject(project) as Project
+      analysis.waterfalls = {}
+      render(); refreshInspector(); schedulePreview()
+    } catch (error) { Object.assign(layer, previous); refreshInspector(); setStatus(String(error)) }
+  })
+}
+$<HTMLInputElement>('waterfall-grid').addEventListener('change', event => {
+  const layer = selected()
+  if (!layer || layer.type !== 'waterfall' || layer.locked) return
+  layer.showGrid = (event.target as HTMLInputElement).checked
+  analysis.waterfalls = {}
+  render(); schedulePreview()
+})
+for (const [id, property] of [
   ['oscilloscope-pitch-lock', 'pitchLock'],
   ['oscilloscope-underfill', 'underfillEnabled'],
   ['oscilloscope-grid', 'showGrid'],
@@ -409,7 +453,7 @@ for (const [id, property] of [['layer-visible', 'visible'], ['layer-locked', 'lo
     const layer = selected(); if (!layer) return
     layer[property] = (event.target as HTMLInputElement).checked
     repaint()
-    if (property === 'visible' && (layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'vu' || layer.type === 'loudness') && layer.visible) schedulePreview()
+    if (property === 'visible' && (layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'vu' || layer.type === 'loudness' || layer.type === 'waterfall') && layer.visible) schedulePreview()
   })
 }
 
@@ -438,7 +482,7 @@ selection.addEventListener('pointermove', event => {
   render(); refreshInspector()
 })
 function finishDrag() {
-  if (drag?.mode === 'resize' && (selected()?.type === 'spectrogram' || selected()?.type === 'waveform')) schedulePreview()
+  if (drag?.mode === 'resize' && (selected()?.type === 'spectrogram' || selected()?.type === 'waveform' || selected()?.type === 'waterfall')) schedulePreview()
   drag = null
 }
 selection.addEventListener('pointerup', finishDrag)
@@ -447,7 +491,7 @@ selection.addEventListener('lostpointercapture', finishDrag)
 $('add-layer').addEventListener('click', () => {
   if (project.layers.length >= 32) return setStatus('The project supports at most 32 layers.')
   const type = ($<HTMLSelectElement>('add-type')).value
-  const id = nextId(type === 'spectrum' ? 'spectrum' : type === 'oscilloscope' ? 'oscilloscope' : type === 'spectrogram' ? 'spectrogram' : type === 'waveform' ? 'waveform' : type === 'vu' ? 'vu' : type === 'loudness' ? 'loudness' : 'scope')
+  const id = nextId(type === 'spectrum' ? 'spectrum' : type === 'oscilloscope' ? 'oscilloscope' : type === 'spectrogram' ? 'spectrogram' : type === 'waveform' ? 'waveform' : type === 'vu' ? 'vu' : type === 'loudness' ? 'loudness' : type === 'waterfall' ? 'waterfall' : 'scope')
   if (type === 'spectrum') {
     project.layers.push(spectrumLayer(id, `Spectrum ${project.layers.length + 1}`) as SpectrumLayer)
     if (metadata) schedulePreview()
@@ -466,6 +510,9 @@ $('add-layer').addEventListener('click', () => {
   } else if (type === 'loudness') {
     project.layers.push(loudnessLayer(id, `Loudness ${project.layers.length + 1}`) as LoudnessLayer)
     if (metadata) schedulePreview()
+  } else if (type === 'waterfall') {
+    project.layers.push(waterfallLayer(id, `Waterfall ${project.layers.length + 1}`) as WaterfallLayer)
+    if (metadata) schedulePreview()
   } else {
     project.layers.push({ id, type: 'vectorscope', name: `Vectorscope ${project.layers.length + 1}`,
       x: 390, y: 170, w: 500, h: 500, visible: true, locked: false, opacity: 1, color: '#55f4e8' })
@@ -478,7 +525,7 @@ $('duplicate-layer').addEventListener('click', () => {
   const copy = { ...layer, id: nextId(), name: `${layer.name} copy`.slice(0, 80), locked: false,
     x: Math.min(layer.x + 20, 1280 - layer.w), y: Math.min(layer.y + 20, 720 - layer.h) }
   project.layers.splice(project.layers.indexOf(layer) + 1, 0, copy)
-  if ((copy.type === 'spectrum' || copy.type === 'oscilloscope' || copy.type === 'spectrogram' || copy.type === 'waveform' || copy.type === 'vu' || copy.type === 'loudness') && metadata) schedulePreview()
+  if ((copy.type === 'spectrum' || copy.type === 'oscilloscope' || copy.type === 'spectrogram' || copy.type === 'waveform' || copy.type === 'vu' || copy.type === 'loudness' || copy.type === 'waterfall') && metadata) schedulePreview()
   selectedId = copy.id; repaint()
 })
 $('delete-layer').addEventListener('click', () => {
@@ -570,6 +617,9 @@ window.desktop.onExport(event => {
   }
   if (event.event === 'loudness-progress') {
     setStatus(`Analyzing loudness: ${event.frames}/${event.total} frames.`)
+  }
+  if (event.event === 'waterfall-progress') {
+    setStatus(`Analyzing waterfall ${event.configuration}/${event.configurations}: ${event.frames}/${event.total} frames.`)
   }
   if (event.event === 'progress') {
     const value = 100 * Number(event.frames) / Number(event.totalFrames);
