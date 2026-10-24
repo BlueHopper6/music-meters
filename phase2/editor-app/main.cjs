@@ -83,7 +83,8 @@ ipcMain.handle('preview-at', async (_event, frame, raw) => {
   const info = metadata
   const current = () => generation === previewGeneration
   const job = previewQueue.catch(() => {}).then(async () => {
-    const vectorscope = await analyzeFrame(input, info, frame, native, current)
+    const multiband = value.layers.some(layer => layer.type === 'vectorscope' && layer.visible && layer.multiband)
+    const vectorscope = await analyzeFrame(input, info, frame, native, current, multiband)
     const spectra = await previewSpectra(input, info, frame, value, nativeSpectrum, current)
     const oscilloscopes = await previewOscilloscopes(input, info, frame, value, nativeOscilloscope, current)
     const spectrograms = await previewSpectrograms(input, info, frame, value, nativeSpectrogram, current)
@@ -223,9 +224,11 @@ app.whenReady().then(() => {
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   })
   return win.loadFile(join(__dirname, 'index.html')).then(async () => {
-    if (process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1') {
+    if (process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
-        if (process.env.PHASE3_WATERFALL_SMOKE === '1') await require('../../phase3/test/waterfall-smoke.cjs')(win)
+        if (process.env.PHASE3_ALL_METERS_SMOKE === '1') await require('../../phase3/test/all-meters-smoke.cjs')(win)
+        else if (process.env.PHASE3_VECTORSCOPE_SMOKE === '1') await require('../../phase3/test/vectorscope-smoke.cjs')(win)
+        else if (process.env.PHASE3_WATERFALL_SMOKE === '1') await require('../../phase3/test/waterfall-smoke.cjs')(win)
         else if (process.env.PHASE3_LOUDNESS_SMOKE === '1') await require('../../phase3/test/loudness-smoke.cjs')(win)
         else if (process.env.PHASE3_VU_SMOKE === '1') await require('../../phase3/test/vu-smoke.cjs')(win)
         else if (process.env.PHASE3_WAVEFORM_SMOKE === '1') await require('../../phase3/test/waveform-smoke.cjs')(win)

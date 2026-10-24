@@ -56,6 +56,17 @@
         <label>Trace color<input id="layer-color" type="color"></label>
         <div class="checks"><label><input id="layer-visible" type="checkbox"> Visible</label><label><input id="layer-locked" type="checkbox"> Locked</label></div>
       </section>
+      <section class="property-group" id="vectorscope-options" hidden><h3>Vectorscope</h3>
+        <label>Projection<select id="vectorscope-mode"><option value="lissajous">Lissajous</option><option value="polar-unipolar">Polar unipolar</option><option value="polar-bipolar">Polar bipolar</option><option value="linear-unipolar">Linear unipolar</option><option value="linear-bipolar">Linear bipolar</option></select></label>
+        <label>Zoom (dB)<input id="vectorscope-zoom" type="number" min="-12" max="24" step="1"></label>
+        <div class="checks"><label><input id="vectorscope-multiband" type="checkbox"> Three-band traces</label></div>
+        <div class="checks"><label><input id="vectorscope-grid" type="checkbox"> Show projection grid</label></div>
+        <div class="checks"><label><input id="vectorscope-correlation" type="checkbox"> Show correlation</label></div>
+        <label>Low band color<input id="vectorscope-low-color" type="color"></label>
+        <label>Mid band color<input id="vectorscope-mid-color" type="color"></label>
+        <label>High band color<input id="vectorscope-high-color" type="color"></label>
+        <p class="hint">Correlation uses the latest native 1024-point stereo window. A silent or one-sided signal reads 0.</p>
+      </section>
       <section class="property-group" id="spectrum-options" hidden><h3>Spectrum analyzer</h3>
         <label>FFT size<select id="spectrum-fft"><option>1024</option><option>2048</option><option>4096</option><option>8192</option></select></label>
         <label>Frequency scale<select id="spectrum-scale"><option value="log">Logarithmic</option><option value="mel">Mel</option><option value="linear">Linear</option></select></label>

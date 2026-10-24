@@ -25,7 +25,7 @@ function probeAudio(input) {
   return { channels, sampleRate, duration, totalFrames: Math.ceil(duration * 30) }
 }
 
-async function analyzeFrame(input, metadata, frameIndex, native, isCurrent = () => true) {
+async function analyzeFrame(input, metadata, frameIndex, native, isCurrent = () => true, multiband = false) {
   if (!Number.isSafeInteger(frameIndex) || frameIndex < 0 || frameIndex >= metadata.totalFrames) {
     throw new Error('Preview frame is outside the song')
   }
@@ -41,13 +41,16 @@ async function analyzeFrame(input, metadata, frameIndex, native, isCurrent = () 
       const pcm = await reader.readFrames(Math.min(8192, target - processed))
       if (pcm.frames === 0) throw new Error(`Audio decoder ended at sample ${processed}, before preview frame ${frameIndex}`)
       native.pushSamples(pcm.left, pcm.right)
+      if (multiband) native.pushMultibandSamples(pcm.left, pcm.right)
       processed += pcm.frames
     }
     if (!isCurrent()) throw new Error('Preview superseded')
     const result = native.getPoints(1024)
+    const bands = multiband ? native.getMultibandPoints(1024) : null
     return {
       x: Buffer.from(result.x.buffer, result.x.byteOffset, result.count * 4).toString('base64'),
       y: Buffer.from(result.y.buffer, result.y.byteOffset, result.count * 4).toString('base64'),
+      multiband: bands ? Buffer.from(bands.data.buffer, bands.data.byteOffset, bands.count * 6 * 4).toString('base64') : '',
       sampleRate: metadata.sampleRate, frameIndex, processedFrames: processed,
     }
   } finally {

@@ -4,7 +4,7 @@ declare global {
   interface Window {
     phase2Export: {
       initialize: (project: Project, width: number, height: number, sampleRate: number) => void
-      render: (x: string, y: string, spectra: Record<string, { mid: string; side: string }>,
+      render: (x: string, y: string, multiband: string, spectra: Record<string, { mid: string; side: string }>,
         oscilloscopes: Record<string, { samples: string; detectedPitch: number; triggerIndex: number }>,
         spectrograms: Record<string, { rebuild: boolean; entries: Array<{
           columnCount: number; rowCount: number; display: string; heat: string }> }>,
@@ -31,9 +31,9 @@ window.phase2Export = {
     project = nextProject
     sampleRate = nextSampleRate
   },
-  render(x, y, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness, waterfalls, frameIndex) {
+  render(x, y, multiband, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness, waterfalls, frameIndex) {
     if (!composition) throw new Error('Export composition was not initialized')
-    composition.render(project, decodeAnalysis({ x, y, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness, waterfalls }), frameIndex, sampleRate)
+    composition.render(project, decodeAnalysis({ x, y, multiband, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness, waterfalls }), frameIndex, sampleRate)
     return canvas.toDataURL('image/png').split(',')[1]
   },
 }

@@ -1,6 +1,29 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { defaultProject, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } = require('../project.cjs')
+const { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } = require('../project.cjs')
+
+test('two vectorscopes retain independent projection, zoom, band, and correlation settings', () => {
+  const first = { ...vectorscopeLayer('scope-a'), x: 40, y: 170, w: 550, h: 450,
+    mode: 'polar-bipolar', zoomDb: 6, showCorrelation: true }
+  const second = { ...vectorscopeLayer('scope-b'), x: 650, y: 170, w: 550, h: 450,
+    mode: 'linear-unipolar', zoomDb: -3, multiband: true, showCorrelation: true,
+    bandLowColor: '#ff1111', bandMidColor: '#11ff11', bandHighColor: '#1111ff' }
+  const saved = normalizeProject({ ...defaultProject(), layers: [first, second] })
+  assert.deepEqual(saved.layers, [first, second])
+})
+
+test('old version 1 vectorscope projects gain safe defaults and invalid modes are rejected', () => {
+  const legacy = defaultProject()
+  for (const key of ['mode', 'zoomDb', 'multiband', 'showGrid', 'showCorrelation',
+    'bandLowColor', 'bandMidColor', 'bandHighColor']) delete legacy.layers[0][key]
+  assert.deepEqual(normalizeProject(legacy).layers[0], vectorscopeLayer())
+  for (const [key, value] of [['mode', 'radial'], ['zoomDb', 3.5], ['multiband', 'yes'],
+    ['showGrid', 1], ['showCorrelation', null], ['bandLowColor', 'red']]) {
+    const project = defaultProject()
+    project.layers[0][key] = value
+    assert.throws(() => normalizeProject(project), /vectorscope/i, key)
+  }
+})
 
 test('two waterfall layers retain independent native history and appearance settings', () => {
   const first = { ...waterfallLayer('waterfall-a'), x: 30, y: 160, w: 580, h: 440 }
