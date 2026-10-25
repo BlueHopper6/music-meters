@@ -24,15 +24,21 @@ jobs:
           }
           ffmpeg -version
           ffprobe -version
-      - name: Prepare pinned Prism and Electron
+      - name: Prepare pinned Prism
         shell: pwsh
         run: |
           git clone https://github.com/Boof2015/prism.git upstream/prism
           git -C upstream/prism checkout 49721802252b115d169e353c98b27408daa5e2b7
           Push-Location upstream/prism
           npm ci --ignore-scripts --no-audit --no-fund
-          node node_modules/electron/install.js
           npm run build:native
+          Pop-Location
+      - name: Prepare locked Electron runtime
+        shell: pwsh
+        run: |
+          Push-Location phase6/electron-runtime
+          npm ci --ignore-scripts --no-audit --no-fund
+          node node_modules/electron/install.js
           Pop-Location
       - name: Build and unit tests
         shell: pwsh

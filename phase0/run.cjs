@@ -1,13 +1,14 @@
 const { spawn, execFileSync } = require('node:child_process')
 const path = require('node:path')
 const fs = require('node:fs')
+const { verifyElectronRuntime } = require('../phase6/electron-runtime.cjs')
 
 const root = path.resolve(__dirname, '..')
 const prism = path.join(root, 'upstream', 'prism')
 const artifacts = path.join(root, 'artifacts', 'phase0')
 const output = path.resolve(process.argv[2] || path.join(artifacts, 'stereo-phases.mp4'))
 const addon = path.join(prism, 'native', 'build', 'Release', 'visualizer_dsp.node')
-const electron = path.join(prism, 'node_modules', 'electron', 'dist', 'electron.exe')
+const electron = verifyElectronRuntime()
 const pinnedPrismCommit = '49721802252b115d169e353c98b27408daa5e2b7'
 if (execFileSync('git', ['rev-parse', 'HEAD'], { cwd: prism, encoding: 'utf8' }).trim() !== pinnedPrismCommit) {
   throw new Error(`Prism must be checked out at ${pinnedPrismCommit}`)

@@ -2,6 +2,7 @@ const { spawn, execFileSync } = require('node:child_process')
 const path = require('node:path')
 const fs = require('node:fs')
 const crypto = require('node:crypto')
+const { verifyElectronRuntime } = require('../phase6/electron-runtime.cjs')
 
 const ROOT = path.resolve(__dirname, '..')
 const PRISM = path.join(ROOT, 'upstream', 'prism')
@@ -56,10 +57,10 @@ function checkPrerequisites() {
   if (commit !== PIN) throw new Error(`Prism must be checked out at ${PIN}`)
   for (const required of [
     path.join(PRISM, 'native', 'build', 'Release', 'visualizer_dsp.node'),
-    path.join(PRISM, 'node_modules', 'electron', 'dist', 'electron.exe'),
   ]) {
     if (!fs.existsSync(required)) throw new Error(`Missing prerequisite: ${required}`)
   }
+  verifyElectronRuntime()
   execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' })
   execFileSync('ffprobe', ['-version'], { stdio: 'ignore' })
 }
@@ -100,7 +101,7 @@ async function main() {
     ...process.env,
     PHASE1_JOB: JSON.stringify({ ...options, cancelFile }),
   }
-  const electron = path.join(PRISM, 'node_modules', 'electron', 'dist', 'electron.exe')
+  const electron = verifyElectronRuntime()
   const child = spawn(electron, [path.join(__dirname, 'electron-app')], {
     env, stdio: 'inherit', shell: false, detached: true, windowsHide: true,
   })

@@ -3,6 +3,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { spawn, spawnSync } = require('node:child_process')
 const { defaultProject, spectrumLayer } = require('../../phase2/project.cjs')
+const { expectedVersion } = require('../electron-runtime.cjs')
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { encoding: 'utf8', ...options })
@@ -27,6 +28,11 @@ async function main() {
   const executable = path.join(pack, 'electron.exe')
   const exportApp = path.join(pack, 'resources', 'app', 'phase2', 'export-app')
   assert.ok(fs.existsSync(executable) && fs.existsSync(exportApp), 'Portable package is incomplete')
+  assert.equal(fs.readFileSync(path.join(pack, 'version'), 'utf8').trim(), expectedVersion)
+  for (const name of ['LICENSE', 'LICENSES.chromium.html', 'PRISM-LICENSE.txt',
+    'NODE-ADDON-API-LICENSE.md', 'THIRD_PARTY_NOTICES.md']) {
+    assert.ok(fs.existsSync(path.join(pack, name)), `Missing packaged license or notice: ${name}`)
+  }
   const brand = path.join('phase2', 'editor-app', 'assets', 'brand')
   for (const name of fs.readdirSync(path.resolve(__dirname, '..', '..', brand))) {
     assert.ok(fs.existsSync(path.join(pack, 'resources', 'app', brand, name)), `Missing packaged brand asset: ${name}`)

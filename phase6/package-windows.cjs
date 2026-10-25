@@ -1,6 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { build } = require('../phase2/build.cjs')
+const { runtimeDirectory } = require('./electron-runtime.cjs')
 
 const root = path.resolve(__dirname, '..')
 const prism = path.join(root, 'upstream', 'prism')
@@ -18,7 +19,7 @@ async function main() {
   if (fs.existsSync(output)) throw new Error(`Package output already exists: ${output}`)
   // Build and validate the pinned local prerequisites before creating an output.
   await build()
-  const runtime = path.join(prism, 'node_modules', 'electron', 'dist')
+  const runtime = runtimeDirectory
   const app = path.join(output, 'resources', 'app')
   try {
     fs.cpSync(runtime, output, { recursive: true, errorOnExist: true, force: false })
@@ -51,6 +52,8 @@ async function main() {
     fs.mkdirSync(nativeTarget, { recursive: true })
     fs.copyFileSync(native, path.join(nativeTarget, 'visualizer_dsp.node'))
     fs.copyFileSync(path.join(prism, 'LICENSE'), path.join(output, 'PRISM-LICENSE.txt'))
+    fs.copyFileSync(path.join(prism, 'node_modules', 'node-addon-api', 'LICENSE.md'),
+      path.join(output, 'NODE-ADDON-API-LICENSE.md'))
     copyFile('phase6/THIRD_PARTY_NOTICES.md', path.join(output, 'THIRD_PARTY_NOTICES.md'))
     copyFile('phase6/PORTABLE-README.md', path.join(output, 'README.md'))
     console.log(JSON.stringify({ output, executable: path.join(output, 'electron.exe'),
