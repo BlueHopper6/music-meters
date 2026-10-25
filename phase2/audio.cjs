@@ -5,7 +5,7 @@ function probeAudio(input) {
   let raw
   try {
     raw = execFileSync('ffprobe', [
-      '-v', 'error', '-show_entries', 'stream=codec_type,channels,sample_rate,duration:format=duration',
+      '-v', 'error', '-show_entries', 'stream=codec_type,codec_name,channels,sample_rate,duration:format=duration',
       '-of', 'json', input,
     ], { encoding: 'utf8', maxBuffer: 1024 * 1024 })
   } catch (error) {
@@ -22,7 +22,7 @@ function probeAudio(input) {
   }
   const duration = Number(stream.duration || data.format?.duration)
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('Input duration is unavailable or invalid')
-  return { channels, sampleRate, duration, totalFrames: Math.ceil(duration * 30) }
+  return { channels, sampleRate, duration, totalFrames: Math.ceil(duration * 30), codecName: stream.codec_name }
 }
 
 async function analyzeFrame(input, metadata, frameIndex, native, isCurrent = () => true, multiband = false) {

@@ -1,6 +1,6 @@
 const { app, BrowserWindow } = require('electron')
 const { spawn } = require('node:child_process')
-const { join, resolve, dirname, extname } = require('node:path')
+const { join, resolve, dirname } = require('node:path')
 const { randomUUID } = require('node:crypto')
 const { performance } = require('node:perf_hooks')
 const fs = require('node:fs')
@@ -11,6 +11,7 @@ const { normalizeProject } = require('../project.cjs')
 const { assertInstalledFonts } = require('../fonts.cjs')
 const { assetData } = require('../assets.cjs')
 const { probeAudio } = require('../audio.cjs')
+const { outputFormat, validateOutputPath, validateAudioCopy } = require('../audio-output.cjs')
 const { precomputeSpectra } = require('../../phase3/spectrum.cjs')
 const { precomputeOscilloscopes } = require('../../phase3/oscilloscope.cjs')
 const { precomputeSpectrograms } = require('../../phase3/spectrogram.cjs')
@@ -37,23 +38,24 @@ function validate() {
   const project = normalizeProject(config.project)
   assertInstalledFonts(project)
   if (!project.audioPath || !fs.statSync(project.audioPath).isFile()) throw new Error('Project audio is unavailable')
-  if (typeof config.output !== 'string' || extname(config.output).toLowerCase() !== '.mp4') {
-    throw new Error('Output must be an MP4 path')
-  }
+  validateOutputPath(config.output, config.audioMode)
   if (fs.existsSync(config.output)) throw new Error(`Output already exists: ${config.output}`)
   if (typeof config.cancelFile !== 'string') throw new Error('Missing cancellation marker path')
   if (!['720p', '1080p'].includes(config.preset)) throw new Error('Unsupported export preset')
   return project
 }
 
-function startEncoder(temp, input, totalFrames) {
+function startEncoder(temp, input, totalFrames, audioMode) {
+  const audioArgs = audioMode === 'copy' ? ['-c:a', 'copy']
+    : ['-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart']
   const args = [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-n',
     '-f', 'image2pipe', '-framerate', String(FPS), '-vcodec', 'png', '-i', 'pipe:0',
     '-i', input, '-map', '0:v:0', '-map', '1:a:0',
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
-    '-pix_fmt', 'yuv420p', '-r', String(FPS), '-frames:v', String(totalFrames),
-    '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', temp,
+    '-pix_fmt', 'yuv420p', '-r', String(FPS),
+    ...(audioMode === 'copy' ? [] : ['-frames:v', String(totalFrames)]),
+    ...audioArgs, temp,
   ]
   const child = spawn(process.env.PHASE6_TEST_ENCODER || 'ffmpeg', args,
     { stdio: ['pipe', 'ignore', 'pipe'], shell: false })
@@ -100,11 +102,13 @@ function checkCancel(frame) {
 async function exportVideo() {
   const project = validate()
   const metadata = probeAudio(project.audioPath)
-  assertOutputSpace(config.output, metadata.duration)
+  if (config.audioMode === 'copy') validateAudioCopy(project.audioPath, metadata)
+  assertOutputSpace(config.output, metadata.duration, fs.statfsSync,
+    config.audioMode === 'copy' ? fs.statSync(project.audioPath, { bigint: true }).size : 0)
   const totalFrames = metadata.totalFrames
   const vectorscopeMultiband = project.layers.some(layer => layer.type === 'vectorscope' && layer.visible && layer.multiband)
   const [width, height] = config.preset === '1080p' ? [1920, 1080] : [1280, 720]
-  const temp = `${config.output}.partial-${randomUUID()}.mp4`
+  const temp = `${config.output}.partial-${randomUUID()}${outputFormat(config.audioMode).extension}`
   fs.mkdirSync(dirname(config.output), { recursive: true })
   const spectrumDirectory = jobPath('analysis', randomUUID())
   const oscilloscopeDirectory = jobPath('analysis', randomUUID())
@@ -176,7 +180,7 @@ async function exportVideo() {
       `window.phase2Export.initialize(${JSON.stringify(project)},${width},${height},${metadata.sampleRate},${JSON.stringify(images)})`)
     native.reset()
     native.setSampleRate(metadata.sampleRate)
-    encoder = startEncoder(temp, project.audioPath, totalFrames)
+    encoder = startEncoder(temp, project.audioPath, totalFrames, config.audioMode)
     console.log(JSON.stringify({ event: 'started', input: project.audioPath, output: config.output,
       ...metadata, width, height, encoderPid: encoder.child.pid, decoderPid: reader.child.pid }))
     for (let index = 0; index < totalFrames; index++) {
@@ -222,6 +226,7 @@ async function exportVideo() {
     }
     encoder.child.stdin.end()
     await encoder.done
+    checkCancel(renderedFrames)
     if (fs.existsSync(config.output)) throw new Error(`Output appeared during export: ${config.output}`)
     fs.renameSync(temp, config.output)
     success = true

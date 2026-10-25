@@ -46,12 +46,14 @@ jobs:
           python phase1/make-fixtures.py
           node phase2/build.cjs
           node --test phase6/test/space.test.cjs phase5/test/templates.test.cjs phase2/test/project.test.cjs phase2/test/stage-geometry.test.cjs phase4/test/assets.test.cjs phase2/test/fonts.test.cjs phase1/test/pcm-reader.test.cjs phase3/test/vectorscope-correlation.test.cjs
-      - name: Portable package and MP4 smoke
+      - name: Portable package and audio export smokes
         shell: pwsh
         run: |
           node phase6/package-windows.cjs --output artifacts/phase6/ci-package
           node phase6/test/package-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-smoke
           node phase6/test/run-repeat.cjs --package artifacts/phase6/ci-package artifacts/phase6/ci-editor-smoke
+          node phase6/test/audio-copy.cjs artifacts/phase6/ci-package artifacts/phase6/ci-audio-copy
+          node phase6/test/run-audio-copy-editor.cjs artifacts/phase6/ci-package artifacts/phase6/ci-audio-copy-editor
       - name: Matching source archive and extracted rebuild
         shell: pwsh
         run: |
