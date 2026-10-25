@@ -27,6 +27,13 @@ The [GPLv3 text](https://www.gnu.org/licenses/gpl.en.html) and [GNU GPL FAQ](htt
 
 Local packaged export and editor smoke tests establish that Electron 45.0.0 can run the pinned addon and renderer on the development machine. They do not close the security, legal, or clean-machine gates above.
 
+## Source delivery verification on 2026-10-25
+
+- On `feature/public-release-source` at `c0d1980d7020f801964c767242161454dddd7cc5`, the 37 Node unit tests passed; `node phase2/build.cjs` passed. A package smoke rendered 60 decoded H.264 frames with AAC audio. The existing packaged editor repeat smoke completed two exports with matching still/export frames.
+- `python phase6/release-source.py` produced a 52,884,468-byte source ZIP for a clean build. `phase6/test/source-archive.py` verified its SHA-256 against the package descriptor and extracted 641 files, including the exact Prism tree, MusicMeters build/adaptation scripts, node-addon-api source, and required notices.
+- From that extraction, `npm ci` for Prism and Electron, `npm run build:native`, fixture generation, `node phase2/build.cjs`, a fresh portable package, and `phase6/test/package-smoke.cjs` passed. The rebuilt MP4 decoded all 60 frames and AAC audio. The native build required the Visual Studio 2022 and Windows SDK environment settings documented in the Phase 0 report. The local host used Node 26.12.1; hosted Windows CI uses Node 24 and remains to be checked for this pull request.
+- These checks prove the source set can rebuild a working synthetic export on the development machine. They do not validate the eventual public download, a clean Windows machine, current Electron security patch level, or ownership of any new assets added later.
+
 ## Local verification on 2026-10-25
 
 - `node phase2/build.cjs` and `node phase6/package-windows.cjs --output artifacts/phase6/electron45-release-review-final-20261025` passed. The final package contains Electron 45.0.0 and all five checked license/notice files.
