@@ -173,6 +173,32 @@ function layerFlagIconSvg(kind: 'visible' | 'hidden' | 'unlocked' | 'locked'): S
   }
   return svg
 }
+function layerGripSvg(): SVGSVGElement {
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('viewBox', '0 0 10 14')
+  svg.setAttribute('fill', 'currentColor')
+  svg.setAttribute('aria-hidden', 'true')
+  for (const [cx, cy] of [[3, 3], [7, 3], [3, 7], [7, 7], [3, 11], [7, 11]] as const) {
+    const dot = document.createElementNS(ns, 'circle')
+    dot.setAttribute('cx', String(cx))
+    dot.setAttribute('cy', String(cy))
+    dot.setAttribute('r', '1')
+    svg.append(dot)
+  }
+  return svg
+}
+let layerDrag: {
+  id: string; pointerId: number; startY: number; active: boolean
+  targetId: string | null; position: 'before' | 'after' | null
+} | null = null
+let suppressNextLayerClick = false
+function clearLayerDropClasses() {
+  $('layers').classList.remove('layers-dragging')
+  for (const el of Array.from($('layers').querySelectorAll('.layer-item'))) {
+    el.classList.remove('is-dragging', 'drop-before', 'drop-after')
+  }
+}
 function refreshLayers() {
   const list = $('layers')
   list.replaceChildren()
@@ -183,6 +209,10 @@ function refreshLayers() {
     row.tabIndex = 0
     row.setAttribute('role', 'button')
     row.setAttribute('aria-pressed', String(layer.id === selectedId))
+    const grip = document.createElement('span')
+    grip.className = 'layer-grip'
+    grip.title = 'Drag to reorder layer'
+    grip.append(layerGripSvg())
     const icon = document.createElement('span')
     icon.className = 'layer-icon'
     icon.append(layerIconSvg(layer.type))
@@ -217,8 +247,11 @@ function refreshLayers() {
       repaint()
     })
     flags.append(visBtn, lockBtn)
-    row.append(icon, name, flags)
-    const selectLayer = () => { selectedId = layer.id; refreshInspector(); refreshLayers(); updateSelection() }
+    row.append(grip, icon, name, flags)
+    const selectLayer = () => {
+      if (suppressNextLayerClick) { suppressNextLayerClick = false; return }
+      selectedId = layer.id; refreshInspector(); refreshLayers(); updateSelection()
+    }
     row.addEventListener('click', selectLayer)
     row.addEventListener('keydown', event => {
       if (event.target === row && (event.key === 'Enter' || event.key === ' ')) {
@@ -1013,6 +1046,80 @@ function moveLayer(direction: number) {
 }
 $('layer-up').addEventListener('click', () => moveLayer(1))
 $('layer-down').addEventListener('click', () => moveLayer(-1))
+const layersList = $('layers')
+layersList.addEventListener('pointerdown', event => {
+  if (event.button !== 0 || (event.target as HTMLElement).closest('.layer-flag')) return
+  const row = (event.target as HTMLElement).closest('.layer-item') as HTMLElement | null
+  if (!row || !row.dataset.id) return
+  layerDrag = { id: row.dataset.id, pointerId: event.pointerId, startY: event.clientY, active: false, targetId: null, position: null }
+  try { layersList.setPointerCapture(event.pointerId) } catch {}
+  event.preventDefault()
+})
+layersList.addEventListener('pointermove', event => {
+  if (!layerDrag) return
+  if (!layerDrag.active) {
+    if (Math.abs(event.clientY - layerDrag.startY) < 4 || project.layers.length < 2) return
+    layerDrag.active = true
+    selectedId = layerDrag.id
+    refreshInspector(); updateSelection()
+    layersList.classList.add('layers-dragging')
+    for (const el of Array.from(layersList.querySelectorAll('.layer-item')) as HTMLElement[]) {
+      el.classList.toggle('selected', el.dataset.id === selectedId)
+      el.classList.toggle('is-dragging', el.dataset.id === layerDrag.id)
+    }
+  }
+  const rows = Array.from(layersList.querySelectorAll('.layer-item')) as HTMLElement[]
+  let bestRow: HTMLElement | null = null
+  let bestDist = Infinity
+  for (const row of rows) {
+    row.classList.remove('drop-before', 'drop-after')
+    const rect = row.getBoundingClientRect()
+    const midY = rect.top + rect.height / 2
+    const dist = Math.abs(event.clientY - midY)
+    if (dist < bestDist) {
+      bestDist = dist
+      bestRow = row
+    }
+  }
+  if (!bestRow || !bestRow.dataset.id || bestRow.dataset.id === layerDrag.id) {
+    layerDrag.targetId = null
+    layerDrag.position = null
+    return
+  }
+  const rect = bestRow.getBoundingClientRect()
+  const position: 'before' | 'after' = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+  layerDrag.targetId = bestRow.dataset.id
+  layerDrag.position = position
+  bestRow.classList.add(position === 'before' ? 'drop-before' : 'drop-after')
+})
+function finishLayerDrag() {
+  if (!layerDrag) return
+  const current = layerDrag
+  layerDrag = null
+  clearLayerDropClasses()
+  if (!current.active) {
+    if (selectedId !== current.id) {
+      selectedId = current.id
+      refreshInspector(); refreshLayers(); updateSelection()
+    }
+    return
+  }
+  suppressNextLayerClick = true
+  setTimeout(() => { suppressNextLayerClick = false }, 0)
+  if (!current.targetId || current.targetId === current.id || !current.position) return
+  const visual = [...project.layers].reverse()
+  const fromIndex = visual.findIndex(item => item.id === current.id)
+  if (fromIndex < 0) return
+  const [dragged] = visual.splice(fromIndex, 1)
+  const targetIndex = visual.findIndex(item => item.id === current.targetId)
+  if (targetIndex < 0) return
+  visual.splice(current.position === 'before' ? targetIndex : targetIndex + 1, 0, dragged)
+  project.layers = visual.reverse()
+  selectedId = current.id
+  repaint()
+}
+layersList.addEventListener('pointerup', finishLayerDrag)
+layersList.addEventListener('lostpointercapture', finishLayerDrag)
 
 $<HTMLInputElement>('time-slider').addEventListener('input', event => {
   frameIndex = Number((event.target as HTMLInputElement).value)
