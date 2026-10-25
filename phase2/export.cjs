@@ -4,6 +4,7 @@ const { spawn } = require('node:child_process')
 const { randomUUID } = require('node:crypto')
 const { build } = require('./build.cjs')
 const { normalizeProject } = require('./project.cjs')
+const { assertInstalledFonts } = require('./fonts.cjs')
 const { resolveArtwork } = require('./assets.cjs')
 
 function parse(args) {
@@ -39,6 +40,7 @@ async function main() {
   const audioPath = document.audioRelativePath
     ? path.resolve(path.dirname(options.project), document.audioRelativePath) : ''
   const project = normalizeProject(resolveArtwork({ ...document, audioPath }, options.project))
+  assertInstalledFonts(project)
   if (!audioPath || !fs.statSync(audioPath).isFile()) throw new Error('Project audio is unavailable')
   const electron = await build()
   const controlDir = path.join(__dirname, '..', 'artifacts', 'phase2', 'jobs')

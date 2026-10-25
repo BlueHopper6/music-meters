@@ -106,6 +106,11 @@ function color(value, name) {
   return value
 }
 
+function validFontFamily(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 128
+    && value === value.trim() && !/[\u0000-\u001f\u007f"\\]/.test(value)
+}
+
 function localImagePath(value, name) {
   if (typeof value !== 'string' || value.length > 4096 || /[\u0000-\u001f]/.test(value)
       || /^[a-z][a-z0-9+.-]*:\/\//i.test(value) || /^file:/i.test(value)
@@ -164,7 +169,7 @@ function normalizeProject(raw) {
           fit: layer.fit, rotation, shadow }
       }
       if (typeof layer.text !== 'string' || layer.text.length > 500 || /[\u0000-\u001f]/.test(layer.text)) throw new Error('Invalid text layer content')
-      if (!['Arial', 'Georgia', 'Verdana', 'Times New Roman', 'Courier New'].includes(layer.fontFamily)) throw new Error('Unsupported font')
+      if (!validFontFamily(layer.fontFamily)) throw new Error('Unsupported font')
       if (!['normal', 'bold'].includes(layer.fontWeight) || !['left', 'center', 'right'].includes(layer.align)) throw new Error('Invalid typography')
       return { ...normalized, text: layer.text, fontFamily: layer.fontFamily,
         fontSize: number(layer.fontSize, 'Font size', 12, 160), fontWeight: layer.fontWeight,
@@ -280,4 +285,4 @@ function normalizeProject(raw) {
     audioPath: raw.audioPath, layers }
 }
 
-module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, VECTORSCOPE_MODES, defaultProject, compositionProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject }
+module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, VECTORSCOPE_MODES, defaultProject, compositionProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, validFontFamily, normalizeProject }

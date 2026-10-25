@@ -4,7 +4,7 @@ import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type Vec
 import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject } from './project.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number }
-type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null }
+type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null; fonts: string[] }
 type Desktop = {
   initial(): Promise<Initial>
   chooseAudio(): Promise<{ path: string; metadata: Metadata } | null>
@@ -84,6 +84,47 @@ function updateSelection() {
   selection.classList.toggle('locked', layer.locked)
   selection.querySelector('.selection-label')!.textContent = layer.name
 }
+function layerIconSvg(type: Project['layers'][number]['type']): SVGSVGElement {
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('viewBox', '0 0 16 16')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '1.35')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  svg.setAttribute('aria-hidden', 'true')
+  const back = document.createElementNS(ns, 'path')
+  back.setAttribute('d', 'M4.2 14.8H13.1C14 14.8 14.8 14 14.8 13.1V4.2')
+  back.setAttribute('opacity', '0.65')
+  const card = document.createElementNS(ns, 'rect')
+  card.setAttribute('x', '1.2')
+  card.setAttribute('y', '1.2')
+  card.setAttribute('width', '11')
+  card.setAttribute('height', '11')
+  card.setAttribute('rx', '1.8')
+  svg.append(back, card)
+  if (type === 'image') {
+    const sun = document.createElementNS(ns, 'circle')
+    sun.setAttribute('cx', '4.6')
+    sun.setAttribute('cy', '4.5')
+    sun.setAttribute('r', '1')
+    sun.setAttribute('fill', 'currentColor')
+    sun.setAttribute('stroke', 'none')
+    const mountain = document.createElementNS(ns, 'path')
+    mountain.setAttribute('d', 'M2 10.3L5.4 6.8L7.8 9.1L9.6 7.3L11.6 9.9')
+    svg.append(sun, mountain)
+  } else if (type === 'text') {
+    const glyph = document.createElementNS(ns, 'path')
+    glyph.setAttribute('d', 'M3.9 4H9.5M6.7 4V9.6M5.2 9.6H8.2')
+    svg.append(glyph)
+  } else {
+    const wave = document.createElementNS(ns, 'path')
+    wave.setAttribute('d', 'M3.4 5.6V7.8M5 3.9V9.5M6.7 2.8V10.6M8.4 4.3V9.1M10 5.5V7.9')
+    svg.append(wave)
+  }
+  return svg
+}
 function refreshLayers() {
   const list = $('layers')
   list.replaceChildren()
@@ -94,7 +135,7 @@ function refreshLayers() {
     button.dataset.id = layer.id
     const icon = document.createElement('span')
     icon.className = 'layer-icon'
-    icon.textContent = '◉'
+    icon.append(layerIconSvg(layer.type))
     const name = document.createElement('span')
     name.className = 'layer-name'
     name.textContent = layer.name
@@ -109,6 +150,64 @@ function refreshLayers() {
   for (const id of ['duplicate-layer', 'delete-layer', 'layer-up', 'layer-down']) {
     ;($<HTMLButtonElement>(id)).disabled = !hasLayer
   }
+}
+function syncFontPreview() {
+  const select = $<HTMLSelectElement>('text-font')
+  const menu = $('text-font-menu')
+  const formatFamily = (name: string) => `"${name.replace(/["\\]/g, '')}", sans-serif`
+  const active = (select.value || '').trim()
+  select.style.fontFamily = active ? formatFamily(active) : ''
+  select.title = active
+  for (const item of Array.from(menu.children) as HTMLElement[]) {
+    const selected = item.dataset.family === active
+    item.classList.toggle('selected', selected)
+    item.setAttribute('aria-selected', String(selected))
+  }
+}
+function setInstalledFonts(fonts: string[]) {
+  const select = $<HTMLSelectElement>('text-font')
+  select.replaceChildren(...fonts.map(family => {
+    const option = new Option(family, family)
+    option.style.fontFamily = `"${family.replace(/["\\]/g, '')}", sans-serif`
+    return option
+  }))
+  syncFontPreview()
+}
+function openFontPreview() {
+  const select = $<HTMLSelectElement>('text-font')
+  const menu = $('text-font-menu')
+  const inspector = document.querySelector('.properties-panel') as HTMLElement
+  const control = select.getBoundingClientRect()
+  const panel = inspector.getBoundingClientRect()
+  const menuHeight = Math.min(220, select.options.length * 36 + 10)
+  menu.classList.toggle('above', panel.bottom - control.bottom < menuHeight && control.top - panel.top > panel.bottom - control.bottom)
+  menu.replaceChildren()
+  for (const option of Array.from(select.options)) {
+    const family = (option.value || option.textContent || '').trim()
+    if (!family) continue
+    const item = document.createElement('button')
+    item.type = 'button'
+    item.setAttribute('role', 'option')
+    item.dataset.family = family
+    item.tabIndex = -1
+    item.className = 'font-preview-option'
+    item.textContent = option.textContent || family
+    item.style.fontFamily = option.style.fontFamily
+    item.addEventListener('click', () => {
+      select.value = family
+      menu.hidden = true
+      select.focus()
+      syncFontPreview()
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    menu.append(item)
+  }
+  syncFontPreview()
+  menu.hidden = false
+  const active = Array.from(menu.children).find(item => (item as HTMLElement).dataset.family === select.value) as HTMLElement | undefined
+  const focused = active || menu.firstElementChild as HTMLElement | null
+  focused?.focus({ preventScroll: true })
+  if (focused) menu.scrollTop += focused.getBoundingClientRect().top - menu.getBoundingClientRect().top - 4
 }
 function refreshInspector() {
   ;($<HTMLInputElement>('title')).value = project.title
@@ -130,11 +229,13 @@ function refreshInspector() {
     ;($<HTMLInputElement>('image-shadow')).value = String(layer.shadow)
     $('image-name').textContent = layer.imagePath.split(/[\\/]/).pop() || 'No image selected'
   }
+  if (layer?.type !== 'text') $('text-font-menu').hidden = true
   if (layer?.type === 'text') {
     for (const [id, value] of [['text-content', layer.text], ['text-font', layer.fontFamily],
       ['text-size', layer.fontSize], ['text-weight', layer.fontWeight], ['text-align', layer.align],
       ['text-rotation', layer.rotation], ['text-shadow', layer.shadow]] as const) {
       ;($<HTMLInputElement | HTMLSelectElement>(id)).value = String(value)
+      if (id === 'text-font') syncFontPreview()
     }
   }
   for (const [id, value] of [
@@ -726,6 +827,7 @@ $('open-project').addEventListener('click', async () => {
     const loaded = await window.desktop.openProject()
     if (!loaded) return
     project = normalizeProject(loaded.project) as Project
+    setInstalledFonts(loaded.fonts)
     metadata = loaded.metadata; projectPath = loaded.projectPath
     selectedId = project.layers.at(-1)?.id || null; frameIndex = 0
     analysis = emptyAnalysis()
@@ -785,9 +887,58 @@ window.desktop.onExport(event => {
   }
 })
 
+$<HTMLSelectElement>('text-font').addEventListener('mousedown', event => {
+  if (selected()?.locked) return
+  event.preventDefault()
+  const menu = $('text-font-menu')
+  if (menu.hidden) openFontPreview()
+  else { menu.hidden = true; $<HTMLSelectElement>('text-font').focus() }
+})
+$<HTMLSelectElement>('text-font').addEventListener('keydown', event => {
+  if (selected()?.locked) return
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    openFontPreview()
+  } else if (event.key === 'Escape') {
+    $('text-font-menu').hidden = true
+  }
+})
+$('text-font-menu').addEventListener('keydown', event => {
+  const menu = $('text-font-menu')
+  const items = Array.from(menu.children) as HTMLButtonElement[]
+  const index = items.indexOf(document.activeElement as HTMLButtonElement)
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    menu.hidden = true
+    $<HTMLSelectElement>('text-font').focus()
+  } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+    event.preventDefault()
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+      : Math.max(0, Math.min(items.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))
+    const item = items[next]
+    item?.focus({ preventScroll: true })
+    if (item) {
+      const bounds = item.getBoundingClientRect()
+      const viewport = menu.getBoundingClientRect()
+      if (bounds.top < viewport.top + 4) menu.scrollTop -= viewport.top + 4 - bounds.top
+      else if (bounds.bottom > viewport.bottom - 4) menu.scrollTop += bounds.bottom - viewport.bottom + 4
+    }
+  }
+})
+$('text-font-wrap').addEventListener('focusout', event => {
+  const next = (event as FocusEvent).relatedTarget
+  if (next && !$('text-font-wrap').contains(next as Node)) $('text-font-menu').hidden = true
+})
+document.addEventListener('pointerdown', event => {
+  const menu = $('text-font-menu')
+  if (!menu.hidden && !$('text-font-wrap').contains(event.target as Node)) {
+    menu.hidden = true
+  }
+})
 async function start() {
   const initial = await window.desktop.initial()
   project = normalizeProject(initial.project) as Project
+  setInstalledFonts(initial.fonts)
   metadata = initial.metadata; projectPath = initial.projectPath
   selectedId = project.layers.at(-1)?.id || null
   refreshInspector(); refreshLayers(); refreshAudio(); await syncAssets()

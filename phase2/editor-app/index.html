@@ -10,24 +10,55 @@
   <header class="toolbar">
     <div class="brand"><span class="brand-mark">◈</span><div><strong>Music Visualizer</strong><small>Static layout editor</small></div></div>
     <div class="toolbar-actions">
-      <button id="import-audio">Import audio</button>
-      <button id="open-project">Open project</button>
-      <button id="save-project">Save project</button>
-      <select id="export-preset" aria-label="Export size"><option value="1080p">1080p</option><option value="720p">720p</option></select>
-      <button id="render-mp4" class="primary">Render MP4</button>
-      <button id="cancel-render" hidden>Cancel render</button>
+      <div class="toolbar-group">
+        <span class="toolbar-label">Project</span>
+        <button id="open-project">Open project</button>
+        <button id="save-project">Save project</button>
+      </div>
+      <div class="toolbar-group">
+        <span class="toolbar-label">Audio</span>
+        <button id="import-audio">Import audio</button>
+      </div>
+      <div class="toolbar-group export-group">
+        <span class="toolbar-label">Export</span>
+        <select id="export-preset" aria-label="Export size"><option value="1080p">1080p</option><option value="720p">720p</option></select>
+        <button id="render-mp4" class="primary">Render MP4</button>
+        <button id="cancel-render" hidden>Cancel render</button>
+      </div>
     </div>
   </header>
   <main class="workspace">
     <aside class="sidebar layers-panel">
-      <div class="panel-heading"><div><span class="eyebrow">COMPOSITION</span><h2>Layers</h2></div><button id="add-layer" title="Add selected layer">＋</button></div>
-      <label class="add-meter-label">Add layer<select id="add-type" aria-label="Layer type"><option value="vectorscope">Vectorscope</option><option value="spectrum">Spectrum analyzer</option><option value="oscilloscope">Oscilloscope</option><option value="spectrogram">Spectrogram</option><option value="waveform">Waveform history</option><option value="vu">VU meter</option><option value="loudness">Loudness and peak</option><option value="waterfall">Waterfall spectrum</option><option value="image">Artwork / logo</option><option value="text">Text</option></select></label>
-      <div id="layers" class="layers-list" aria-label="Layers"></div>
-      <div class="layer-actions">
-        <button id="duplicate-layer">Duplicate</button><button id="delete-layer">Delete</button>
-        <button id="layer-up">Move up</button><button id="layer-down">Move down</button>
+      <div class="panel-heading"><div><span class="eyebrow">COMPOSITION</span><h2>Layers</h2></div></div>
+      <div class="add-layer-bar">
+        <label class="add-meter-label">Add layer<select id="add-type" aria-label="Layer type">
+          <optgroup label="Audio Meters">
+            <option value="vectorscope">Vectorscope</option>
+            <option value="spectrum">Spectrum analyzer</option>
+            <option value="oscilloscope">Oscilloscope</option>
+            <option value="spectrogram">Spectrogram</option>
+            <option value="waveform">Waveform history</option>
+            <option value="vu">VU meter</option>
+            <option value="loudness">Loudness and peak</option>
+            <option value="waterfall">Waterfall spectrum</option>
+          </optgroup>
+          <optgroup label="Graphics">
+            <option value="image">Artwork / logo</option>
+            <option value="text">Text</option>
+          </optgroup>
+        </select></label>
+        <button id="add-layer" title="Add selected layer">+ Add</button>
       </div>
-      <p class="hint">Select a layer, then drag or resize its frame on the canvas.</p>
+      <div id="layers" class="layers-list" aria-label="Layers"></div>
+      <div class="layer-actions-dock">
+        <div class="layer-actions">
+          <button id="layer-up" title="Move selected layer forward">Move up</button>
+          <button id="layer-down" title="Move selected layer backward">Move down</button>
+          <button id="duplicate-layer">Duplicate</button>
+          <button id="delete-layer" class="danger-button">Delete</button>
+        </div>
+        <p class="hint">Select a layer to position or resize on the stage.</p>
+      </div>
     </aside>
     <section class="center-panel">
       <div class="canvas-heading"><div><span class="eyebrow">PREVIEW</span><h1>Composition</h1></div><span class="resolution">1280 × 720 · 16:9</span></div>
@@ -38,72 +69,105 @@
       </div></div>
       <div class="timeline">
         <div class="timeline-top"><div><span class="eyebrow">AUDIO STILL</span><strong id="audio-name">No audio imported</strong></div><span id="audio-details">Choose a WAV, MP3, or FLAC file</span></div>
-        <div class="time-controls"><input id="time-slider" type="range" min="0" max="0" step="1" value="0" aria-label="Preview timestamp"><label>Time <input id="time-input" type="number" min="0" step="0.033333" value="0"> s</label><button id="refresh-still">Refresh still</button></div>
-        <div id="status" class="status" role="status">Ready. Import audio to see a real vectorscope still.</div>
-        <div class="progress-track"><div id="progress-bar"></div></div>
+        <div class="time-controls"><input id="time-slider" type="range" min="0" max="0" step="1" value="0" aria-label="Preview timestamp"><div class="time-readout-group"><label>Time <input id="time-input" type="number" min="0" step="0.033333" value="0"> s</label><button id="refresh-still">Refresh still</button></div></div>
+        <div class="timeline-footer">
+          <div id="status" class="status" role="status">Ready. Import audio to see a real vectorscope still.</div>
+          <div class="progress-track"><div id="progress-bar"></div></div>
+        </div>
       </div>
     </section>
     <aside class="sidebar properties-panel">
       <div class="panel-heading"><div><span class="eyebrow">INSPECTOR</span><h2>Properties</h2></div></div>
       <section class="property-group"><h3>Composition</h3>
         <label>Project name<input id="title" type="text" maxlength="200"></label>
-        <label>Background style<select id="background-type"><option value="solid">Solid</option><option value="gradient">Gradient</option><option value="image">Image</option></select></label>
-        <label>Background color<input id="background" type="color"></label>
+        <div class="number-grid">
+          <label>Background style<select id="background-type"><option value="solid">Solid</option><option value="gradient">Gradient</option><option value="image">Image</option></select></label>
+          <label>Background color<input id="background" type="color"></label>
+        </div>
         <label id="background-color2-row">Gradient end<input id="background-color2" type="color"></label>
         <div id="background-image-row"><button id="background-choose-image" type="button">Choose background image</button><span id="background-image-name" class="asset-name"></span><label>Image fit<select id="background-fit"><option value="cover">Crop to fill</option><option value="contain">Fit inside</option></select></label></div>
       </section>
       <section class="property-group"><h3>Selected layer</h3>
         <label>Name<input id="layer-name" type="text" maxlength="80"></label>
         <div class="number-grid"><label>X<input id="layer-x" type="number" min="0" max="1280"></label><label>Y<input id="layer-y" type="number" min="0" max="720"></label><label>Width<input id="layer-w" type="number" min="80" max="1280"></label><label>Height<input id="layer-h" type="number" min="80" max="720"></label></div>
-        <label>Opacity %<input id="layer-opacity" type="number" min="0" max="100" step="1"></label>
-        <label id="layer-color-row">Color<input id="layer-color" type="color"></label>
+        <div class="number-grid">
+          <label>Opacity %<input id="layer-opacity" type="number" min="0" max="100" step="1"></label>
+          <label id="layer-color-row">Color<input id="layer-color" type="color"></label>
+        </div>
         <div class="checks"><label><input id="layer-visible" type="checkbox"> Visible</label><label><input id="layer-locked" type="checkbox"> Locked</label></div>
       </section>
       <section class="property-group" id="image-options" hidden><h3>Artwork / logo</h3>
         <button id="image-choose" type="button">Choose local image</button><span id="image-name" class="asset-name"></span>
         <label>Image fit<select id="image-fit"><option value="cover">Crop to fill</option><option value="contain">Fit inside</option></select></label>
-        <label>Rotation (degrees)<input id="image-rotation" type="number" min="-180" max="180" step="1"></label>
-        <label>Shadow blur<input id="image-shadow" type="number" min="0" max="40" step="1"></label>
+        <div class="number-grid">
+          <label>Rotation (°)<input id="image-rotation" type="number" min="-180" max="180" step="1"></label>
+          <label>Shadow blur<input id="image-shadow" type="number" min="0" max="40" step="1"></label>
+        </div>
       </section>
       <section class="property-group" id="text-options" hidden><h3>Text</h3>
         <label>Content<input id="text-content" type="text" maxlength="500"></label>
-        <label>Font<select id="text-font"><option>Arial</option><option>Georgia</option><option>Verdana</option><option>Times New Roman</option><option>Courier New</option></select></label>
-        <div class="number-grid"><label>Size<input id="text-size" type="number" min="12" max="160"></label><label>Weight<select id="text-weight"><option value="normal">Regular</option><option value="bold">Bold</option></select></label></div>
-        <label>Alignment<select id="text-align"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
-        <label>Rotation (degrees)<input id="text-rotation" type="number" min="-180" max="180" step="1"></label>
+        <div class="font-picker-field">
+          <label for="text-font">Font</label>
+          <div class="font-select-wrap" id="text-font-wrap">
+            <select id="text-font"></select>
+            <div id="text-font-menu" class="font-preview-menu" role="listbox" aria-label="Font family preview" hidden></div>
+          </div>
+        </div>
+        <div class="number-grid">
+          <label>Size<input id="text-size" type="number" min="12" max="160"></label>
+          <label>Weight<select id="text-weight"><option value="normal">Regular</option><option value="bold">Bold</option></select></label>
+        </div>
+        <div class="number-grid">
+          <label>Alignment<select id="text-align"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
+          <label>Rotation (°)<input id="text-rotation" type="number" min="-180" max="180" step="1"></label>
+        </div>
         <label>Shadow blur<input id="text-shadow" type="number" min="0" max="40" step="1"></label>
       </section>
       <section class="property-group" id="vectorscope-options" hidden><h3>Vectorscope</h3>
-        <label>Projection<select id="vectorscope-mode"><option value="lissajous">Lissajous</option><option value="polar-unipolar">Polar unipolar</option><option value="polar-bipolar">Polar bipolar</option><option value="linear-unipolar">Linear unipolar</option><option value="linear-bipolar">Linear bipolar</option></select></label>
-        <label>Zoom (dB)<input id="vectorscope-zoom" type="number" min="-12" max="24" step="1"></label>
-        <div class="checks"><label><input id="vectorscope-multiband" type="checkbox"> Three-band traces</label></div>
-        <div class="checks"><label><input id="vectorscope-grid" type="checkbox"> Show projection grid</label></div>
-        <div class="checks"><label><input id="vectorscope-correlation" type="checkbox"> Show correlation</label></div>
-        <label>Low band color<input id="vectorscope-low-color" type="color"></label>
-        <label>Mid band color<input id="vectorscope-mid-color" type="color"></label>
-        <label>High band color<input id="vectorscope-high-color" type="color"></label>
+        <div class="number-grid">
+          <label>Projection<select id="vectorscope-mode"><option value="lissajous">Lissajous</option><option value="polar-unipolar">Polar unipolar</option><option value="polar-bipolar">Polar bipolar</option><option value="linear-unipolar">Linear unipolar</option><option value="linear-bipolar">Linear bipolar</option></select></label>
+          <label>Zoom (dB)<input id="vectorscope-zoom" type="number" min="-12" max="24" step="1"></label>
+        </div>
+        <div class="checks-stack">
+          <div class="checks"><label><input id="vectorscope-multiband" type="checkbox"> Three-band traces</label></div>
+          <div class="checks"><label><input id="vectorscope-grid" type="checkbox"> Show projection grid</label></div>
+          <div class="checks"><label><input id="vectorscope-correlation" type="checkbox"> Show correlation</label></div>
+        </div>
+        <div class="color-grid-3">
+          <label>Low band<input id="vectorscope-low-color" type="color"></label>
+          <label>Mid band<input id="vectorscope-mid-color" type="color"></label>
+          <label>High band<input id="vectorscope-high-color" type="color"></label>
+        </div>
         <p class="hint">Correlation uses the latest native 1024-point stereo window. A silent or one-sided signal reads 0.</p>
       </section>
       <section class="property-group" id="spectrum-options" hidden><h3>Spectrum analyzer</h3>
-        <label>FFT size<select id="spectrum-fft"><option>1024</option><option>2048</option><option>4096</option><option>8192</option></select></label>
-        <label>Frequency scale<select id="spectrum-scale"><option value="log">Logarithmic</option><option value="mel">Mel</option><option value="linear">Linear</option></select></label>
+        <div class="number-grid">
+          <label>FFT size<select id="spectrum-fft"><option>1024</option><option>2048</option><option>4096</option><option>8192</option></select></label>
+          <label>Scale<select id="spectrum-scale"><option value="log">Logarithmic</option><option value="mel">Mel</option><option value="linear">Linear</option></select></label>
+        </div>
         <label>Smoothing<input id="spectrum-smoothing" type="number" min="0" max="0.99" step="0.01"></label>
         <div class="number-grid"><label>Min Hz<input id="spectrum-min-hz" type="number" min="10" max="20000"></label><label>Max Hz<input id="spectrum-max-hz" type="number" min="20" max="24000"></label></div>
         <div class="number-grid"><label>Min dB<input id="spectrum-min-db" type="number" min="-120" max="-20"></label><label>Max dB<input id="spectrum-max-db" type="number" min="-60" max="12"></label></div>
         <div class="checks"><label><input id="spectrum-side" type="checkbox"> Show side channel</label></div>
       </section>
       <section class="property-group" id="oscilloscope-options" hidden><h3>Oscilloscope</h3>
-        <div class="checks"><label><input id="oscilloscope-pitch-lock" type="checkbox"> Follow pitch trigger</label></div>
-        <div class="checks"><label><input id="oscilloscope-underfill" type="checkbox"> Fill under wave</label></div>
-        <div class="checks"><label><input id="oscilloscope-grid" type="checkbox"> Show grid</label></div>
+        <div class="checks-stack">
+          <div class="checks"><label><input id="oscilloscope-pitch-lock" type="checkbox"> Follow pitch trigger</label></div>
+          <div class="checks"><label><input id="oscilloscope-underfill" type="checkbox"> Fill under wave</label></div>
+          <div class="checks"><label><input id="oscilloscope-grid" type="checkbox"> Show grid</label></div>
+        </div>
         <p class="hint">The wave follows the left audio channel, as in Prism.</p>
       </section>
       <section class="property-group" id="spectrogram-options" hidden><h3>Spectrogram</h3>
-        <label>FFT size<select id="spectrogram-fft"><option>1024</option><option>2048</option><option>4096</option><option>8192</option></select></label>
-        <label>Frequency scale<select id="spectrogram-scale"><option value="log">Logarithmic</option><option value="mel">Mel</option><option value="linear">Linear</option></select></label>
+        <div class="number-grid">
+          <label>FFT size<select id="spectrogram-fft"><option>1024</option><option>2048</option><option>4096</option><option>8192</option></select></label>
+          <label>Scale<select id="spectrogram-scale"><option value="log">Logarithmic</option><option value="mel">Mel</option><option value="linear">Linear</option></select></label>
+        </div>
         <label>Orientation<select id="spectrogram-orientation"><option value="horizontal">Time left to right</option><option value="vertical">Time top to bottom</option></select></label>
-        <label>Color scheme<select id="spectrogram-color"><option value="heat">Heat</option><option value="mono">Trace color</option></select></label>
-        <label>Clarity<select id="spectrogram-clarity"><option value="classic">Classic</option><option value="focused">Focused</option><option value="sharp">Sharp</option><option value="sharper">Sharper</option></select></label>
+        <div class="number-grid">
+          <label>Color scheme<select id="spectrogram-color"><option value="heat">Heat</option><option value="mono">Trace color</option></select></label>
+          <label>Clarity<select id="spectrogram-clarity"><option value="classic">Classic</option><option value="focused">Focused</option><option value="sharp">Sharp</option><option value="sharper">Sharper</option></select></label>
+        </div>
         <div class="number-grid"><label>Min Hz<input id="spectrogram-min-hz" type="number" min="10" max="20000"></label><label>Max Hz<input id="spectrogram-max-hz" type="number" min="20" max="24000"></label></div>
         <div class="number-grid"><label>Min dB<input id="spectrogram-min-db" type="number" min="-120" max="-20"></label><label>Max dB<input id="spectrogram-max-db" type="number" min="-60" max="12"></label></div>
         <div class="number-grid"><label>Scroll speed<input id="spectrogram-speed" type="number" min="0.5" max="8" step="0.5"></label><label>Contrast<input id="spectrogram-contrast" type="number" min="0.5" max="2" step="0.1"></label></div>
@@ -111,36 +175,50 @@
         <div class="checks"><label><input id="spectrogram-grid" type="checkbox"> Show frequency grid</label></div>
       </section>
       <section class="property-group" id="waveform-options" hidden><h3>Waveform history</h3>
-        <label>Channel display<select id="waveform-mode"><option value="mono">Mono (left channel)</option><option value="stereo">Stereo (left and right)</option></select></label>
-        <label>Scroll speed<input id="waveform-speed" type="number" min="1" max="8" step="1"></label>
+        <div class="number-grid">
+          <label>Channel display<select id="waveform-mode"><option value="mono">Mono (L)</option><option value="stereo">Stereo (L/R)</option></select></label>
+          <label>Scroll speed<input id="waveform-speed" type="number" min="1" max="8" step="1"></label>
+        </div>
         <div class="checks"><label><input id="waveform-multiband" type="checkbox"> Multiband colors</label></div>
-        <label>Low band color<input id="waveform-low-color" type="color"></label>
-        <label>Mid band color<input id="waveform-mid-color" type="color"></label>
-        <label>High band color<input id="waveform-high-color" type="color"></label>
+        <div class="color-grid-3">
+          <label>Low band<input id="waveform-low-color" type="color"></label>
+          <label>Mid band<input id="waveform-mid-color" type="color"></label>
+          <label>High band<input id="waveform-high-color" type="color"></label>
+        </div>
       </section>
       <section class="property-group" id="vu-options" hidden><h3>VU meter</h3>
-        <label>Display<select id="vu-mode"><option value="bar">Bar</option><option value="needle">Needle</option></select></label>
+        <div class="number-grid">
+          <label>Display<select id="vu-mode"><option value="bar">Bar</option><option value="needle">Needle</option></select></label>
+          <label>0 VU ref (dBFS)<input id="vu-reference" type="number" min="-30" max="0" step="1"></label>
+        </div>
         <label id="vu-orientation-row">Bar orientation<select id="vu-orientation"><option value="horizontal">Horizontal</option><option value="vertical">Vertical</option></select></label>
         <label id="vu-needle-channels-row">Needle channels<select id="vu-needle-channels"><option value="stereo">Stereo</option><option value="combined">Combined</option></select></label>
-        <label>0 VU reference (dBFS)<input id="vu-reference" type="number" min="-30" max="0" step="1"></label>
-        <label>Peak marker<input id="vu-peak-color" type="color"></label>
-        <label>Left needle<input id="vu-left-color" type="color"></label>
-        <label>Right needle<input id="vu-right-color" type="color"></label>
-        <label>Combined needle<input id="vu-combined-color" type="color"></label>
+        <div class="number-grid">
+          <label>Peak marker<input id="vu-peak-color" type="color"></label>
+          <label>Combined needle<input id="vu-combined-color" type="color"></label>
+          <label>Left needle<input id="vu-left-color" type="color"></label>
+          <label>Right needle<input id="vu-right-color" type="color"></label>
+        </div>
         <p class="hint">Bar and needle share Prism's 300 ms VU integration and the selected 0 VU reference.</p>
       </section>
       <section class="property-group" id="loudness-options" hidden><h3>Loudness and peak</h3>
-        <label>Loudness readout<select id="loudness-readout"><option value="momentary">Momentary (400 ms)</option><option value="shortTerm">Short-term (3 s)</option><option value="integrated">Integrated (gated)</option></select></label>
-        <label>Target line color<input id="loudness-target-color" type="color"></label>
+        <div class="number-grid">
+          <label>Loudness readout<select id="loudness-readout"><option value="momentary">Momentary (400 ms)</option><option value="shortTerm">Short-term (3 s)</option><option value="integrated">Integrated (gated)</option></select></label>
+          <label>Target color<input id="loudness-target-color" type="color"></label>
+        </div>
         <p class="hint">Prism measures K-weighted loudness and oversampled true peak. The readout changes per layer; the audio analysis is shared.</p>
       </section>
       <section class="property-group" id="waterfall-options" hidden><h3>Waterfall spectrum</h3>
-        <label>FFT size<select id="waterfall-fft"><option>1024</option><option>2048</option><option>4096</option><option>8192</option><option>16384</option></select></label>
-        <label>Frequency scale<select id="waterfall-scale"><option value="log">Logarithmic</option><option value="mel">Mel</option><option value="linear">Linear</option></select></label>
+        <div class="number-grid">
+          <label>FFT size<select id="waterfall-fft"><option>1024</option><option>2048</option><option>4096</option><option>8192</option><option>16384</option></select></label>
+          <label>Scale<select id="waterfall-scale"><option value="log">Logarithmic</option><option value="mel">Mel</option><option value="linear">Linear</option></select></label>
+        </div>
         <label>Frequency range<select id="waterfall-range"><option value="extended">Extended (10 Hz–24 kHz)</option><option value="audible">Audible (20 Hz–20 kHz)</option></select></label>
-        <div class="number-grid"><label>History seconds<input id="waterfall-history" type="number" min="1" max="30" step="1"></label><label>Smoothing<input id="waterfall-smoothing" type="number" min="0" max="0.99" step="0.01"></label></div>
-        <label>Ridge density<select id="waterfall-density"><option value="sparse">Sparse</option><option value="balanced">Balanced</option><option value="dense">Dense</option></select></label>
-        <label>Color mode<select id="waterfall-color-mode"><option value="theme">Trace color</option><option value="heat">Heat</option></select></label>
+        <div class="number-grid"><label>History (s)<input id="waterfall-history" type="number" min="1" max="30" step="1"></label><label>Smoothing<input id="waterfall-smoothing" type="number" min="0" max="0.99" step="0.01"></label></div>
+        <div class="number-grid">
+          <label>Ridge density<select id="waterfall-density"><option value="sparse">Sparse</option><option value="balanced">Balanced</option><option value="dense">Dense</option></select></label>
+          <label>Color mode<select id="waterfall-color-mode"><option value="theme">Trace color</option><option value="heat">Heat</option></select></label>
+        </div>
         <label>Tilt dB/octave<input id="waterfall-tilt" type="number" min="-2" max="8" step="0.1"></label>
         <div class="checks"><label><input id="waterfall-grid" type="checkbox"> Show guides</label></div>
         <p class="hint">Prism's native spectrum history advances with audio time. Older ridges recede behind the current spectrum.</p>
