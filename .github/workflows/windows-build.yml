@@ -19,6 +19,7 @@ jobs:
           if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
             choco install ffmpeg --yes --no-progress
             "C:\ProgramData\chocolatey\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+            $env:PATH += ";C:\ProgramData\chocolatey\bin"
           }
           ffmpeg -version
           ffprobe -version
@@ -36,9 +37,10 @@ jobs:
         shell: pwsh
         run: |
           node phase2/build.cjs
-          node --test phase5/test/templates.test.cjs phase2/test/project.test.cjs phase4/test/assets.test.cjs phase2/test/fonts.test.cjs phase1/test/pcm-reader.test.cjs phase3/test/vectorscope-correlation.test.cjs
+          node --test phase6/test/space.test.cjs phase5/test/templates.test.cjs phase2/test/project.test.cjs phase4/test/assets.test.cjs phase2/test/fonts.test.cjs phase1/test/pcm-reader.test.cjs phase3/test/vectorscope-correlation.test.cjs
       - name: Portable package and MP4 smoke
         shell: pwsh
         run: |
           node phase6/package-windows.cjs --output artifacts/phase6/ci-package
           node phase6/test/package-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-smoke
+          node phase6/test/run-repeat.cjs --package artifacts/phase6/ci-package artifacts/phase6/ci-editor-smoke

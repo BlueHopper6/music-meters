@@ -5,6 +5,7 @@ const { randomUUID } = require('node:crypto')
 const { performance } = require('node:perf_hooks')
 const fs = require('node:fs')
 const { jobPath } = require('../runtime.cjs')
+const { assertOutputSpace } = require('../space.cjs')
 const { PcmReader } = require('../../phase1/pcm-reader.cjs')
 const { normalizeProject } = require('../project.cjs')
 const { assertInstalledFonts } = require('../fonts.cjs')
@@ -54,7 +55,8 @@ function startEncoder(temp, input, totalFrames) {
     '-pix_fmt', 'yuv420p', '-r', String(FPS), '-frames:v', String(totalFrames),
     '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', temp,
   ]
-  const child = spawn('ffmpeg', args, { stdio: ['pipe', 'ignore', 'pipe'], shell: false })
+  const child = spawn(process.env.PHASE6_TEST_ENCODER || 'ffmpeg', args,
+    { stdio: ['pipe', 'ignore', 'pipe'], shell: false })
   let errors = ''
   child.stderr.on('data', chunk => { errors = (errors + chunk.toString()).slice(-8192) })
   child.stdin.on('error', () => {})
@@ -95,6 +97,7 @@ function checkCancel(frame) {
 async function exportVideo() {
   const project = validate()
   const metadata = probeAudio(project.audioPath)
+  assertOutputSpace(config.output, metadata.duration)
   const totalFrames = metadata.totalFrames
   const vectorscopeMultiband = project.layers.some(layer => layer.type === 'vectorscope' && layer.visible && layer.multiband)
   const [width, height] = config.preset === '1080p' ? [1920, 1080] : [1280, 720]

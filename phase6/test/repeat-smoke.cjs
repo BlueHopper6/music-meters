@@ -18,8 +18,10 @@ module.exports = async function repeatSmoke(win) {
   }
   await evaluate(`(() => { const input = document.getElementById('time-input'); input.value = '1';
     input.dispatchEvent(new Event('change', { bubbles: true })); return true })()`)
-  await waitFor('document.querySelector("#status").textContent.includes("Real Prism") && document.querySelector("#preview-busy").hidden && document.getElementById("time-input").value === "1.00"', 'real preview')
+  await waitFor('document.querySelector("#status").textContent.includes("Real Prism meter still at 1.00 s") && document.querySelector("#preview-busy").hidden', 'real preview')
   await delay(500)
+  const still = await evaluate('document.getElementById("stage").toDataURL("image/png").split(",")[1]')
+  fs.writeFileSync(path.join(dir, 'editor-still.png'), Buffer.from(still, 'base64'))
   fs.writeFileSync(path.join(dir, 'editor.png'), (await win.capturePage()).toPNG())
   await evaluate('document.getElementById("render-mp4").click()')
   await waitFor('document.querySelector("#status").textContent.includes("MP4 ready:")', 'first export')

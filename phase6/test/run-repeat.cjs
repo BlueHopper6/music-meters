@@ -4,18 +4,22 @@ const { spawn, spawnSync } = require('node:child_process')
 const { build } = require('../../phase2/build.cjs')
 
 async function main() {
-  if (process.argv.length !== 3) throw new Error('Usage: node phase6/test/run-repeat.cjs <new-output-dir>')
-  const dir = path.resolve(process.argv[2])
+  const packaged = process.argv[2] === '--package'
+  if ((!packaged && process.argv.length !== 3) || (packaged && process.argv.length !== 5)) {
+    throw new Error('Usage: node phase6/test/run-repeat.cjs [--package <package-dir>] <new-output-dir>')
+  }
+  const dir = path.resolve(process.argv[packaged ? 4 : 2])
   if (fs.existsSync(dir)) throw new Error(`Output already exists: ${dir}`)
   fs.mkdirSync(dir, { recursive: true })
   const input = path.join(dir, 'repeat-song.wav')
   const fixture = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
     'sine=frequency=660:duration=2', '-ac', '2', '-ar', '48000', input], { encoding: 'utf8' })
   if (fixture.status !== 0) throw new Error(fixture.stderr)
-  const electron = await build()
+  const electron = packaged ? path.join(path.resolve(process.argv[3]), 'electron.exe') : await build()
+  const electronArgs = packaged ? [] : [path.resolve(__dirname, '..', '..', 'phase2', 'editor-app')]
   const logPath = path.join(dir, 'editor.log')
   const log = fs.openSync(logPath, 'w')
-  const child = spawn(electron, [path.resolve(__dirname, '..', '..', 'phase2', 'editor-app')], {
+  const child = spawn(electron, electronArgs, {
     env: { ...process.env, PHASE2_HEADLESS: '1', PHASE6_REPEAT_SMOKE: '1',
       PHASE6_REPEAT_DIR: dir, PHASE2_TEST_INPUT: input,
       PHASE2_TEST_OUTPUT_PATH: path.join(dir, 'first-export.mp4'),
