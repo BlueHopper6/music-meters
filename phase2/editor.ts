@@ -135,12 +135,45 @@ function layerIconSvg(type: Project['layers'][number]['type']): SVGSVGElement {
   }
   return svg
 }
+function layerFlagIconSvg(kind: 'hidden' | 'locked'): SVGSVGElement {
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('viewBox', '0 0 16 16')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '1.4')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  svg.setAttribute('aria-hidden', 'true')
+  if (kind === 'hidden') {
+    const eye = document.createElementNS(ns, 'path')
+    eye.setAttribute('d', 'M1.6 8C3 5.1 5.3 3.6 8 3.6C10.7 3.6 13 5.1 14.4 8C13 10.9 10.7 12.4 8 12.4C5.3 12.4 3 10.9 1.6 8Z')
+    const pupil = document.createElementNS(ns, 'circle')
+    pupil.setAttribute('cx', '8')
+    pupil.setAttribute('cy', '8')
+    pupil.setAttribute('r', '1.9')
+    const slash = document.createElementNS(ns, 'path')
+    slash.setAttribute('d', 'M2.4 13.6L13.6 2.4')
+    svg.append(eye, pupil, slash)
+  } else {
+    const body = document.createElementNS(ns, 'rect')
+    body.setAttribute('x', '3.3')
+    body.setAttribute('y', '7.2')
+    body.setAttribute('width', '9.4')
+    body.setAttribute('height', '6.6')
+    body.setAttribute('rx', '1.5')
+    const shackle = document.createElementNS(ns, 'path')
+    shackle.setAttribute('d', 'M5.3 7.2V5C5.3 3.5 6.5 2.3 8 2.3C9.5 2.3 10.7 3.5 10.7 5V7.2')
+    svg.append(body, shackle)
+  }
+  return svg
+}
 function refreshLayers() {
   const list = $('layers')
   list.replaceChildren()
   for (const layer of [...project.layers].reverse()) {
     const button = document.createElement('button')
-    button.className = `layer-item${layer.id === selectedId ? ' selected' : ''}`
+    button.className = `layer-item${layer.id === selectedId ? ' selected' : ''}${layer.visible ? '' : ' is-hidden'}`
     button.type = 'button'
     button.dataset.id = layer.id
     const icon = document.createElement('span')
@@ -151,7 +184,22 @@ function refreshLayers() {
     name.textContent = layer.name
     const flags = document.createElement('span')
     flags.className = 'layer-flags'
-    flags.textContent = `${layer.visible ? '' : '◌'}${layer.locked ? ' 🔒' : ''}`
+    if (!layer.visible) {
+      const hiddenBadge = document.createElement('span')
+      hiddenBadge.className = 'layer-flag layer-flag-hidden'
+      hiddenBadge.title = 'Hidden layer'
+      hiddenBadge.setAttribute('aria-label', 'Hidden')
+      hiddenBadge.append(layerFlagIconSvg('hidden'))
+      flags.append(hiddenBadge)
+    }
+    if (layer.locked) {
+      const lockedBadge = document.createElement('span')
+      lockedBadge.className = 'layer-flag layer-flag-locked'
+      lockedBadge.title = 'Locked layer'
+      lockedBadge.setAttribute('aria-label', 'Locked')
+      lockedBadge.append(layerFlagIconSvg('locked'))
+      flags.append(lockedBadge)
+    }
     button.append(icon, name, flags)
     button.addEventListener('click', () => { selectedId = layer.id; refreshInspector(); refreshLayers(); updateSelection() })
     list.append(button)

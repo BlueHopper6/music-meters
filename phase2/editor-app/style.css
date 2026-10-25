@@ -472,10 +472,34 @@ button.danger-button:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+.layer-item.is-hidden .layer-name {
+  color: var(--text-secondary);
+}
+
 .layer-item .layer-flags {
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
   color: var(--text-muted);
-  font-family: var(--font-mono);
+}
+
+.layer-item.selected .layer-flags {
+  color: var(--text-secondary);
+}
+
+.layer-item .layer-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+
+.layer-item .layer-flag svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
 .layer-actions-dock {
