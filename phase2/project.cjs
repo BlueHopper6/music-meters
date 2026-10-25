@@ -6,7 +6,7 @@ const VECTORSCOPE_MODES = ['lissajous', 'polar-unipolar', 'polar-bipolar', 'line
 
 function vectorscopeLayer(id = 'scope-1', name = 'Vectorscope') {
   return { id, type: 'vectorscope', name, x: 390, y: 170, w: 500, h: 500,
-    visible: true, locked: false, opacity: 1, color: '#55f4e8',
+    visible: true, locked: false, aspectLocked: false, rotation: 0, opacity: 1, color: '#55f4e8',
     mode: 'lissajous', zoomDb: 0, multiband: false, showGrid: true,
     showCorrelation: false, bandLowColor: '#ff4444',
     bandMidColor: '#44dd44', bandHighColor: '#4488ff' }
@@ -14,7 +14,7 @@ function vectorscopeLayer(id = 'scope-1', name = 'Vectorscope') {
 
 function spectrumLayer(id = 'spectrum-1', name = 'Spectrum analyzer') {
   return { id, type: 'spectrum', name, x: 190, y: 190, w: 900, h: 420,
-    visible: true, locked: false, opacity: 1, color: '#f8bb66',
+    visible: true, locked: false, aspectLocked: false, rotation: 0, opacity: 1, color: '#f8bb66',
     fftSize: 2048, smoothing: 0.9, scaleType: 'log',
     minFrequency: 20, maxFrequency: 20000,
     minDecibels: -90, maxDecibels: -10, showSideLine: false }
@@ -22,13 +22,13 @@ function spectrumLayer(id = 'spectrum-1', name = 'Spectrum analyzer') {
 
 function oscilloscopeLayer(id = 'oscilloscope-1', name = 'Oscilloscope') {
   return { id, type: 'oscilloscope', name, x: 190, y: 190, w: 900, h: 420,
-    visible: true, locked: false, opacity: 1, color: '#6ce8f4',
+    visible: true, locked: false, aspectLocked: false, rotation: 0, opacity: 1, color: '#6ce8f4',
     pitchLock: true, underfillEnabled: false, showGrid: true }
 }
 
 function spectrogramLayer(id = 'spectrogram-1', name = 'Spectrogram') {
   return { id, type: 'spectrogram', name, x: 190, y: 190, w: 900, h: 420,
-    visible: true, locked: false, opacity: 1, color: '#62dafa',
+    visible: true, locked: false, aspectLocked: false, rotation: 0, opacity: 1, color: '#62dafa',
     fftSize: 2048, scaleMode: 'log', orientation: 'horizontal',
     minFrequency: 20, maxFrequency: 20000, minDecibels: -90, maxDecibels: -12,
     scrollSpeed: 2, contrast: 1, tiltDbPerOctave: 4, clarityMode: 'sharper',
@@ -37,14 +37,14 @@ function spectrogramLayer(id = 'spectrogram-1', name = 'Spectrogram') {
 
 function waveformLayer(id = 'waveform-1', name = 'Waveform history') {
   return { id, type: 'waveform', name, x: 190, y: 190, w: 900, h: 420,
-    visible: true, locked: false, opacity: 1, color: '#38bdf8',
+    visible: true, locked: false, aspectLocked: false, rotation: 0, opacity: 1, color: '#38bdf8',
     mode: 'stereo', scrollSpeed: 1, multiband: false,
     bandLowColor: '#ff4444', bandMidColor: '#44dd44', bandHighColor: '#4488ff' }
 }
 
 function vuLayer(id = 'vu-1', name = 'VU meter') {
   return { id, type: 'vu', name, x: 190, y: 190, w: 900, h: 420,
-    visible: true, locked: false, opacity: 1, color: '#38bdf8',
+    visible: true, locked: false, aspectLocked: false, rotation: 0, opacity: 1, color: '#38bdf8',
     mode: 'bar', orientation: 'horizontal', needleChannels: 'stereo',
     referenceDb: -14, peakColor: '#ff7f00',
     needleLeftColor: '#c7dfff', needleRightColor: '#ff477e',
@@ -53,13 +53,13 @@ function vuLayer(id = 'vu-1', name = 'VU meter') {
 
 function loudnessLayer(id = 'loudness-1', name = 'Loudness and peak') {
   return { id, type: 'loudness', name, x: 190, y: 190, w: 900, h: 420,
-    visible: true, locked: false, opacity: 1, color: '#38bdf8',
+    visible: true, locked: false, aspectLocked: false, rotation: 0, opacity: 1, color: '#38bdf8',
     readout: 'shortTerm', targetColor: '#426a87' }
 }
 
 function waterfallLayer(id = 'waterfall-1', name = 'Waterfall spectrum') {
   return { id, type: 'waterfall', name, x: 190, y: 190, w: 900, h: 420,
-    visible: true, locked: false, opacity: 1, color: '#38e5ef',
+    visible: true, locked: false, aspectLocked: false, rotation: 0, opacity: 1, color: '#38e5ef',
     fftSize: 2048, scaleMode: 'log', frequencyRangeMode: 'extended',
     historySeconds: 5, density: 'balanced', colorMode: 'theme',
     smoothing: 0.9, tiltDbPerOctave: 2, showGrid: true }
@@ -67,15 +67,15 @@ function waterfallLayer(id = 'waterfall-1', name = 'Waterfall spectrum') {
 
 function imageLayer(id = 'image-1', name = 'Artwork') {
   return { id, type: 'image', name, x: 72, y: 170, w: 400, h: 400,
-    visible: true, locked: false, opacity: 1, color: '#ffffff',
-    imagePath: '', fit: 'cover', rotation: 0, shadow: 0 }
+    visible: true, locked: false, aspectLocked: false, rotation: 0, opacity: 1, color: '#ffffff',
+    imagePath: '', fit: 'cover', shadow: 0 }
 }
 
 function textLayer(id = 'text-1', name = 'Song title', text = 'Untitled track') {
   return { id, type: 'text', name, x: 72, y: 64, w: 1120, h: 82,
-    visible: true, locked: false, opacity: 1, color: '#e7f9ff', text,
+    visible: true, locked: false, aspectLocked: false, rotation: 0, opacity: 1, color: '#e7f9ff', text,
     fontFamily: 'Arial', fontSize: 52, fontWeight: 'bold', align: 'left',
-    rotation: 0, shadow: 0 }
+    shadow: 0 }
 }
 
 function compositionProject() {
@@ -157,23 +157,27 @@ function normalizeProject(raw) {
     if (typeof layer.visible !== 'boolean' || typeof layer.locked !== 'boolean') {
       throw new Error(`Layer ${index + 1} has invalid visibility or lock state`)
     }
+    if (layer.aspectLocked !== undefined && typeof layer.aspectLocked !== 'boolean') {
+      throw new Error(`Layer ${index + 1} has an invalid aspect lock`)
+    }
+    const rotation = number(layer.rotation === undefined ? 0 : layer.rotation, 'Rotation', -180, 180)
     const normalized = { id: layer.id, type: layer.type, name: layer.name,
       x, y, w, h, visible: layer.visible, locked: layer.locked,
+      aspectLocked: layer.aspectLocked === true, rotation,
       opacity: number(layer.opacity, 'Opacity', 0, 1), color: color(layer.color, 'Meter color') }
     if (layer.type === 'image' || layer.type === 'text') {
-      const rotation = number(layer.rotation, 'Rotation', -180, 180)
       const shadow = number(layer.shadow, 'Shadow', 0, 40)
       if (layer.type === 'image') {
         if (!['cover', 'contain'].includes(layer.fit)) throw new Error('Invalid image fit')
         return { ...normalized, imagePath: localImagePath(layer.imagePath, 'Artwork'),
-          fit: layer.fit, rotation, shadow }
+          fit: layer.fit, shadow }
       }
       if (typeof layer.text !== 'string' || layer.text.length > 500 || /[\u0000-\u001f]/.test(layer.text)) throw new Error('Invalid text layer content')
       if (!validFontFamily(layer.fontFamily)) throw new Error('Unsupported font')
       if (!['normal', 'bold'].includes(layer.fontWeight) || !['left', 'center', 'right'].includes(layer.align)) throw new Error('Invalid typography')
       return { ...normalized, text: layer.text, fontFamily: layer.fontFamily,
         fontSize: number(layer.fontSize, 'Font size', 12, 160), fontWeight: layer.fontWeight,
-        align: layer.align, rotation, shadow }
+        align: layer.align, shadow }
     }
     if (layer.type === 'vectorscope') {
       const defaults = vectorscopeLayer()

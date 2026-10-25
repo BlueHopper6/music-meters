@@ -23,7 +23,7 @@ async function build() {
   prerequisites()
   const esbuild = require(path.join(PRISM, 'node_modules', 'esbuild'))
   const targets = new Set(['Vectorscope.ts', 'SpectrumAnalyzer.ts', 'Oscilloscope.ts', 'Spectrogram.ts', 'Waveform.ts', 'VUMeter.ts', 'LUFSMeter.ts', 'Waterfall.ts'].map(name =>
-    path.join(PRISM, 'src', 'renderer', 'visualizers', name)))
+    fs.realpathSync(path.join(PRISM, 'src', 'renderer', 'visualizers', name))))
   const marker = '  private drawFrame = (): void => {'
   const outdir = path.join(ROOT, 'artifacts', 'phase2')
   fs.mkdirSync(outdir, { recursive: true })
@@ -34,7 +34,7 @@ async function build() {
     name: 'explicit-meter-frame',
     setup(bundle) {
       bundle.onLoad({ filter: /(?:Vectorscope|SpectrumAnalyzer|Oscilloscope|Spectrogram|Waveform|VUMeter|LUFSMeter|Waterfall)\.ts$/ }, args => {
-        if (!targets.has(path.resolve(args.path))) return null
+        if (!targets.has(fs.realpathSync(args.path))) return null
         let source = fs.readFileSync(args.path, 'utf8')
         const name = path.basename(args.path)
         const seamMarker = name === 'Waterfall.ts' ? '  private draw = (): void => {' : marker

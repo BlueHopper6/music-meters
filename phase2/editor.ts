@@ -2,6 +2,7 @@ import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type Vec
   type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer, type LoudnessLayer, type WaterfallLayer,
   type ImageLayer, type TextLayer, type Background } from './composition'
 import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject } from './project.cjs'
+import { move as moveOnStage, resize as resizeOnStage } from './stage-geometry.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number }
 type TemplateEntry = { id: string; name: string; builtIn: boolean }
@@ -90,7 +91,7 @@ function updateSelection() {
   selection.style.top = `${layer.y / 720 * 100}%`
   selection.style.width = `${layer.w / 1280 * 100}%`
   selection.style.height = `${layer.h / 720 * 100}%`
-  selection.style.transform = layer.type === 'image' || layer.type === 'text' ? `rotate(${layer.rotation}deg)` : ''
+  selection.style.transform = `rotate(${layer.rotation}deg)`
   selection.classList.toggle('locked', layer.locked)
   selection.querySelector('.selection-label')!.textContent = layer.name
 }
@@ -135,14 +136,84 @@ function layerIconSvg(type: Project['layers'][number]['type']): SVGSVGElement {
   }
   return svg
 }
+function layerFlagIconSvg(kind: 'visible' | 'hidden' | 'unlocked' | 'locked'): SVGSVGElement {
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('viewBox', '0 0 16 16')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '1.4')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  svg.setAttribute('aria-hidden', 'true')
+  if (kind === 'visible' || kind === 'hidden') {
+    const eye = document.createElementNS(ns, 'path')
+    eye.setAttribute('d', 'M1.6 8C3 5.1 5.3 3.6 8 3.6C10.7 3.6 13 5.1 14.4 8C13 10.9 10.7 12.4 8 12.4C5.3 12.4 3 10.9 1.6 8Z')
+    const pupil = document.createElementNS(ns, 'circle')
+    pupil.setAttribute('cx', '8')
+    pupil.setAttribute('cy', '8')
+    pupil.setAttribute('r', '1.9')
+    svg.append(eye, pupil)
+    if (kind === 'hidden') {
+      const slash = document.createElementNS(ns, 'path')
+      slash.setAttribute('d', 'M2.4 13.6L13.6 2.4')
+      svg.append(slash)
+    }
+  } else {
+    const body = document.createElementNS(ns, 'rect')
+    body.setAttribute('x', '3.3')
+    body.setAttribute('y', '7.2')
+    body.setAttribute('width', '9.4')
+    body.setAttribute('height', '6.6')
+    body.setAttribute('rx', '1.5')
+    const shackle = document.createElementNS(ns, 'path')
+    shackle.setAttribute('d', kind === 'locked'
+      ? 'M5.3 7.2V5C5.3 3.5 6.5 2.3 8 2.3C9.5 2.3 10.7 3.5 10.7 5V7.2'
+      : 'M5.3 7.2V4.8C5.3 3.3 6.5 2.1 8 2.1C9.2 2.1 10.2 2.8 10.6 3.9')
+    svg.append(body, shackle)
+  }
+  return svg
+}
+function layerGripSvg(): SVGSVGElement {
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('viewBox', '0 0 10 14')
+  svg.setAttribute('fill', 'currentColor')
+  svg.setAttribute('aria-hidden', 'true')
+  for (const [cx, cy] of [[3, 3], [7, 3], [3, 7], [7, 7], [3, 11], [7, 11]] as const) {
+    const dot = document.createElementNS(ns, 'circle')
+    dot.setAttribute('cx', String(cx))
+    dot.setAttribute('cy', String(cy))
+    dot.setAttribute('r', '1')
+    svg.append(dot)
+  }
+  return svg
+}
+let layerDrag: {
+  id: string; pointerId: number; startY: number; active: boolean
+  targetId: string | null; position: 'before' | 'after' | null
+} | null = null
+let suppressNextLayerClick = false
+function clearLayerDropClasses() {
+  $('layers').classList.remove('layers-dragging')
+  for (const el of Array.from($('layers').querySelectorAll('.layer-item'))) {
+    el.classList.remove('is-dragging', 'drop-before', 'drop-after')
+  }
+}
 function refreshLayers() {
   const list = $('layers')
   list.replaceChildren()
   for (const layer of [...project.layers].reverse()) {
-    const button = document.createElement('button')
-    button.className = `layer-item${layer.id === selectedId ? ' selected' : ''}`
-    button.type = 'button'
-    button.dataset.id = layer.id
+    const row = document.createElement('div')
+    row.className = `layer-item${layer.id === selectedId ? ' selected' : ''}${layer.visible ? '' : ' is-hidden'}`
+    row.dataset.id = layer.id
+    row.tabIndex = 0
+    row.setAttribute('role', 'button')
+    row.setAttribute('aria-pressed', String(layer.id === selectedId))
+    const grip = document.createElement('span')
+    grip.className = 'layer-grip'
+    grip.title = 'Drag to reorder layer'
+    grip.append(layerGripSvg())
     const icon = document.createElement('span')
     icon.className = 'layer-icon'
     icon.append(layerIconSvg(layer.type))
@@ -151,10 +222,45 @@ function refreshLayers() {
     name.textContent = layer.name
     const flags = document.createElement('span')
     flags.className = 'layer-flags'
-    flags.textContent = `${layer.visible ? '' : '◌'}${layer.locked ? ' 🔒' : ''}`
-    button.append(icon, name, flags)
-    button.addEventListener('click', () => { selectedId = layer.id; refreshInspector(); refreshLayers(); updateSelection() })
-    list.append(button)
+    const visBtn = document.createElement('button')
+    visBtn.type = 'button'
+    visBtn.className = `layer-flag layer-flag-visibility ${layer.visible ? 'layer-flag-visible' : 'layer-flag-hidden'}`
+    visBtn.title = layer.visible ? 'Hide layer' : 'Show layer'
+    visBtn.setAttribute('aria-label', layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`)
+    visBtn.setAttribute('aria-pressed', String(!layer.visible))
+    visBtn.append(layerFlagIconSvg(layer.visible ? 'visible' : 'hidden'))
+    visBtn.addEventListener('click', event => {
+      event.stopPropagation()
+      layer.visible = !layer.visible
+      repaint()
+      if ((layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'vu' || layer.type === 'loudness' || layer.type === 'waterfall' || (layer.type === 'vectorscope' && layer.multiband)) && layer.visible) schedulePreview()
+    })
+    const lockBtn = document.createElement('button')
+    lockBtn.type = 'button'
+    lockBtn.className = `layer-flag layer-flag-lock ${layer.locked ? 'layer-flag-locked' : 'layer-flag-unlocked'}`
+    lockBtn.title = layer.locked ? 'Unlock layer' : 'Lock layer'
+    lockBtn.setAttribute('aria-label', layer.locked ? `Unlock ${layer.name}` : `Lock ${layer.name}`)
+    lockBtn.setAttribute('aria-pressed', String(layer.locked))
+    lockBtn.append(layerFlagIconSvg(layer.locked ? 'locked' : 'unlocked'))
+    lockBtn.addEventListener('click', event => {
+      event.stopPropagation()
+      layer.locked = !layer.locked
+      repaint()
+    })
+    flags.append(visBtn, lockBtn)
+    row.append(grip, icon, name, flags)
+    const selectLayer = () => {
+      if (suppressNextLayerClick) { suppressNextLayerClick = false; return }
+      selectedId = layer.id; refreshInspector(); refreshLayers(); updateSelection()
+    }
+    row.addEventListener('click', selectLayer)
+    row.addEventListener('keydown', event => {
+      if (event.target === row && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault()
+        selectLayer()
+      }
+    })
+    list.append(row)
   }
   const hasLayer = !!selected()
   for (const id of ['duplicate-layer', 'delete-layer', 'layer-up', 'layer-down']) {
@@ -232,6 +338,7 @@ function refreshInspector() {
   const layer = selected()
   $('image-options').hidden = layer?.type !== 'image'
   $('text-options').hidden = layer?.type !== 'text'
+  $('layer-rotation-row').hidden = layer?.type === 'image' || layer?.type === 'text'
   $('layer-color-row').hidden = layer?.type === 'image'
   if (layer?.type === 'image') {
     ;($<HTMLSelectElement>('image-fit')).value = layer.fit
@@ -250,14 +357,17 @@ function refreshInspector() {
   }
   for (const [id, value] of [
     ['layer-name', layer?.name ?? ''], ['layer-x', layer?.x ?? ''], ['layer-y', layer?.y ?? ''],
-    ['layer-w', layer?.w ?? ''], ['layer-h', layer?.h ?? ''],
+    ['layer-w', layer?.w ?? ''], ['layer-h', layer?.h ?? ''], ['layer-rotation', layer?.rotation ?? ''],
     ['layer-opacity', layer ? Math.round(layer.opacity * 100) : ''],
     ['layer-color', layer?.color ?? '#55f4e8'],
   ] as const) {
     const input = $<HTMLInputElement>(id)
     input.value = String(value)
-    input.disabled = !layer || (layer.locked && ['layer-x', 'layer-y', 'layer-w', 'layer-h'].includes(id))
+    input.disabled = !layer || (layer.locked && ['layer-x', 'layer-y', 'layer-w', 'layer-h', 'layer-rotation'].includes(id))
   }
+  const aspectLock = $<HTMLInputElement>('layer-aspect-lock')
+  aspectLock.checked = !!layer?.aspectLocked
+  aspectLock.disabled = !layer || layer.locked
   for (const [id, value] of [['layer-visible', layer?.visible], ['layer-locked', layer?.locked]] as const) {
     const input = $<HTMLInputElement>(id)
     input.checked = !!value
@@ -498,15 +608,34 @@ for (const [id, property] of [['layer-x', 'x'], ['layer-y', 'y'], ['layer-w', 'w
     if (!layer || layer.locked) return
     const value = Math.round(Number((event.target as HTMLInputElement).value))
     if (!Number.isFinite(value)) return refreshInspector()
+    const original = { ...layer }
     if (property === 'x') layer.x = Math.max(0, Math.min(1280 - layer.w, value))
     if (property === 'y') layer.y = Math.max(0, Math.min(720 - layer.h, value))
     const minimum = layer.type === 'text' ? 20 : layer.type === 'image' ? 40 : 80
-    if (property === 'w') layer.w = Math.max(minimum, Math.min(1280 - layer.x, value))
-    if (property === 'h') layer.h = Math.max(minimum, Math.min(720 - layer.y, value))
+    if (layer.aspectLocked && (property === 'w' || property === 'h')) {
+      const proportional = resizeOnStage(original, property === 'w' ? value - original.w : 0,
+        property === 'h' ? value - original.h : 0, minimum, true)
+      layer.w = proportional.w; layer.h = proportional.h
+    } else {
+      if (property === 'w') layer.w = Math.max(minimum, Math.min(1280 - layer.x, value))
+      if (property === 'h') layer.h = Math.max(minimum, Math.min(720 - layer.y, value))
+    }
     repaint()
     if ((layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'waterfall') && (property === 'w' || property === 'h')) schedulePreview()
   })
 }
+$<HTMLInputElement>('layer-aspect-lock').addEventListener('change', event => {
+  const layer = selected(); if (!layer || layer.locked) return
+  layer.aspectLocked = (event.target as HTMLInputElement).checked
+  repaint()
+})
+$<HTMLInputElement>('layer-rotation').addEventListener('change', event => {
+  const layer = selected(); if (!layer || layer.locked) return
+  const value = Number((event.target as HTMLInputElement).value)
+  if (!Number.isFinite(value) || value < -180 || value > 180) return refreshInspector()
+  layer.rotation = value
+  repaint()
+})
 $<HTMLInputElement>('title').addEventListener('input', event => { project.title = (event.target as HTMLInputElement).value; render() })
 $<HTMLInputElement>('background').addEventListener('input', event => {
   if (project.version === 1) project.background = (event.target as HTMLInputElement).value
@@ -771,6 +900,15 @@ for (const [id, property] of [['layer-visible', 'visible'], ['layer-locked', 'lo
 }
 
 let drag: { mode: 'move' | 'resize'; x: number; y: number; startX: number; startY: number; startW: number; startH: number } | null = null
+function showSnapGuides(x: number | null, y: number | null) {
+  const vertical = $<HTMLDivElement>('snap-guide-x')
+  const horizontal = $<HTMLDivElement>('snap-guide-y')
+  vertical.hidden = x === null
+  horizontal.hidden = y === null
+  if (x !== null) vertical.style.left = `${x / 1280 * 100}%`
+  if (y !== null) horizontal.style.top = `${y / 720 * 100}%`
+}
+$<HTMLInputElement>('snap-enabled').addEventListener('change', () => showSnapGuides(null, null))
 selection.addEventListener('pointerdown', event => {
   const layer = selected()
   if (!layer || layer.locked) return
@@ -785,26 +923,34 @@ selection.addEventListener('pointermove', event => {
   const rect = stageWrap.getBoundingClientRect()
   const dx = Math.round((event.clientX - drag.x) * 1280 / rect.width)
   const dy = Math.round((event.clientY - drag.y) * 720 / rect.height)
+  const snapping = $<HTMLInputElement>('snap-enabled').checked
+  const grid = Number($<HTMLSelectElement>('snap-grid').value)
+  const start = { x: drag.startX, y: drag.startY, w: drag.startW, h: drag.startH }
   if (drag.mode === 'move') {
-    layer.x = Math.max(0, Math.min(1280 - layer.w, drag.startX + dx))
-    layer.y = Math.max(0, Math.min(720 - layer.h, drag.startY + dy))
+    const moved = moveOnStage(start, dx, dy, snapping, grid)
+    layer.x = moved.x; layer.y = moved.y
+    showSnapGuides(moved.guideX, moved.guideY)
   } else {
     const minimum = layer.type === 'text' ? 20 : layer.type === 'image' ? 40 : 80
-    layer.w = Math.max(minimum, Math.min(1280 - layer.x, drag.startW + dx))
-    layer.h = Math.max(minimum, Math.min(720 - layer.y, drag.startH + dy))
+    const angle = -layer.rotation * Math.PI / 180
+    const localDx = dx * Math.cos(angle) - dy * Math.sin(angle)
+    const localDy = dx * Math.sin(angle) + dy * Math.cos(angle)
+    const resized = resizeOnStage(start, localDx, localDy, minimum, layer.aspectLocked, snapping, grid)
+    layer.w = resized.w; layer.h = resized.h
+    showSnapGuides(resized.guideX, resized.guideY)
   }
   render(); refreshInspector()
 })
 function finishDrag() {
   if (drag?.mode === 'resize' && (selected()?.type === 'spectrogram' || selected()?.type === 'waveform' || selected()?.type === 'waterfall')) schedulePreview()
   drag = null
+  showSnapGuides(null, null)
 }
 selection.addEventListener('pointerup', finishDrag)
 selection.addEventListener('lostpointercapture', finishDrag)
 
-$('add-layer').addEventListener('click', () => {
+function addLayer(type = ($<HTMLSelectElement>('add-type')).value) {
   if (project.layers.length >= 32) return setStatus('The project supports at most 32 layers.')
-  const type = ($<HTMLSelectElement>('add-type')).value
   if (project.version === 1 && (type === 'image' || type === 'text') && project.layers.length >= 31) {
     return setStatus('Remove a layer before adding graphics to this older project.')
   }
@@ -840,6 +986,84 @@ $('add-layer').addEventListener('click', () => {
     project.layers.push(vectorscopeLayer(id, `Vectorscope ${project.layers.length + 1}`) as VectorscopeLayer)
   }
   selectedId = id; repaint()
+}
+function closeAddLayerMenu(restoreFocus = false) {
+  const menu = $('add-layer-menu')
+  if (menu.hidden) return
+  menu.hidden = true
+  $('add-layer').setAttribute('aria-expanded', 'false')
+  if (restoreFocus) $('add-layer').focus()
+}
+function openAddLayerMenu() {
+  const select = $<HTMLSelectElement>('add-type')
+  const menu = $('add-layer-menu')
+  menu.replaceChildren()
+  for (const group of Array.from(select.querySelectorAll('optgroup'))) {
+    const heading = document.createElement('div')
+    heading.className = 'add-layer-group-label'
+    heading.setAttribute('role', 'presentation')
+    heading.textContent = group.label
+    menu.append(heading)
+    for (const option of Array.from(group.querySelectorAll('option'))) {
+      const type = option.value as Project['layers'][number]['type']
+      const item = document.createElement('button')
+      item.type = 'button'
+      item.className = 'add-layer-option'
+      item.setAttribute('role', 'menuitem')
+      item.dataset.addType = type
+      item.tabIndex = -1
+      const icon = document.createElement('span')
+      icon.className = 'layer-icon'
+      icon.append(layerIconSvg(type))
+      const label = document.createElement('span')
+      label.className = 'add-layer-option-label'
+      label.textContent = option.textContent || type
+      item.append(icon, label)
+      item.addEventListener('click', () => {
+        select.value = type
+        closeAddLayerMenu(true)
+        addLayer(type)
+      })
+      menu.append(item)
+    }
+  }
+  menu.hidden = false
+  $('add-layer').setAttribute('aria-expanded', 'true')
+  const first = menu.querySelector('.add-layer-option') as HTMLButtonElement | null
+  first?.focus({ preventScroll: true })
+}
+$('add-layer').addEventListener('click', event => {
+  if (!event.isTrusted) {
+    addLayer()
+    return
+  }
+  if ($('add-layer-menu').hidden) openAddLayerMenu()
+  else closeAddLayerMenu(true)
+})
+$('add-layer').addEventListener('keydown', event => {
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    openAddLayerMenu()
+  } else if (event.key === 'Escape') {
+    closeAddLayerMenu(true)
+  }
+})
+$('add-layer-menu').addEventListener('keydown', event => {
+  const items = Array.from($('add-layer-menu').querySelectorAll('.add-layer-option')) as HTMLButtonElement[]
+  const index = items.indexOf(document.activeElement as HTMLButtonElement)
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeAddLayerMenu(true)
+  } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+    event.preventDefault()
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+      : Math.max(0, Math.min(items.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))
+    items[next]?.focus({ preventScroll: true })
+  }
+})
+$('add-layer-wrap').addEventListener('focusout', event => {
+  const next = (event as FocusEvent).relatedTarget
+  if (next && !$('add-layer-wrap').contains(next as Node)) closeAddLayerMenu()
 })
 $('duplicate-layer').addEventListener('click', () => {
   const layer = selected(); if (!layer) return
@@ -864,6 +1088,80 @@ function moveLayer(direction: number) {
 }
 $('layer-up').addEventListener('click', () => moveLayer(1))
 $('layer-down').addEventListener('click', () => moveLayer(-1))
+const layersList = $('layers')
+layersList.addEventListener('pointerdown', event => {
+  if (event.button !== 0 || (event.target as HTMLElement).closest('.layer-flag')) return
+  const row = (event.target as HTMLElement).closest('.layer-item') as HTMLElement | null
+  if (!row || !row.dataset.id) return
+  layerDrag = { id: row.dataset.id, pointerId: event.pointerId, startY: event.clientY, active: false, targetId: null, position: null }
+  try { layersList.setPointerCapture(event.pointerId) } catch {}
+  event.preventDefault()
+})
+layersList.addEventListener('pointermove', event => {
+  if (!layerDrag) return
+  if (!layerDrag.active) {
+    if (Math.abs(event.clientY - layerDrag.startY) < 4 || project.layers.length < 2) return
+    layerDrag.active = true
+    selectedId = layerDrag.id
+    refreshInspector(); updateSelection()
+    layersList.classList.add('layers-dragging')
+    for (const el of Array.from(layersList.querySelectorAll('.layer-item')) as HTMLElement[]) {
+      el.classList.toggle('selected', el.dataset.id === selectedId)
+      el.classList.toggle('is-dragging', el.dataset.id === layerDrag.id)
+    }
+  }
+  const rows = Array.from(layersList.querySelectorAll('.layer-item')) as HTMLElement[]
+  let bestRow: HTMLElement | null = null
+  let bestDist = Infinity
+  for (const row of rows) {
+    row.classList.remove('drop-before', 'drop-after')
+    const rect = row.getBoundingClientRect()
+    const midY = rect.top + rect.height / 2
+    const dist = Math.abs(event.clientY - midY)
+    if (dist < bestDist) {
+      bestDist = dist
+      bestRow = row
+    }
+  }
+  if (!bestRow || !bestRow.dataset.id || bestRow.dataset.id === layerDrag.id) {
+    layerDrag.targetId = null
+    layerDrag.position = null
+    return
+  }
+  const rect = bestRow.getBoundingClientRect()
+  const position: 'before' | 'after' = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+  layerDrag.targetId = bestRow.dataset.id
+  layerDrag.position = position
+  bestRow.classList.add(position === 'before' ? 'drop-before' : 'drop-after')
+})
+function finishLayerDrag() {
+  if (!layerDrag) return
+  const current = layerDrag
+  layerDrag = null
+  clearLayerDropClasses()
+  if (!current.active) {
+    if (selectedId !== current.id) {
+      selectedId = current.id
+      refreshInspector(); refreshLayers(); updateSelection()
+    }
+    return
+  }
+  suppressNextLayerClick = true
+  setTimeout(() => { suppressNextLayerClick = false }, 0)
+  if (!current.targetId || current.targetId === current.id || !current.position) return
+  const visual = [...project.layers].reverse()
+  const fromIndex = visual.findIndex(item => item.id === current.id)
+  if (fromIndex < 0) return
+  const [dragged] = visual.splice(fromIndex, 1)
+  const targetIndex = visual.findIndex(item => item.id === current.targetId)
+  if (targetIndex < 0) return
+  visual.splice(current.position === 'before' ? targetIndex : targetIndex + 1, 0, dragged)
+  project.layers = visual.reverse()
+  selectedId = current.id
+  repaint()
+}
+layersList.addEventListener('pointerup', finishLayerDrag)
+layersList.addEventListener('lostpointercapture', finishLayerDrag)
 
 $<HTMLInputElement>('time-slider').addEventListener('input', event => {
   frameIndex = Number((event.target as HTMLInputElement).value)
@@ -876,6 +1174,33 @@ $<HTMLInputElement>('time-input').addEventListener('change', event => {
   updateTimeControls(); schedulePreview()
 })
 $('refresh-still').addEventListener('click', refreshPreview)
+function setStageFullscreen(active: boolean) {
+  document.body.classList.toggle('stage-fullscreen', active)
+  $('exit-fullscreen-preview').hidden = !active
+  $('fullscreen-preview').setAttribute('aria-pressed', String(active))
+  if (active) {
+    document.documentElement.requestFullscreen?.().catch(() => {})
+    $('exit-fullscreen-preview').focus()
+  } else {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
+    $('fullscreen-preview').focus()
+  }
+}
+$('fullscreen-preview').addEventListener('click', () => {
+  setStageFullscreen(!document.body.classList.contains('stage-fullscreen'))
+})
+$('exit-fullscreen-preview').addEventListener('click', () => setStageFullscreen(false))
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && document.body.classList.contains('stage-fullscreen')) {
+    setStageFullscreen(false)
+  }
+})
+window.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && document.body.classList.contains('stage-fullscreen')) {
+    event.preventDefault()
+    setStageFullscreen(false)
+  }
+})
 
 $('import-audio').addEventListener('click', async () => {
   try {
@@ -1068,6 +1393,9 @@ document.addEventListener('pointerdown', event => {
   const menu = $('text-font-menu')
   if (!menu.hidden && !$('text-font-wrap').contains(event.target as Node)) {
     menu.hidden = true
+  }
+  if (!$('add-layer-menu').hidden && !$('add-layer-wrap').contains(event.target as Node)) {
+    closeAddLayerMenu()
   }
 })
 async function start() {

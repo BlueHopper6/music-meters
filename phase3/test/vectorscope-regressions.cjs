@@ -5,7 +5,7 @@ const { spawn } = require('node:child_process')
 const { build } = require('../../phase2/build.cjs')
 
 const ROOT = path.resolve(__dirname, '..', '..')
-const DEST = path.join(ROOT, 'artifacts', 'phase3', 'vectorscope')
+const DEST = process.argv[2] ? path.resolve(process.argv[2]) : path.join(ROOT, 'artifacts', 'phase3', 'vectorscope')
 const cases = [
   ['spectrum', 'PHASE3_SPECTRUM_SMOKE', 'spectrum-10s-48k.wav'],
   ['oscilloscope', 'PHASE3_OSCILLOSCOPE_SMOKE', 'spectrum-10s-48k.wav'],

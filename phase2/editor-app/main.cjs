@@ -3,6 +3,7 @@ const { join, resolve, dirname, extname, relative, isAbsolute } = require('node:
 const { spawn } = require('node:child_process')
 const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
+const { jobPath } = require('../runtime.cjs')
 const { defaultProject, normalizeProject } = require('../project.cjs')
 const { installedFonts, assertInstalledFonts } = require('../fonts.cjs')
 const { readImage, imagePaths, assetData, saveArtwork, resolveArtwork } = require('../assets.cjs')
@@ -262,14 +263,14 @@ ipcMain.handle('render-mp4', async (_event, raw, preset) => {
   output = resolve(output)
   if (extname(output).toLowerCase() !== '.mp4') throw new Error('Output must end in .mp4')
   if (fs.existsSync(output)) throw new Error(`Output already exists: ${output}`)
-  const controlDir = join(ROOT, 'artifacts', 'phase2', 'jobs')
+  const controlDir = jobPath('jobs')
   fs.mkdirSync(controlDir, { recursive: true })
   const cancelFile = join(controlDir, `${randomUUID()}.cancel`)
   const child = spawn(process.execPath, [join(ROOT, 'phase2', 'export-app')], {
     env: { ...process.env, PHASE2_JOB: JSON.stringify({ project: value, output, cancelFile, preset }) },
     stdio: ['ignore', 'pipe', 'pipe'], shell: false, detached: true, windowsHide: true,
   })
-  const job = { child, cancelFile, output, finished: false, errors: '' }
+  const job = { child, cancelFile, output, finishedEvent: null, errors: '' }
   exportJob = job
   let lineBuffer = ''
   child.stdout.on('data', chunk => {
@@ -281,8 +282,8 @@ ipcMain.handle('render-mp4', async (_event, raw, preset) => {
       if (!line) continue
       try {
         const value = JSON.parse(line)
-        if (value.event === 'finished') job.finished = true
-        sendExport(value)
+        if (value.event === 'finished') job.finishedEvent = value
+        else sendExport(value)
       } catch { job.errors = (job.errors + line).slice(-4096) }
     }
   })
@@ -291,7 +292,8 @@ ipcMain.handle('render-mp4', async (_event, raw, preset) => {
   child.once('close', code => {
     fs.rmSync(cancelFile, { force: true })
     exportJob = null
-    if (!job.finished) sendExport({ event: code === 2 ? 'cancelled' : 'failed',
+    if (code === 0 && job.finishedEvent) sendExport(job.finishedEvent)
+    else sendExport({ event: code === 2 ? 'cancelled' : 'failed',
       message: job.errors.trim() || `Exporter exited ${code}`, output })
     if (closingAfterExport) app.quit()
   })
@@ -311,14 +313,16 @@ app.whenReady().then(() => {
   }
   win = new BrowserWindow({
     width: 1480, height: 900, minWidth: 1000, minHeight: 700,
+    icon: join(__dirname, 'assets', 'brand', 'music-meters.ico'),
     show: process.env.PHASE2_HEADLESS !== '1',
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true,
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   })
   return win.loadFile(join(__dirname, 'index.html')).then(async () => {
-    if (process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
+    if (process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
-        if (process.env.PHASE5_RELINK_SMOKE === '1') await require('../../phase5/test/relink-smoke.cjs')(win)
+        if (process.env.PHASE6_REPEAT_SMOKE === '1') await require('../../phase6/test/repeat-smoke.cjs')(win)
+        else if (process.env.PHASE5_RELINK_SMOKE === '1') await require('../../phase5/test/relink-smoke.cjs')(win)
         else if (process.env.PHASE5_WORKFLOW_SMOKE === '1') await require('../../phase5/test/editor-smoke.cjs')(win)
         else if (process.env.PHASE4_LEGACY_SMOKE === '1') await require('../../phase4/test/legacy-smoke.cjs')(win)
         else if (process.env.PHASE4_COMPOSITION_SMOKE === '1') await require('../../phase4/test/editor-smoke.cjs')(win)

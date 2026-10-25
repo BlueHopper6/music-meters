@@ -6,6 +6,7 @@ const { build } = require('./build.cjs')
 const { normalizeProject } = require('./project.cjs')
 const { assertInstalledFonts } = require('./fonts.cjs')
 const { resolveArtwork } = require('./assets.cjs')
+const { jobPath } = require('./runtime.cjs')
 
 function parse(args) {
   const options = {}
@@ -43,7 +44,7 @@ async function main() {
   assertInstalledFonts(project)
   if (!audioPath || !fs.statSync(audioPath).isFile()) throw new Error('Project audio is unavailable')
   const electron = await build()
-  const controlDir = path.join(__dirname, '..', 'artifacts', 'phase2', 'jobs')
+  const controlDir = jobPath('jobs')
   fs.mkdirSync(controlDir, { recursive: true })
   const cancelFile = path.join(controlDir, `${randomUUID()}.cancel`)
   const child = spawn(electron, [path.join(__dirname, 'export-app')], {

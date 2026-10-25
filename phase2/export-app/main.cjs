@@ -4,6 +4,8 @@ const { join, resolve, dirname, extname } = require('node:path')
 const { randomUUID } = require('node:crypto')
 const { performance } = require('node:perf_hooks')
 const fs = require('node:fs')
+const { jobPath } = require('../runtime.cjs')
+const { assertOutputSpace } = require('../space.cjs')
 const { PcmReader } = require('../../phase1/pcm-reader.cjs')
 const { normalizeProject } = require('../project.cjs')
 const { assertInstalledFonts } = require('../fonts.cjs')
@@ -53,7 +55,8 @@ function startEncoder(temp, input, totalFrames) {
     '-pix_fmt', 'yuv420p', '-r', String(FPS), '-frames:v', String(totalFrames),
     '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', temp,
   ]
-  const child = spawn('ffmpeg', args, { stdio: ['pipe', 'ignore', 'pipe'], shell: false })
+  const child = spawn(process.env.PHASE6_TEST_ENCODER || 'ffmpeg', args,
+    { stdio: ['pipe', 'ignore', 'pipe'], shell: false })
   let errors = ''
   child.stderr.on('data', chunk => { errors = (errors + chunk.toString()).slice(-8192) })
   child.stdin.on('error', () => {})
@@ -69,7 +72,10 @@ function startEncoder(temp, input, totalFrames) {
 
 async function writeFrame(encoder, png) {
   if (encoder.child.stdin.destroyed) throw new Error('Encoder input closed unexpectedly')
-  if (encoder.child.stdin.write(png)) return
+  let accepted
+  try { accepted = encoder.child.stdin.write(png) }
+  catch (error) { throw new Error(`Encoder input closed unexpectedly: ${error.message}`) }
+  if (accepted) return
   await new Promise((resolveDrain, reject) => {
     const cleanup = () => {
       encoder.child.stdin.off('drain', onDrain)
@@ -77,7 +83,7 @@ async function writeFrame(encoder, png) {
       encoder.child.off('close', onClose)
     }
     const onDrain = () => { cleanup(); resolveDrain() }
-    const onError = error => { cleanup(); reject(error) }
+    const onError = error => { cleanup(); reject(new Error(`Encoder input closed unexpectedly: ${error.message}`)) }
     const onClose = code => { cleanup(); reject(new Error(`Encoder exited while waiting for frame data (${code})`)) }
     encoder.child.stdin.once('drain', onDrain)
     encoder.child.stdin.once('error', onError)
@@ -94,18 +100,19 @@ function checkCancel(frame) {
 async function exportVideo() {
   const project = validate()
   const metadata = probeAudio(project.audioPath)
+  assertOutputSpace(config.output, metadata.duration)
   const totalFrames = metadata.totalFrames
   const vectorscopeMultiband = project.layers.some(layer => layer.type === 'vectorscope' && layer.visible && layer.multiband)
   const [width, height] = config.preset === '1080p' ? [1920, 1080] : [1280, 720]
   const temp = `${config.output}.partial-${randomUUID()}.mp4`
   fs.mkdirSync(dirname(config.output), { recursive: true })
-  const spectrumDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
-  const oscilloscopeDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
-  const spectrogramDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
-  const waveformDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
-  const vuDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
-  const loudnessDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
-  const waterfallDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
+  const spectrumDirectory = jobPath('analysis', randomUUID())
+  const oscilloscopeDirectory = jobPath('analysis', randomUUID())
+  const spectrogramDirectory = jobPath('analysis', randomUUID())
+  const waveformDirectory = jobPath('analysis', randomUUID())
+  const vuDirectory = jobPath('analysis', randomUUID())
+  const loudnessDirectory = jobPath('analysis', randomUUID())
+  const waterfallDirectory = jobPath('analysis', randomUUID())
   let spectrumCache
   let oscilloscopeCache
   let spectrogramCache
@@ -155,6 +162,12 @@ async function exportVideo() {
     win = new BrowserWindow({ show: false, width, height,
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
         backgroundThrottling: false } })
+    win.webContents.on('console-message', details => {
+      if (details.level === 'error') console.error(`Export renderer: ${details.message}`)
+    })
+    win.webContents.on('render-process-gone', (_event, details) => {
+      console.error(`Export renderer stopped: ${details.reason}`)
+    })
     await win.loadFile(join(__dirname, 'index.html'))
     const ready = await win.webContents.executeJavaScript('typeof window.phase2Export?.initialize')
     if (ready !== 'function') throw new Error('Offline composition failed to initialize')

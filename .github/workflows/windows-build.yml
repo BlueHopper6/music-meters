@@ -1,0 +1,48 @@
+name: Windows build and synthetic export
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    # Pinned Prism uses node-gyp 10, which cannot detect Visual Studio 2026.
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Prepare FFmpeg
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+            choco install ffmpeg --yes --no-progress
+            "C:\ProgramData\chocolatey\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+            $env:PATH += ";C:\ProgramData\chocolatey\bin"
+          }
+          ffmpeg -version
+          ffprobe -version
+      - name: Prepare pinned Prism and Electron
+        shell: pwsh
+        run: |
+          git clone https://github.com/Boof2015/prism.git upstream/prism
+          git -C upstream/prism checkout 49721802252b115d169e353c98b27408daa5e2b7
+          Push-Location upstream/prism
+          npm ci --ignore-scripts --no-audit --no-fund
+          node node_modules/electron/install.js
+          npm run build:native
+          Pop-Location
+      - name: Build and unit tests
+        shell: pwsh
+        run: |
+          python phase1/make-fixtures.py
+          node phase2/build.cjs
+          node --test phase6/test/space.test.cjs phase5/test/templates.test.cjs phase2/test/project.test.cjs phase2/test/stage-geometry.test.cjs phase4/test/assets.test.cjs phase2/test/fonts.test.cjs phase1/test/pcm-reader.test.cjs phase3/test/vectorscope-correlation.test.cjs
+      - name: Portable package and MP4 smoke
+        shell: pwsh
+        run: |
+          node phase6/package-windows.cjs --output artifacts/phase6/ci-package
+          node phase6/test/package-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-smoke
+          node phase6/test/run-repeat.cjs --package artifacts/phase6/ci-package artifacts/phase6/ci-editor-smoke
