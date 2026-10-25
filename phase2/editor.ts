@@ -4,7 +4,7 @@ import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type Vec
 import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject } from './project.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number }
-type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null }
+type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null; fonts: string[] }
 type Desktop = {
   initial(): Promise<Initial>
   chooseAudio(): Promise<{ path: string; metadata: Metadata } | null>
@@ -155,12 +155,32 @@ function syncFontPreview() {
   const select = $<HTMLSelectElement>('text-font')
   const menu = $('text-font-menu')
   const formatFamily = (name: string) => `"${name.replace(/["\\]/g, '')}", sans-serif`
-  for (const option of Array.from(select.options)) {
-    const family = (option.value || option.textContent || '').trim()
-    if (family) option.style.fontFamily = formatFamily(family)
-  }
   const active = (select.value || '').trim()
   select.style.fontFamily = active ? formatFamily(active) : ''
+  select.title = active
+  for (const item of Array.from(menu.children) as HTMLElement[]) {
+    const selected = item.dataset.family === active
+    item.classList.toggle('selected', selected)
+    item.setAttribute('aria-selected', String(selected))
+  }
+}
+function setInstalledFonts(fonts: string[]) {
+  const select = $<HTMLSelectElement>('text-font')
+  select.replaceChildren(...fonts.map(family => {
+    const option = new Option(family, family)
+    option.style.fontFamily = `"${family.replace(/["\\]/g, '')}", sans-serif`
+    return option
+  }))
+  syncFontPreview()
+}
+function openFontPreview() {
+  const select = $<HTMLSelectElement>('text-font')
+  const menu = $('text-font-menu')
+  const inspector = document.querySelector('.properties-panel') as HTMLElement
+  const control = select.getBoundingClientRect()
+  const panel = inspector.getBoundingClientRect()
+  const menuHeight = Math.min(220, select.options.length * 36 + 10)
+  menu.classList.toggle('above', panel.bottom - control.bottom < menuHeight && control.top - panel.top > panel.bottom - control.bottom)
   menu.replaceChildren()
   for (const option of Array.from(select.options)) {
     const family = (option.value || option.textContent || '').trim()
@@ -168,18 +188,26 @@ function syncFontPreview() {
     const item = document.createElement('button')
     item.type = 'button'
     item.setAttribute('role', 'option')
-    item.setAttribute('aria-selected', String(family === active))
-    item.className = `font-preview-option${family === active ? ' selected' : ''}`
+    item.dataset.family = family
+    item.tabIndex = -1
+    item.className = 'font-preview-option'
     item.textContent = option.textContent || family
-    item.style.fontFamily = formatFamily(family)
+    item.style.fontFamily = option.style.fontFamily
     item.addEventListener('click', () => {
       select.value = family
-      syncFontPreview()
       menu.hidden = true
+      select.focus()
+      syncFontPreview()
       select.dispatchEvent(new Event('change', { bubbles: true }))
     })
     menu.append(item)
   }
+  syncFontPreview()
+  menu.hidden = false
+  const active = Array.from(menu.children).find(item => (item as HTMLElement).dataset.family === select.value) as HTMLElement | undefined
+  const focused = active || menu.firstElementChild as HTMLElement | null
+  focused?.focus({ preventScroll: true })
+  if (focused) menu.scrollTop += focused.getBoundingClientRect().top - menu.getBoundingClientRect().top - 4
 }
 function refreshInspector() {
   ;($<HTMLInputElement>('title')).value = project.title
@@ -799,6 +827,7 @@ $('open-project').addEventListener('click', async () => {
     const loaded = await window.desktop.openProject()
     if (!loaded) return
     project = normalizeProject(loaded.project) as Project
+    setInstalledFonts(loaded.fonts)
     metadata = loaded.metadata; projectPath = loaded.projectPath
     selectedId = project.layers.at(-1)?.id || null; frameIndex = 0
     analysis = emptyAnalysis()
@@ -861,19 +890,44 @@ window.desktop.onExport(event => {
 $<HTMLSelectElement>('text-font').addEventListener('mousedown', event => {
   if (selected()?.locked) return
   event.preventDefault()
-  syncFontPreview()
   const menu = $('text-font-menu')
-  menu.hidden = !menu.hidden
+  if (menu.hidden) openFontPreview()
+  else { menu.hidden = true; $<HTMLSelectElement>('text-font').focus() }
 })
 $<HTMLSelectElement>('text-font').addEventListener('keydown', event => {
   if (selected()?.locked) return
-  if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
+  if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault()
-    syncFontPreview()
-    $('text-font-menu').hidden = false
+    openFontPreview()
   } else if (event.key === 'Escape') {
     $('text-font-menu').hidden = true
   }
+})
+$('text-font-menu').addEventListener('keydown', event => {
+  const menu = $('text-font-menu')
+  const items = Array.from(menu.children) as HTMLButtonElement[]
+  const index = items.indexOf(document.activeElement as HTMLButtonElement)
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    menu.hidden = true
+    $<HTMLSelectElement>('text-font').focus()
+  } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+    event.preventDefault()
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+      : Math.max(0, Math.min(items.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))
+    const item = items[next]
+    item?.focus({ preventScroll: true })
+    if (item) {
+      const bounds = item.getBoundingClientRect()
+      const viewport = menu.getBoundingClientRect()
+      if (bounds.top < viewport.top + 4) menu.scrollTop -= viewport.top + 4 - bounds.top
+      else if (bounds.bottom > viewport.bottom - 4) menu.scrollTop += bounds.bottom - viewport.bottom + 4
+    }
+  }
+})
+$('text-font-wrap').addEventListener('focusout', event => {
+  const next = (event as FocusEvent).relatedTarget
+  if (next && !$('text-font-wrap').contains(next as Node)) $('text-font-menu').hidden = true
 })
 document.addEventListener('pointerdown', event => {
   const menu = $('text-font-menu')
@@ -884,6 +938,7 @@ document.addEventListener('pointerdown', event => {
 async function start() {
   const initial = await window.desktop.initial()
   project = normalizeProject(initial.project) as Project
+  setInstalledFonts(initial.fonts)
   metadata = initial.metadata; projectPath = initial.projectPath
   selectedId = project.layers.at(-1)?.id || null
   refreshInspector(); refreshLayers(); refreshAudio(); await syncAssets()

@@ -4,6 +4,7 @@ const { spawn } = require('node:child_process')
 const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
 const { defaultProject, normalizeProject } = require('../project.cjs')
+const { installedFonts, assertInstalledFonts } = require('../fonts.cjs')
 const { readImage, imagePaths, assetData, saveArtwork, resolveArtwork } = require('../assets.cjs')
 const { probeAudio, analyzeFrame } = require('../audio.cjs')
 const { previewSpectra } = require('../../phase3/spectrum.cjs')
@@ -50,6 +51,7 @@ function sendExport(value) {
 
 function validateActiveProject(raw) {
   const normalized = normalizeProject(raw)
+  assertInstalledFonts(normalized)
   if (normalized.audioPath !== activeAudio && normalized.audioPath !== project.audioPath) {
     throw new Error('Project audio does not match the imported file')
   }
@@ -59,7 +61,7 @@ function validateActiveProject(raw) {
   return normalized
 }
 
-ipcMain.handle('initial', () => ({ project, metadata, projectPath }))
+ipcMain.handle('initial', () => ({ project, metadata, projectPath, fonts: installedFonts() }))
 ipcMain.handle('choose-image', async () => {
   let selected = process.env.PHASE4_TEST_IMAGE_PATH || ''
   if (!selected) {
@@ -162,6 +164,7 @@ ipcMain.handle('open-project', async () => {
   }
   const candidate = ref ? resolve(dirname(target), ref) : ''
   const value = normalizeProject(resolveArtwork({ ...stored, audioPath: candidate }, target))
+  assertInstalledFonts(value)
   allowedImages.clear()
   for (const input of imagePaths(value)) allowedImages.add(input)
   let nextMetadata = null
@@ -176,7 +179,7 @@ ipcMain.handle('open-project', async () => {
   metadata = nextMetadata
   activeAudio = nextAudio
   projectPath = target
-  return { project, metadata, projectPath }
+  return { project, metadata, projectPath, fonts: installedFonts() }
 })
 ipcMain.handle('render-mp4', async (_event, raw, preset) => {
   if (exportJob) throw new Error('An export is already running')

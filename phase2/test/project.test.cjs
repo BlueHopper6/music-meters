@@ -11,7 +11,7 @@ test('version 2 composition keeps ordered graphics and meter layers with validat
   assert.deepEqual(normalizeProject(project).layers, project.layers)
   assert.equal(normalizeProject(project).background.type, 'gradient')
   assert.throws(() => normalizeProject({ ...project, layers: [{ ...artwork, imagePath: 'https://example.com/cover.png' }] }), /local PNG/)
-  assert.throws(() => normalizeProject({ ...project, layers: [{ ...artist, fontFamily: 'url(evil)' }] }), /Unsupported font/)
+  assert.throws(() => normalizeProject({ ...project, layers: [{ ...artist, fontFamily: 'Bad" Font' }] }), /Unsupported font/)
   assert.throws(() => normalizeProject({ ...project, layers: [{ ...artwork, rotation: 181 }] }), /Rotation/)
 })
 

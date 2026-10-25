@@ -754,7 +754,7 @@ button.danger-button:hover:not(:disabled) {
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  min-width: 170px;
+  min-width: 0;
   max-height: 220px;
   overflow-y: auto;
   z-index: 30;
@@ -768,18 +768,25 @@ button.danger-button:hover:not(:disabled) {
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.7);
 }
 
+.font-preview-menu.above {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
 .font-preview-option {
+  flex: 0 0 auto;
   width: 100%;
+  min-height: 34px;
   text-align: left;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 3px;
-  padding: 6px 8px;
+  padding: 7px 9px;
   font-size: 13px;
+  line-height: 1.4;
   color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .font-preview-option:hover:not(:disabled) {

@@ -6,6 +6,7 @@ const { performance } = require('node:perf_hooks')
 const fs = require('node:fs')
 const { PcmReader } = require('../../phase1/pcm-reader.cjs')
 const { normalizeProject } = require('../project.cjs')
+const { assertInstalledFonts } = require('../fonts.cjs')
 const { assetData } = require('../assets.cjs')
 const { probeAudio } = require('../audio.cjs')
 const { precomputeSpectra } = require('../../phase3/spectrum.cjs')
@@ -32,6 +33,7 @@ const FPS = 30
 
 function validate() {
   const project = normalizeProject(config.project)
+  assertInstalledFonts(project)
   if (!project.audioPath || !fs.statSync(project.audioPath).isFile()) throw new Error('Project audio is unavailable')
   if (typeof config.output !== 'string' || extname(config.output).toLowerCase() !== '.mp4') {
     throw new Error('Output must be an MP4 path')
