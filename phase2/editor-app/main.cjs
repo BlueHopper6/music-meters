@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron')
 const { join, resolve, dirname, extname, relative, isAbsolute } = require('node:path')
 const { spawn } = require('node:child_process')
+const { Worker } = require('node:worker_threads')
 const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
 const { jobPath } = require('../runtime.cjs')
@@ -9,26 +10,9 @@ const { installedFonts, assertInstalledFonts } = require('../fonts.cjs')
 const { readImage, imagePaths, assetData, saveArtwork, resolveArtwork } = require('../assets.cjs')
 const { listTemplates, readTemplate, saveTemplate, duplicateTemplate, renameTemplate, applyTemplate, titleSuggestion } = require('../templates.cjs')
 const { readPreferences, writePreferences } = require('../preferences.cjs')
-const { probeAudio, analyzeFrame } = require('../audio.cjs')
-const { previewSpectra } = require('../../phase3/spectrum.cjs')
-const { previewOscilloscopes } = require('../../phase3/oscilloscope.cjs')
-const { previewSpectrograms } = require('../../phase3/spectrogram.cjs')
-const { previewWaveforms } = require('../../phase3/waveform.cjs')
-const { previewVus } = require('../../phase3/vu.cjs')
-const { previewLoudness } = require('../../phase3/loudness.cjs')
-const { previewWaterfalls } = require('../../phase3/waterfall.cjs')
+const { probeAudio } = require('../audio.cjs')
 
 const ROOT = resolve(__dirname, '..', '..')
-const PRISM = join(ROOT, 'upstream', 'prism')
-const nativeModule = require(join(PRISM, 'native', 'build', 'Release', 'visualizer_dsp.node'))
-const native = nativeModule.vectorscope
-const nativeSpectrum = nativeModule.spectrum
-const nativeOscilloscope = nativeModule.oscilloscope
-const nativeSpectrogram = nativeModule.spectrogram
-const nativeWaveform = nativeModule.waveform
-const nativeVu = nativeModule.vumeter
-const nativeLoudness = nativeModule.lufsmeter
-const nativeWaterfall = nativeModule.waterfall
 const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.flac'])
 if (process.env.PHASE5_TEST_USER_DATA) app.setPath('userData', process.env.PHASE5_TEST_USER_DATA)
 let win
@@ -38,10 +22,42 @@ let metadata = null
 let activeAudio = ''
 let projectPath = null
 let previewGeneration = 0
-let previewQueue = Promise.resolve()
+let previewAudioRevision = 0
+let previewWorker = null
+const pendingPreviews = new Map()
 let exportJob = null
 let closingAfterExport = false
 const userData = () => app.getPath('userData')
+
+function cancelPreview() {
+  const id = ++previewGeneration
+  for (const pending of pendingPreviews.values()) pending.resolve({ superseded: true })
+  pendingPreviews.clear()
+  previewWorker?.postMessage({ type: 'cancel', id })
+}
+
+function getPreviewWorker() {
+  if (previewWorker) return previewWorker
+  const worker = new Worker(join(ROOT, 'phase2', 'preview-worker.cjs'))
+  previewWorker = worker
+  worker.unref()
+  worker.on('message', ({ id, result, error }) => {
+    const pending = pendingPreviews.get(id)
+    if (!pending) return
+    pendingPreviews.delete(id)
+    if (error) pending.reject(new Error(error))
+    else pending.resolve(result)
+  })
+  const failed = error => {
+    if (previewWorker !== worker) return
+    previewWorker = null
+    for (const pending of pendingPreviews.values()) pending.reject(error)
+    pendingPreviews.clear()
+  }
+  worker.on('error', failed)
+  worker.on('exit', code => failed(new Error(`Preview worker exited ${code}`)))
+  return worker
+}
 
 function missingMedia(value) {
   const missing = []
@@ -107,7 +123,7 @@ ipcMain.handle('load-template', (_event, id, raw) => {
   assertInstalledFonts(next)
   for (const input of imagePaths(next)) allowedImages.add(input)
   project = next
-  previewGeneration++
+  cancelPreview()
   writePreferences(userData(), { lastTemplateId: id })
   return { project: next, missingMedia: missingMedia(next) }
 })
@@ -143,7 +159,8 @@ ipcMain.handle('choose-audio', async () => {
   const chosen = audioInfo(selected)
   activeAudio = chosen.path
   metadata = chosen.metadata
-  previewGeneration++
+  previewAudioRevision++
+  cancelPreview()
   project.audioPath = activeAudio
   return chosen
 })
@@ -153,28 +170,17 @@ ipcMain.handle('preview-at', async (_event, frame, raw) => {
     throw new Error('Preview frame is outside the song')
   }
   const value = validateActiveProject(raw)
-  const generation = ++previewGeneration
-  const input = activeAudio
-  const info = metadata
-  const current = () => generation === previewGeneration
-  const job = previewQueue.catch(() => {}).then(async () => {
-    const multiband = value.layers.some(layer => layer.type === 'vectorscope' && layer.visible && layer.multiband)
-    const vectorscope = await analyzeFrame(input, info, frame, native, current, multiband)
-    const spectra = await previewSpectra(input, info, frame, value, nativeSpectrum, current)
-    const oscilloscopes = await previewOscilloscopes(input, info, frame, value, nativeOscilloscope, current)
-    const spectrograms = await previewSpectrograms(input, info, frame, value, nativeSpectrogram, current)
-    const waveforms = await previewWaveforms(input, info, frame, value, nativeWaveform, current)
-    const vus = await previewVus(input, info, frame, value, nativeVu, current)
-    const loudness = await previewLoudness(input, info, frame, value, nativeLoudness, current)
-    const waterfalls = await previewWaterfalls(input, info, frame, value, nativeWaterfall, current)
-    return { ...vectorscope, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness, waterfalls }
-  }).catch(error => {
-    if (error.message === 'Preview superseded') return { superseded: true }
-    throw error
+  cancelPreview()
+  const id = previewGeneration
+  const worker = getPreviewWorker()
+  return new Promise((resolve, reject) => {
+    pendingPreviews.set(id, { resolve, reject })
+    try { worker.postMessage({ type: 'preview', id, input: activeAudio, metadata,
+      frame, project: value, audioRevision: previewAudioRevision }) }
+    catch (error) { pendingPreviews.delete(id); reject(error) }
   })
-  previewQueue = job
-  return job
 })
+ipcMain.handle('cancel-preview', () => cancelPreview())
 ipcMain.handle('save-project', async (_event, raw, asNew = false) => {
   const value = validateActiveProject(raw)
   if (typeof asNew !== 'boolean') throw new Error('Invalid Save As setting')
@@ -227,7 +233,8 @@ ipcMain.handle('open-project', async () => {
     nextMetadata = info.metadata
     nextAudio = info.path
   }
-  previewGeneration++
+  previewAudioRevision++
+  cancelPreview()
   project = value
   metadata = nextMetadata
   activeAudio = nextAudio
@@ -310,6 +317,7 @@ app.whenReady().then(() => {
     activeAudio = info.path
     metadata = info.metadata
     project.audioPath = activeAudio
+    previewAudioRevision++
   }
   win = new BrowserWindow({
     width: 1480, height: 900, minWidth: 1000, minHeight: 700,
@@ -319,9 +327,10 @@ app.whenReady().then(() => {
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   })
   return win.loadFile(join(__dirname, 'index.html')).then(async () => {
-    if (process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
+    if (process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
-        if (process.env.PHASE6_REPEAT_SMOKE === '1') await require('../../phase6/test/repeat-smoke.cjs')(win)
+        if (process.env.PHASE6_PREVIEW_PERF_SMOKE === '1') await require('../../phase6/test/preview-performance-smoke.cjs')(win)
+        else if (process.env.PHASE6_REPEAT_SMOKE === '1') await require('../../phase6/test/repeat-smoke.cjs')(win)
         else if (process.env.PHASE5_RELINK_SMOKE === '1') await require('../../phase5/test/relink-smoke.cjs')(win)
         else if (process.env.PHASE5_WORKFLOW_SMOKE === '1') await require('../../phase5/test/editor-smoke.cjs')(win)
         else if (process.env.PHASE4_LEGACY_SMOKE === '1') await require('../../phase4/test/legacy-smoke.cjs')(win)

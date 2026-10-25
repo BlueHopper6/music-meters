@@ -7,12 +7,12 @@ const { defaultProject, normalizeProject, vectorscopeLayer, spectrumLayer,
   loudnessLayer, waterfallLayer } = require('../../phase2/project.cjs')
 
 const ROOT = path.resolve(__dirname, '..', '..')
-const DEST = path.join(ROOT, 'artifacts', 'phase3', 'vectorscope')
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 module.exports = async function allMetersSmoke(win) {
   const input = path.resolve(process.env.PHASE2_TEST_INPUT)
   const projectPath = path.resolve(process.env.PHASE2_TEST_PROJECT_PATH)
+  const DEST = path.dirname(projectPath)
   const layout = [
     { ...vectorscopeLayer('all-vectorscope'), mode: 'polar-unipolar', multiband: true,
       showCorrelation: true, color: '#55f4e8' },
