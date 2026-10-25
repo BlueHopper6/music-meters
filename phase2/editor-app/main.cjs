@@ -12,6 +12,7 @@ const { listTemplates, readTemplate, saveTemplate, duplicateTemplate, renameTemp
 const { readPreferences, writePreferences } = require('../preferences.cjs')
 const { probeAudio } = require('../audio.cjs')
 const { outputFormat, validateOutputPath, validateAudioCopy } = require('../audio-output.cjs')
+const { lockWindowNavigation, assertTrustedSender } = require('../window-security.cjs')
 
 const ROOT = resolve(__dirname, '..', '..')
 const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.flac'])
@@ -29,6 +30,14 @@ const pendingPreviews = new Map()
 let exportJob = null
 let closingAfterExport = false
 const userData = () => app.getPath('userData')
+const editorDocument = join(__dirname, 'index.html')
+
+function handle(channel, callback) {
+  ipcMain.handle(channel, (event, ...args) => {
+    assertTrustedSender(event, win?.webContents, editorDocument)
+    return callback(event, ...args)
+  })
+}
 
 function cancelPreview() {
   const id = ++previewGeneration
@@ -104,22 +113,22 @@ function validateActiveProject(raw) {
   return normalized
 }
 
-ipcMain.handle('initial', () => ({ project, metadata, projectPath, fonts: installedFonts(),
+handle('initial', () => ({ project, metadata, projectPath, fonts: installedFonts(),
   templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project) }))
-ipcMain.handle('list-templates', () => listTemplates(userData()))
-ipcMain.handle('save-template', (_event, name, raw) => {
+handle('list-templates', () => listTemplates(userData()))
+handle('save-template', (_event, name, raw) => {
   const value = validateActiveProject(raw)
   const entry = saveTemplate(userData(), name, value)
   writePreferences(userData(), { lastTemplateId: entry.id })
   return entry
 })
-ipcMain.handle('duplicate-template', (_event, id, name) => {
+handle('duplicate-template', (_event, id, name) => {
   const entry = duplicateTemplate(userData(), id, name)
   writePreferences(userData(), { lastTemplateId: entry.id })
   return entry
 })
-ipcMain.handle('rename-template', (_event, id, name) => renameTemplate(userData(), id, name))
-ipcMain.handle('load-template', (_event, id, raw) => {
+handle('rename-template', (_event, id, name) => renameTemplate(userData(), id, name))
+handle('load-template', (_event, id, raw) => {
   const current = validateActiveProject(raw)
   const next = applyTemplate(readTemplate(userData(), id).layout, current)
   assertInstalledFonts(next)
@@ -129,8 +138,8 @@ ipcMain.handle('load-template', (_event, id, raw) => {
   writePreferences(userData(), { lastTemplateId: id })
   return { project: next, missingMedia: missingMedia(next) }
 })
-ipcMain.handle('set-export-preset', (_event, preset) => writePreferences(userData(), { exportPreset: preset }))
-ipcMain.handle('choose-image', async () => {
+handle('set-export-preset', (_event, preset) => writePreferences(userData(), { exportPreset: preset }))
+handle('choose-image', async () => {
   let selected = process.env.PHASE4_TEST_IMAGE_PATH || ''
   if (!selected) {
     const result = await dialog.showOpenDialog(win, { title: 'Choose local artwork',
@@ -143,12 +152,12 @@ ipcMain.handle('choose-image', async () => {
   allowedImages.add(absolute)
   return absolute
 })
-ipcMain.handle('load-assets', (_event, raw) => {
+handle('load-assets', (_event, raw) => {
   const value = validateActiveProject(raw)
   for (const input of imagePaths(value)) if (!allowedImages.has(input)) throw new Error('Choose artwork through the local image picker')
   return assetData(value, false)
 })
-ipcMain.handle('choose-audio', async () => {
+handle('choose-audio', async () => {
   let selected = process.env.PHASE2_TEST_IMPORT_PATH || ''
   if (!selected) {
     const result = await dialog.showOpenDialog(win, {
@@ -166,7 +175,7 @@ ipcMain.handle('choose-audio', async () => {
   project.audioPath = activeAudio
   return chosen
 })
-ipcMain.handle('preview-at', async (_event, frame, raw) => {
+handle('preview-at', async (_event, frame, raw) => {
   if (!metadata || !activeAudio) throw new Error('Import audio before previewing')
   if (!Number.isSafeInteger(frame) || frame < 0 || frame >= metadata.totalFrames) {
     throw new Error('Preview frame is outside the song')
@@ -182,8 +191,8 @@ ipcMain.handle('preview-at', async (_event, frame, raw) => {
     catch (error) { pendingPreviews.delete(id); reject(error) }
   })
 })
-ipcMain.handle('cancel-preview', () => cancelPreview())
-ipcMain.handle('save-project', async (_event, raw, asNew = false) => {
+handle('cancel-preview', () => cancelPreview())
+handle('save-project', async (_event, raw, asNew = false) => {
   const value = validateActiveProject(raw)
   if (typeof asNew !== 'boolean') throw new Error('Invalid Save As setting')
   let target = process.env.PHASE2_TEST_PROJECT_PATH || (asNew ? null : projectPath)
@@ -207,7 +216,7 @@ ipcMain.handle('save-project', async (_event, raw, asNew = false) => {
   projectPath = target
   return { path: target, project, missingMedia: missingMedia(project) }
 })
-ipcMain.handle('open-project', async () => {
+handle('open-project', async () => {
   let target = process.env.PHASE2_TEST_PROJECT_PATH || ''
   if (!target) {
     const result = await dialog.showOpenDialog(win, {
@@ -244,7 +253,7 @@ ipcMain.handle('open-project', async () => {
   return { project, metadata, projectPath, fonts: installedFonts(),
     templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project) }
 })
-ipcMain.handle('render-video', async (_event, raw, preset, audioMode) => {
+handle('render-video', async (_event, raw, preset, audioMode) => {
   if (exportJob) throw new Error('An export is already running')
   if (!metadata || !activeAudio) throw new Error('Import audio before rendering')
   if (!['720p', '1080p'].includes(preset)) throw new Error('Unsupported export preset')
@@ -312,7 +321,7 @@ ipcMain.handle('render-video', async (_event, raw, preset, audioMode) => {
   })
   return output
 })
-ipcMain.handle('cancel-render', () => {
+handle('cancel-render', () => {
   if (exportJob) fs.writeFileSync(exportJob.cancelFile, 'cancel')
 })
 
@@ -332,10 +341,12 @@ app.whenReady().then(() => {
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true,
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   })
-  return win.loadFile(join(__dirname, 'index.html')).then(async () => {
-    if (process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
+  lockWindowNavigation(win.webContents)
+  return win.loadFile(editorDocument).then(async () => {
+    if (process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
-        if (process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1') await require('../../phase6/test/audio-copy-editor-smoke.cjs')(win)
+        if (process.env.PHASE6_SECURITY_SMOKE === '1') await require('../../phase6/test/security-smoke.cjs')(win)
+        else if (process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1') await require('../../phase6/test/audio-copy-editor-smoke.cjs')(win)
         else if (process.env.PHASE6_PREVIEW_PERF_SMOKE === '1') await require('../../phase6/test/preview-performance-smoke.cjs')(win)
         else if (process.env.PHASE6_REPEAT_SMOKE === '1') await require('../../phase6/test/repeat-smoke.cjs')(win)
         else if (process.env.PHASE5_RELINK_SMOKE === '1') await require('../../phase5/test/relink-smoke.cjs')(win)

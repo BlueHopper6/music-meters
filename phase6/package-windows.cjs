@@ -48,7 +48,9 @@ async function main() {
       'phase2/editor-app/main.cjs', 'phase2/editor-app/preload.cjs',
       'phase2/editor-app/index.html', 'phase2/editor-app/style.css',
       'phase2/export-app/main.cjs', 'phase2/export-app/index.html',
+      'phase2/export-app/style.css',
       'phase6/test/repeat-smoke.cjs',
+      'phase6/test/security-smoke.cjs',
       'phase6/test/audio-copy-editor-smoke.cjs',
       'phase6/test/preview-performance-smoke.cjs',
       'artifacts/phase2/editor.js', 'artifacts/phase2/export-renderer.js',
@@ -71,7 +73,7 @@ async function main() {
       path.join(output, 'DR_LIBS-LICENSE.txt'))
     fs.copyFileSync(path.join(prism, 'native', 'vendor', 'r8brain', 'LICENSE'),
       path.join(output, 'R8BRAIN-LICENSE.txt'))
-    fs.copyFileSync(path.join(prism, 'node_modules', 'node-addon-api', 'LICENSE.md'),
+    fs.copyFileSync(path.join(root, 'phase6', 'build-tools', 'node_modules', 'node-addon-api', 'LICENSE.md'),
       path.join(output, 'NODE-ADDON-API-LICENSE.md'))
     copyFile('LICENSE', path.join(output, 'MUSICMETERS-LICENSE.txt'))
     copyFile('LICENSE-NOTICES.md', path.join(output, 'LICENSE-NOTICES.md'))

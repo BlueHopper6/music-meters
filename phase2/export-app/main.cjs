@@ -12,6 +12,7 @@ const { assertInstalledFonts } = require('../fonts.cjs')
 const { assetData } = require('../assets.cjs')
 const { probeAudio } = require('../audio.cjs')
 const { outputFormat, validateOutputPath, validateAudioCopy } = require('../audio-output.cjs')
+const { lockWindowNavigation } = require('../window-security.cjs')
 const { precomputeSpectra } = require('../../phase3/spectrum.cjs')
 const { precomputeOscilloscopes } = require('../../phase3/oscilloscope.cjs')
 const { precomputeSpectrograms } = require('../../phase3/spectrogram.cjs')
@@ -166,6 +167,7 @@ async function exportVideo() {
     win = new BrowserWindow({ show: false, width, height,
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
         backgroundThrottling: false } })
+    lockWindowNavigation(win.webContents)
     win.webContents.on('console-message', details => {
       if (details.level === 'error') console.error(`Export renderer: ${details.message}`)
     })
