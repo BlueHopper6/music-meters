@@ -72,7 +72,10 @@ function startEncoder(temp, input, totalFrames) {
 
 async function writeFrame(encoder, png) {
   if (encoder.child.stdin.destroyed) throw new Error('Encoder input closed unexpectedly')
-  if (encoder.child.stdin.write(png)) return
+  let accepted
+  try { accepted = encoder.child.stdin.write(png) }
+  catch (error) { throw new Error(`Encoder input closed unexpectedly: ${error.message}`) }
+  if (accepted) return
   await new Promise((resolveDrain, reject) => {
     const cleanup = () => {
       encoder.child.stdin.off('drain', onDrain)
@@ -80,7 +83,7 @@ async function writeFrame(encoder, png) {
       encoder.child.off('close', onClose)
     }
     const onDrain = () => { cleanup(); resolveDrain() }
-    const onError = error => { cleanup(); reject(error) }
+    const onError = error => { cleanup(); reject(new Error(`Encoder input closed unexpectedly: ${error.message}`)) }
     const onClose = code => { cleanup(); reject(new Error(`Encoder exited while waiting for frame data (${code})`)) }
     encoder.child.stdin.once('drain', onDrain)
     encoder.child.stdin.once('error', onError)

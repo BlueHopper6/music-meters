@@ -20,13 +20,17 @@ async function main() {
   run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
     'sine=frequency=440:duration=2', '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', input])
   const project = { ...defaultProject(), title: 'Portable smoke',
-    audioRelativePath: path.basename(input), layers: [spectrumLayer()] }
+    audioRelativePath: path.basename(input), layers: [{ ...spectrumLayer(), x: 600, y: 150, w: 600, rotation: 90 }] }
   const projectPath = path.join(dir, 'new project.json')
   fs.writeFileSync(projectPath, JSON.stringify(project, null, 2))
   const output = path.join(dir, 'portable output.mp4')
   const executable = path.join(pack, 'electron.exe')
   const exportApp = path.join(pack, 'resources', 'app', 'phase2', 'export-app')
   assert.ok(fs.existsSync(executable) && fs.existsSync(exportApp), 'Portable package is incomplete')
+  const brand = path.join('phase2', 'editor-app', 'assets', 'brand')
+  for (const name of fs.readdirSync(path.resolve(__dirname, '..', '..', brand))) {
+    assert.ok(fs.existsSync(path.join(pack, 'resources', 'app', brand, name)), `Missing packaged brand asset: ${name}`)
+  }
   const cancelFile = path.join(dir, 'never.cancel')
   const logPath = path.join(dir, 'export.log')
   const log = fs.openSync(logPath, 'w')

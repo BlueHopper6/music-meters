@@ -744,6 +744,28 @@ body.stage-fullscreen .selection {
   height: 100%;
 }
 
+.stage-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.stage-option input[type="checkbox"] { margin: 0; }
+.stage-option select { max-width: 78px; }
+
+.snap-guide {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  background: rgba(255, 225, 100, 0.86);
+  box-shadow: 0 0 7px rgba(255, 225, 100, 0.6);
+}
+
+.snap-guide[hidden] { display: none; }
+.snap-guide-x { top: 0; bottom: 0; width: 1px; }
+.snap-guide-y { left: 0; right: 0; height: 1px; }
+
 .selection {
   position: absolute;
   border: 1.5px solid var(--accent);

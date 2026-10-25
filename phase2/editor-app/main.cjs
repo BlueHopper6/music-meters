@@ -313,6 +313,7 @@ app.whenReady().then(() => {
   }
   win = new BrowserWindow({
     width: 1480, height: 900, minWidth: 1000, minHeight: 700,
+    icon: join(__dirname, 'assets', 'brand', 'music-meters.ico'),
     show: process.env.PHASE2_HEADLESS !== '1',
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true,
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },

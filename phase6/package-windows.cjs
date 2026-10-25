@@ -44,6 +44,8 @@ async function main() {
       'artifacts/phase2/editor.js', 'artifacts/phase2/export-renderer.js',
       'artifacts/phase2/vu-ballistics.cjs',
     ]) copyFile(from, path.join(app, from))
+    fs.cpSync(path.join(root, 'phase2', 'editor-app', 'assets', 'brand'),
+      path.join(app, 'phase2', 'editor-app', 'assets', 'brand'), { recursive: true })
     const native = path.join(prism, 'native', 'build', 'Release', 'visualizer_dsp.node')
     const nativeTarget = path.join(app, 'upstream', 'prism', 'native', 'build', 'Release')
     fs.mkdirSync(nativeTarget, { recursive: true })

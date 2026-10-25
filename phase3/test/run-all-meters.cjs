@@ -5,7 +5,7 @@ const { build } = require('../../phase2/build.cjs')
 
 async function main() {
   const root = path.resolve(__dirname, '..', '..')
-  const dest = path.join(root, 'artifacts', 'phase3', 'vectorscope')
+  const dest = process.argv[2] ? path.resolve(process.argv[2]) : path.join(root, 'artifacts', 'phase3', 'vectorscope')
   fs.mkdirSync(dest, { recursive: true })
   const output = path.join(dest, 'all-eight.mp4')
   if (fs.existsSync(output)) throw new Error(`Output already exists: ${output}`)

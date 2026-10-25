@@ -75,6 +75,8 @@
         <div><span class="eyebrow">PREVIEW</span><h1>Composition</h1></div>
         <div class="canvas-heading-meta">
           <span class="resolution">1280 × 720 · 16:9</span>
+          <label class="stage-option"><input id="snap-enabled" type="checkbox"> Snap</label>
+          <label class="stage-option">Grid <select id="snap-grid" aria-label="Snap grid spacing"><option value="0">Off</option><option value="16">16 px</option><option value="32">32 px</option><option value="64">64 px</option></select></label>
           <button id="fullscreen-preview" type="button" class="fullscreen-toggle-btn" aria-pressed="false" title="Preview still in full screen">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M2.5 6V2.5H6M10 2.5H13.5V6M13.5 10V13.5H10M6 13.5H2.5V10"/>
@@ -85,6 +87,8 @@
       </div>
       <div class="stage-shell" id="stage-shell"><div class="stage-wrap" id="stage-wrap">
         <canvas id="stage" width="1280" height="720" aria-label="Composition preview"></canvas>
+        <div id="snap-guide-x" class="snap-guide snap-guide-x" hidden></div>
+        <div id="snap-guide-y" class="snap-guide snap-guide-y" hidden></div>
         <div id="selection" class="selection" hidden><span class="selection-label"></span><span class="resize-handle" data-handle="resize" title="Resize layer"></span></div>
         <div id="preview-busy" class="preview-busy" hidden>Analyzing audio…</div>
       </div><button id="exit-fullscreen-preview" type="button" class="exit-fullscreen-btn" title="Exit full screen (Esc)" hidden>Exit full screen · Esc</button></div>
@@ -112,6 +116,8 @@
       <section class="property-group"><h3>Selected layer</h3>
         <label>Name<input id="layer-name" type="text" maxlength="80"></label>
         <div class="number-grid"><label>X<input id="layer-x" type="number" min="0" max="1280"></label><label>Y<input id="layer-y" type="number" min="0" max="720"></label><label>Width<input id="layer-w" type="number" min="80" max="1280"></label><label>Height<input id="layer-h" type="number" min="80" max="720"></label></div>
+        <label class="stage-option"><input id="layer-aspect-lock" type="checkbox"> Lock aspect ratio while resizing</label>
+        <label id="layer-rotation-row">Rotation (°)<input id="layer-rotation" type="number" min="-180" max="180" step="1"></label>
         <div class="number-grid">
           <label>Opacity %<input id="layer-opacity" type="number" min="0" max="100" step="1"></label>
           <label id="layer-color-row">Color<input id="layer-color" type="color"></label>

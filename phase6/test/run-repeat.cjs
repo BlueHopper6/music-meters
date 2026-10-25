@@ -1,5 +1,6 @@
 const fs = require('node:fs')
 const path = require('node:path')
+const assert = require('node:assert/strict')
 const { spawn, spawnSync } = require('node:child_process')
 const { build } = require('../../phase2/build.cjs')
 
@@ -38,7 +39,21 @@ async function main() {
       '-select_streams', 'v:0', '-of', 'default=nw=1:nk=1', path.join(dir, name)], { encoding: 'utf8' })
     if (probe.status !== 0 || Number(probe.stdout.trim()) !== 60) throw new Error(`Invalid ${name}: ${probe.stderr}`)
   }
-  console.log(JSON.stringify({ dir, logPath, exports: 2, framesEach: 60 }))
+  const still = spawnSync('ffmpeg', ['-v', 'error', '-i', path.join(dir, 'editor-still.png'),
+    '-vf', 'scale=1280:720:flags=bicubic', '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'],
+    { maxBuffer: 8 * 1024 * 1024 })
+  const frame = spawnSync('ffmpeg', ['-v', 'error', '-i', path.join(dir, 'first-export.mp4'),
+    '-vf', 'select=eq(n\\,30)', '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'],
+    { maxBuffer: 8 * 1024 * 1024 })
+  assert.equal(still.status, 0, still.stderr.toString())
+  assert.equal(frame.status, 0, frame.stderr.toString())
+  assert.equal(still.stdout.length, 1280 * 720 * 3)
+  assert.equal(frame.stdout.length, still.stdout.length)
+  let difference = 0
+  for (let i = 0; i < still.stdout.length; i++) difference += Math.abs(still.stdout[i] - frame.stdout[i])
+  const meanAbsoluteDifference = difference / still.stdout.length
+  assert.ok(meanAbsoluteDifference < 12, `Rotated editor still differs from exported frame: ${meanAbsoluteDifference}`)
+  console.log(JSON.stringify({ dir, logPath, exports: 2, framesEach: 60, rotatedFrameMeanDifference: meanAbsoluteDifference }))
 }
 
 main().catch(error => { console.error(error.stack || error); process.exitCode = 1 })

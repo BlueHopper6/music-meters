@@ -2,6 +2,21 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { defaultProject, compositionProject, imageLayer, textLayer, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } = require('../project.cjs')
 
+test('meter rotation and aspect lock round-trip with legacy defaults', () => {
+  const project = { ...defaultProject(), layers: [{ ...spectrumLayer(), rotation: -90, aspectLocked: true }] }
+  assert.deepEqual(normalizeProject(project).layers, project.layers)
+  const oldLayer = { ...spectrumLayer() }
+  delete oldLayer.rotation
+  delete oldLayer.aspectLocked
+  const loaded = normalizeProject({ ...defaultProject(), layers: [oldLayer] }).layers[0]
+  assert.equal(loaded.rotation, 0)
+  assert.equal(loaded.aspectLocked, false)
+  for (const rotation of [-181, 181, NaN, '90']) {
+    assert.throws(() => normalizeProject({ ...project, layers: [{ ...project.layers[0], rotation }] }), /Rotation/)
+  }
+  assert.throws(() => normalizeProject({ ...project, layers: [{ ...project.layers[0], aspectLocked: 'yes' }] }), /aspect lock/)
+})
+
 test('version 2 composition keeps ordered graphics and meter layers with validated settings', () => {
   const project = compositionProject()
   const artwork = { ...imageLayer(), imagePath: 'C:/art/cover.png', fit: 'contain', rotation: -12, opacity: 0.7 }

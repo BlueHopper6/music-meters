@@ -2,6 +2,7 @@ import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type Vec
   type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer, type LoudnessLayer, type WaterfallLayer,
   type ImageLayer, type TextLayer, type Background } from './composition'
 import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject } from './project.cjs'
+import { move as moveOnStage, resize as resizeOnStage } from './stage-geometry.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number }
 type TemplateEntry = { id: string; name: string; builtIn: boolean }
@@ -90,7 +91,7 @@ function updateSelection() {
   selection.style.top = `${layer.y / 720 * 100}%`
   selection.style.width = `${layer.w / 1280 * 100}%`
   selection.style.height = `${layer.h / 720 * 100}%`
-  selection.style.transform = layer.type === 'image' || layer.type === 'text' ? `rotate(${layer.rotation}deg)` : ''
+  selection.style.transform = `rotate(${layer.rotation}deg)`
   selection.classList.toggle('locked', layer.locked)
   selection.querySelector('.selection-label')!.textContent = layer.name
 }
@@ -337,6 +338,7 @@ function refreshInspector() {
   const layer = selected()
   $('image-options').hidden = layer?.type !== 'image'
   $('text-options').hidden = layer?.type !== 'text'
+  $('layer-rotation-row').hidden = layer?.type === 'image' || layer?.type === 'text'
   $('layer-color-row').hidden = layer?.type === 'image'
   if (layer?.type === 'image') {
     ;($<HTMLSelectElement>('image-fit')).value = layer.fit
@@ -355,14 +357,17 @@ function refreshInspector() {
   }
   for (const [id, value] of [
     ['layer-name', layer?.name ?? ''], ['layer-x', layer?.x ?? ''], ['layer-y', layer?.y ?? ''],
-    ['layer-w', layer?.w ?? ''], ['layer-h', layer?.h ?? ''],
+    ['layer-w', layer?.w ?? ''], ['layer-h', layer?.h ?? ''], ['layer-rotation', layer?.rotation ?? ''],
     ['layer-opacity', layer ? Math.round(layer.opacity * 100) : ''],
     ['layer-color', layer?.color ?? '#55f4e8'],
   ] as const) {
     const input = $<HTMLInputElement>(id)
     input.value = String(value)
-    input.disabled = !layer || (layer.locked && ['layer-x', 'layer-y', 'layer-w', 'layer-h'].includes(id))
+    input.disabled = !layer || (layer.locked && ['layer-x', 'layer-y', 'layer-w', 'layer-h', 'layer-rotation'].includes(id))
   }
+  const aspectLock = $<HTMLInputElement>('layer-aspect-lock')
+  aspectLock.checked = !!layer?.aspectLocked
+  aspectLock.disabled = !layer || layer.locked
   for (const [id, value] of [['layer-visible', layer?.visible], ['layer-locked', layer?.locked]] as const) {
     const input = $<HTMLInputElement>(id)
     input.checked = !!value
@@ -603,15 +608,34 @@ for (const [id, property] of [['layer-x', 'x'], ['layer-y', 'y'], ['layer-w', 'w
     if (!layer || layer.locked) return
     const value = Math.round(Number((event.target as HTMLInputElement).value))
     if (!Number.isFinite(value)) return refreshInspector()
+    const original = { ...layer }
     if (property === 'x') layer.x = Math.max(0, Math.min(1280 - layer.w, value))
     if (property === 'y') layer.y = Math.max(0, Math.min(720 - layer.h, value))
     const minimum = layer.type === 'text' ? 20 : layer.type === 'image' ? 40 : 80
-    if (property === 'w') layer.w = Math.max(minimum, Math.min(1280 - layer.x, value))
-    if (property === 'h') layer.h = Math.max(minimum, Math.min(720 - layer.y, value))
+    if (layer.aspectLocked && (property === 'w' || property === 'h')) {
+      const proportional = resizeOnStage(original, property === 'w' ? value - original.w : 0,
+        property === 'h' ? value - original.h : 0, minimum, true)
+      layer.w = proportional.w; layer.h = proportional.h
+    } else {
+      if (property === 'w') layer.w = Math.max(minimum, Math.min(1280 - layer.x, value))
+      if (property === 'h') layer.h = Math.max(minimum, Math.min(720 - layer.y, value))
+    }
     repaint()
     if ((layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'waterfall') && (property === 'w' || property === 'h')) schedulePreview()
   })
 }
+$<HTMLInputElement>('layer-aspect-lock').addEventListener('change', event => {
+  const layer = selected(); if (!layer || layer.locked) return
+  layer.aspectLocked = (event.target as HTMLInputElement).checked
+  repaint()
+})
+$<HTMLInputElement>('layer-rotation').addEventListener('change', event => {
+  const layer = selected(); if (!layer || layer.locked) return
+  const value = Number((event.target as HTMLInputElement).value)
+  if (!Number.isFinite(value) || value < -180 || value > 180) return refreshInspector()
+  layer.rotation = value
+  repaint()
+})
 $<HTMLInputElement>('title').addEventListener('input', event => { project.title = (event.target as HTMLInputElement).value; render() })
 $<HTMLInputElement>('background').addEventListener('input', event => {
   if (project.version === 1) project.background = (event.target as HTMLInputElement).value
@@ -876,6 +900,15 @@ for (const [id, property] of [['layer-visible', 'visible'], ['layer-locked', 'lo
 }
 
 let drag: { mode: 'move' | 'resize'; x: number; y: number; startX: number; startY: number; startW: number; startH: number } | null = null
+function showSnapGuides(x: number | null, y: number | null) {
+  const vertical = $<HTMLDivElement>('snap-guide-x')
+  const horizontal = $<HTMLDivElement>('snap-guide-y')
+  vertical.hidden = x === null
+  horizontal.hidden = y === null
+  if (x !== null) vertical.style.left = `${x / 1280 * 100}%`
+  if (y !== null) horizontal.style.top = `${y / 720 * 100}%`
+}
+$<HTMLInputElement>('snap-enabled').addEventListener('change', () => showSnapGuides(null, null))
 selection.addEventListener('pointerdown', event => {
   const layer = selected()
   if (!layer || layer.locked) return
@@ -890,19 +923,28 @@ selection.addEventListener('pointermove', event => {
   const rect = stageWrap.getBoundingClientRect()
   const dx = Math.round((event.clientX - drag.x) * 1280 / rect.width)
   const dy = Math.round((event.clientY - drag.y) * 720 / rect.height)
+  const snapping = $<HTMLInputElement>('snap-enabled').checked
+  const grid = Number($<HTMLSelectElement>('snap-grid').value)
+  const start = { x: drag.startX, y: drag.startY, w: drag.startW, h: drag.startH }
   if (drag.mode === 'move') {
-    layer.x = Math.max(0, Math.min(1280 - layer.w, drag.startX + dx))
-    layer.y = Math.max(0, Math.min(720 - layer.h, drag.startY + dy))
+    const moved = moveOnStage(start, dx, dy, snapping, grid)
+    layer.x = moved.x; layer.y = moved.y
+    showSnapGuides(moved.guideX, moved.guideY)
   } else {
     const minimum = layer.type === 'text' ? 20 : layer.type === 'image' ? 40 : 80
-    layer.w = Math.max(minimum, Math.min(1280 - layer.x, drag.startW + dx))
-    layer.h = Math.max(minimum, Math.min(720 - layer.y, drag.startH + dy))
+    const angle = -layer.rotation * Math.PI / 180
+    const localDx = dx * Math.cos(angle) - dy * Math.sin(angle)
+    const localDy = dx * Math.sin(angle) + dy * Math.cos(angle)
+    const resized = resizeOnStage(start, localDx, localDy, minimum, layer.aspectLocked, snapping, grid)
+    layer.w = resized.w; layer.h = resized.h
+    showSnapGuides(resized.guideX, resized.guideY)
   }
   render(); refreshInspector()
 })
 function finishDrag() {
   if (drag?.mode === 'resize' && (selected()?.type === 'spectrogram' || selected()?.type === 'waveform' || selected()?.type === 'waterfall')) schedulePreview()
   drag = null
+  showSnapGuides(null, null)
 }
 selection.addEventListener('pointerup', finishDrag)
 selection.addEventListener('lostpointercapture', finishDrag)
