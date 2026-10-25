@@ -2,7 +2,7 @@
 
 An offline music visualizer built around Prism's native analysis and Canvas meter rendering. The current development build has a static Electron layout editor and MP4 export.
 
-The Prism-based software code is GPL-3.0-only. See [the license](LICENSE) and [license and modification notices](LICENSE-NOTICES.md). The MusicMeters logo and icons are separately owned artwork; third parties must remove or replace them before redistributing the software unless the logo owner separately grants permission. Each eventual public binary must be paired with its exact source archive as described in [the release checklist](docs/release-checklist.md); the current portable build is a development preview.
+The Prism-based software code is GPL-3.0-only. See [the license](LICENSE) and [license and modification notices](LICENSE-NOTICES.md). The MusicMeters logo and icons are separately owned artwork: complete, unchanged official releases may be shared with their branding, while modified or repackaged builds must rebrand unless the logo owner separately grants permission. Each eventual public binary must be paired with its exact source archive as described in [the release checklist](docs/release-checklist.md); the current portable build is a development preview.
 
 ## Run the editor
 
