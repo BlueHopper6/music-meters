@@ -195,6 +195,32 @@ button.danger-button:hover:not(:disabled) {
   gap: 12px;
 }
 
+.license-disclosure {
+  position: relative;
+  order: 1;
+  color: var(--text-secondary);
+}
+
+.license-disclosure summary {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.license-disclosure p {
+  position: absolute;
+  top: 22px;
+  right: 0;
+  z-index: 20;
+  width: 310px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border-control);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  line-height: 1.5;
+}
+
 .toolbar-group {
   display: flex;
   align-items: center;

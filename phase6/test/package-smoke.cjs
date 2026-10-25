@@ -30,7 +30,10 @@ async function main() {
   assert.ok(fs.existsSync(executable) && fs.existsSync(exportApp), 'Portable package is incomplete')
   assert.equal(fs.readFileSync(path.join(pack, 'version'), 'utf8').trim(), expectedVersion)
   for (const name of ['LICENSE', 'LICENSES.chromium.html', 'PRISM-LICENSE.txt',
-    'NODE-ADDON-API-LICENSE.md', 'THIRD_PARTY_NOTICES.md']) {
+    'NODE-ADDON-API-LICENSE.md', 'MUSICMETERS-LICENSE.txt', 'LICENSE-NOTICES.md',
+    'PRISM-THIRD_PARTY_NOTICES.md', 'PRISM-REFERENCE_DEPENDENCIES.md',
+    'DR_LIBS-LICENSE.txt', 'R8BRAIN-LICENSE.txt',
+    'THIRD_PARTY_NOTICES.md', 'BUILD-PROVENANCE.json']) {
     assert.ok(fs.existsSync(path.join(pack, name)), `Missing packaged license or notice: ${name}`)
   }
   const brand = path.join('phase2', 'editor-app', 'assets', 'brand')

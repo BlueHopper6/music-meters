@@ -8,7 +8,10 @@ const PRISM = path.join(ROOT, 'upstream', 'prism')
 const PIN = '49721802252b115d169e353c98b27408daa5e2b7'
 
 function prerequisites() {
-  const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: PRISM, encoding: 'utf8' }).trim()
+  const sourceMarker = path.join(PRISM, '.musicmeters-prism-commit')
+  const commit = fs.existsSync(sourceMarker)
+    ? fs.readFileSync(sourceMarker, 'utf8').trim()
+    : execFileSync('git', ['rev-parse', 'HEAD'], { cwd: PRISM, encoding: 'utf8' }).trim()
   if (commit !== PIN) throw new Error(`Prism must be checked out at ${PIN}`)
   for (const required of [
     path.join(PRISM, 'native', 'build', 'Release', 'visualizer_dsp.node'),

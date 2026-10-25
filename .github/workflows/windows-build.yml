@@ -52,3 +52,22 @@ jobs:
           node phase6/package-windows.cjs --output artifacts/phase6/ci-package
           node phase6/test/package-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-smoke
           node phase6/test/run-repeat.cjs --package artifacts/phase6/ci-package artifacts/phase6/ci-editor-smoke
+      - name: Matching source archive and extracted rebuild
+        shell: pwsh
+        run: |
+          python phase6/release-source.py --package artifacts/phase6/ci-package --output artifacts/phase6/ci-source.zip
+          python phase6/test/source-archive.py artifacts/phase6/ci-package artifacts/phase6/ci-source.zip artifacts/phase6/ci-extracted
+          Push-Location artifacts/phase6/ci-extracted/musicmeters/upstream/prism
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build:native
+          Pop-Location
+          Push-Location artifacts/phase6/ci-extracted/musicmeters/phase6/electron-runtime
+          npm ci --ignore-scripts --no-audit --no-fund
+          node node_modules/electron/install.js
+          Pop-Location
+          Push-Location artifacts/phase6/ci-extracted/musicmeters
+          python phase1/make-fixtures.py
+          node phase2/build.cjs
+          node phase6/package-windows.cjs --output ../../ci-rebuilt-package
+          node phase6/test/package-smoke.cjs ../../ci-rebuilt-package ../../ci-rebuilt-smoke
+          Pop-Location
