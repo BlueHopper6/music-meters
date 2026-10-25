@@ -14,6 +14,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 PRISM = ROOT / "upstream" / "prism"
 PIN = "49721802252b115d169e353c98b27408daa5e2b7"
 FIXED_TIME = (2020, 1, 1, 0, 0, 0)
+RUNTIME_BRAND_FILES = {
+    "phase2/editor-app/assets/brand/icon-32.png",
+    "phase2/editor-app/assets/brand/icon-64.png",
+    "phase2/editor-app/assets/brand/music-meters.ico",
+}
 
 
 def git(cwd, *args):
@@ -33,6 +38,10 @@ def add_git_tree(archive, cwd, revision, prefix):
         for member in source:
             if member.isfile():
                 if prefix == "musicmeters/" and member.name.startswith("samples/"):
+                    continue
+                if (prefix == "musicmeters/" and
+                        member.name.startswith("phase2/editor-app/assets/brand/") and
+                        member.name not in RUNTIME_BRAND_FILES):
                     continue
                 add_bytes(archive, prefix + member.name, source.extractfile(member).read())
             elif member.issym() or member.islnk():
@@ -85,7 +94,7 @@ def main():
                 "applicationRevision": revision, "applicationVersion": provenance["applicationVersion"],
                 "prismRevision": PIN, "nodeAddonApiVersion": "8.6.0",
                 "electronVersion": provenance["electronVersion"],
-                "sourceArchiveRule": "Includes committed MusicMeters source excluding historical sample media, exact Prism tree, and node-addon-api 8.6.0 source; excludes generated binaries and npm dependencies.",
+                "sourceArchiveRule": "Includes committed MusicMeters source excluding historical sample media and unused brand images; retains three runtime icons under their separate artwork notice; includes exact Prism tree and node-addon-api 8.6.0 source; excludes generated binaries and npm dependencies.",
             }, indent=2) + "\n").encode())
         digest = hashlib.sha256(output.read_bytes()).hexdigest()
         (package / "SOURCE-ARCHIVE.json").write_text(json.dumps({

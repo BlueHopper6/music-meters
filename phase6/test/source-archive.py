@@ -34,6 +34,9 @@ def main():
             "LICENSE", "LICENSE-NOTICES.md", "README.md", "phase2/build.cjs",
             "PACKAGE-BUILD-PROVENANCE.json",
             "phase2/composition.ts", "phase6/package-windows.cjs", "phase6/release-source.py",
+            "phase2/editor-app/assets/brand/icon-32.png",
+            "phase2/editor-app/assets/brand/icon-64.png",
+            "phase2/editor-app/assets/brand/music-meters.ico",
             "phase6/electron-runtime/package-lock.json", "SOURCE-MANIFEST.json",
             "upstream/prism/.musicmeters-prism-commit", "upstream/prism/LICENSE",
             "upstream/prism/THIRD_PARTY_NOTICES.md",
@@ -47,6 +50,8 @@ def main():
         for name in required:
             if "musicmeters/" + name not in names:
                 raise RuntimeError(f"Missing corresponding source: {name}")
+        if "musicmeters/phase2/editor-app/assets/brand/logo-master.png" in names:
+            raise RuntimeError("Unused logo master must not be in release source")
         manifest = json.loads(archive.read("musicmeters/SOURCE-MANIFEST.json"))
         if json.loads(archive.read("musicmeters/PACKAGE-BUILD-PROVENANCE.json")) != package_provenance:
             raise RuntimeError("Archived package build provenance does not match")

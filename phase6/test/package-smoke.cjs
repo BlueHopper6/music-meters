@@ -37,9 +37,11 @@ async function main() {
     assert.ok(fs.existsSync(path.join(pack, name)), `Missing packaged license or notice: ${name}`)
   }
   const brand = path.join('phase2', 'editor-app', 'assets', 'brand')
-  for (const name of fs.readdirSync(path.resolve(__dirname, '..', '..', brand))) {
+  for (const name of ['icon-32.png', 'icon-64.png', 'music-meters.ico']) {
     assert.ok(fs.existsSync(path.join(pack, 'resources', 'app', brand, name)), `Missing packaged brand asset: ${name}`)
   }
+  assert.ok(!fs.existsSync(path.join(pack, 'resources', 'app', brand, 'logo-master.png')),
+    'Unused logo master must not be packaged')
   const cancelFile = path.join(dir, 'never.cancel')
   const logPath = path.join(dir, 'export.log')
   const log = fs.openSync(logPath, 'w')
