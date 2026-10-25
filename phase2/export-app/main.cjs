@@ -159,6 +159,12 @@ async function exportVideo() {
     win = new BrowserWindow({ show: false, width, height,
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
         backgroundThrottling: false } })
+    win.webContents.on('console-message', details => {
+      if (details.level === 'error') console.error(`Export renderer: ${details.message}`)
+    })
+    win.webContents.on('render-process-gone', (_event, details) => {
+      console.error(`Export renderer stopped: ${details.reason}`)
+    })
     await win.loadFile(join(__dirname, 'index.html'))
     const ready = await win.webContents.executeJavaScript('typeof window.phase2Export?.initialize')
     if (ready !== 'function') throw new Error('Offline composition failed to initialize')

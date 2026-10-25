@@ -5,7 +5,7 @@
 1. On Windows x64, install Node.js 24, Python, Visual Studio C++ build tools, FFmpeg, and FFprobe. Verify `node`, `python`, `ffmpeg`, and `ffprobe` on `PATH`.
 2. Clone this repository. Clone `https://github.com/Boof2015/prism.git` into ignored `upstream/prism` and check out `49721802252b115d169e353c98b27408daa5e2b7`.
 3. In `upstream/prism`, run `npm ci --ignore-scripts --no-audit --no-fund`, `node node_modules/electron/install.js`, and `npm run build:native`. If node-gyp cannot find Visual Studio, use the host-specific environment setup described in `docs/phase-0-report.md`.
-4. From the repository root, run `node phase2/build.cjs` and the unit command in `docs/phase-6-report.md`. Build a fresh portable folder with `node phase6/package-windows.cjs --output artifacts/phase6/<new-name>`.
+4. From the repository root, run `python phase1/make-fixtures.py`, `node phase2/build.cjs`, and the unit command in `docs/phase-6-report.md`. Build a fresh portable folder with `node phase6/package-windows.cjs --output artifacts/phase6/<new-name>`.
 5. Run `node phase6/test/package-smoke.cjs <package-dir> <new-artifact-dir>` and `node phase6/test/run-repeat.cjs --package <package-dir> <new-artifact-dir>`. Check an exported frame and decoded audio, not just MP4 metadata. The Windows CI workflow runs these checks on pull requests, but a local run does not establish that hosted CI passed.
 
 ## Use the app
