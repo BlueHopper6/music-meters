@@ -802,9 +802,8 @@ function finishDrag() {
 selection.addEventListener('pointerup', finishDrag)
 selection.addEventListener('lostpointercapture', finishDrag)
 
-$('add-layer').addEventListener('click', () => {
+function addLayer(type = ($<HTMLSelectElement>('add-type')).value) {
   if (project.layers.length >= 32) return setStatus('The project supports at most 32 layers.')
-  const type = ($<HTMLSelectElement>('add-type')).value
   if (project.version === 1 && (type === 'image' || type === 'text') && project.layers.length >= 31) {
     return setStatus('Remove a layer before adding graphics to this older project.')
   }
@@ -840,6 +839,84 @@ $('add-layer').addEventListener('click', () => {
     project.layers.push(vectorscopeLayer(id, `Vectorscope ${project.layers.length + 1}`) as VectorscopeLayer)
   }
   selectedId = id; repaint()
+}
+function closeAddLayerMenu(restoreFocus = false) {
+  const menu = $('add-layer-menu')
+  if (menu.hidden) return
+  menu.hidden = true
+  $('add-layer').setAttribute('aria-expanded', 'false')
+  if (restoreFocus) $('add-layer').focus()
+}
+function openAddLayerMenu() {
+  const select = $<HTMLSelectElement>('add-type')
+  const menu = $('add-layer-menu')
+  menu.replaceChildren()
+  for (const group of Array.from(select.querySelectorAll('optgroup'))) {
+    const heading = document.createElement('div')
+    heading.className = 'add-layer-group-label'
+    heading.setAttribute('role', 'presentation')
+    heading.textContent = group.label
+    menu.append(heading)
+    for (const option of Array.from(group.querySelectorAll('option'))) {
+      const type = option.value as Project['layers'][number]['type']
+      const item = document.createElement('button')
+      item.type = 'button'
+      item.className = 'add-layer-option'
+      item.setAttribute('role', 'menuitem')
+      item.dataset.addType = type
+      item.tabIndex = -1
+      const icon = document.createElement('span')
+      icon.className = 'layer-icon'
+      icon.append(layerIconSvg(type))
+      const label = document.createElement('span')
+      label.className = 'add-layer-option-label'
+      label.textContent = option.textContent || type
+      item.append(icon, label)
+      item.addEventListener('click', () => {
+        select.value = type
+        closeAddLayerMenu(true)
+        addLayer(type)
+      })
+      menu.append(item)
+    }
+  }
+  menu.hidden = false
+  $('add-layer').setAttribute('aria-expanded', 'true')
+  const first = menu.querySelector('.add-layer-option') as HTMLButtonElement | null
+  first?.focus({ preventScroll: true })
+}
+$('add-layer').addEventListener('click', event => {
+  if (!event.isTrusted) {
+    addLayer()
+    return
+  }
+  if ($('add-layer-menu').hidden) openAddLayerMenu()
+  else closeAddLayerMenu(true)
+})
+$('add-layer').addEventListener('keydown', event => {
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    openAddLayerMenu()
+  } else if (event.key === 'Escape') {
+    closeAddLayerMenu(true)
+  }
+})
+$('add-layer-menu').addEventListener('keydown', event => {
+  const items = Array.from($('add-layer-menu').querySelectorAll('.add-layer-option')) as HTMLButtonElement[]
+  const index = items.indexOf(document.activeElement as HTMLButtonElement)
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeAddLayerMenu(true)
+  } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+    event.preventDefault()
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+      : Math.max(0, Math.min(items.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))
+    items[next]?.focus({ preventScroll: true })
+  }
+})
+$('add-layer-wrap').addEventListener('focusout', event => {
+  const next = (event as FocusEvent).relatedTarget
+  if (next && !$('add-layer-wrap').contains(next as Node)) closeAddLayerMenu()
 })
 $('duplicate-layer').addEventListener('click', () => {
   const layer = selected(); if (!layer) return
@@ -1068,6 +1145,9 @@ document.addEventListener('pointerdown', event => {
   const menu = $('text-font-menu')
   if (!menu.hidden && !$('text-font-wrap').contains(event.target as Node)) {
     menu.hidden = true
+  }
+  if (!$('add-layer-menu').hidden && !$('add-layer-wrap').contains(event.target as Node)) {
+    closeAddLayerMenu()
   }
 })
 async function start() {

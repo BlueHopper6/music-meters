@@ -39,8 +39,8 @@
         <label>Template name<input id="template-name" type="text" maxlength="80" placeholder="My layout"></label>
         <div class="template-actions"><button id="save-template" type="button">Save current</button><button id="rename-template" type="button">Rename selected</button></div>
       </div>
-      <div class="add-layer-bar">
-        <label class="add-meter-label">Add layer<select id="add-type" aria-label="Layer type">
+      <div class="add-layer-bar" id="add-layer-wrap">
+        <select id="add-type" aria-label="Layer type" hidden>
           <optgroup label="Audio Meters">
             <option value="vectorscope">Vectorscope</option>
             <option value="spectrum">Spectrum analyzer</option>
@@ -55,8 +55,9 @@
             <option value="image">Artwork / logo</option>
             <option value="text">Text</option>
           </optgroup>
-        </select></label>
-        <button id="add-layer" title="Add selected layer">+ Add</button>
+        </select>
+        <button id="add-layer" type="button" aria-haspopup="menu" aria-expanded="false" title="Add a meter or graphic layer"><span class="add-layer-btn-label">+ Add layer</span><span class="add-layer-caret" aria-hidden="true">▾</span></button>
+        <div id="add-layer-menu" class="add-layer-menu" role="menu" aria-label="Choose layer type to add" hidden></div>
       </div>
       <div id="layers" class="layers-list" aria-label="Layers"></div>
       <div class="layer-actions-dock">
