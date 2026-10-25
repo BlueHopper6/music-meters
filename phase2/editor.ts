@@ -60,6 +60,11 @@ let projectPath: string | null = null
 let missingMedia: MissingMedia[] = []
 
 function selected() { return project.layers.find(layer => layer.id === selectedId) }
+function selectLayer(id: string | null) {
+  if (selectedId === id) return
+  selectedId = id
+  refreshInspector(); refreshLayers(); updateSelection()
+}
 function setStatus(message: string) { status.textContent = message }
 function background(): Background { return project.background as Background }
 function upgradeProject() {
@@ -249,15 +254,19 @@ function refreshLayers() {
     })
     flags.append(visBtn, lockBtn)
     row.append(grip, icon, name, flags)
-    const selectLayer = () => {
+    const selectRowLayer = () => {
       if (suppressNextLayerClick) { suppressNextLayerClick = false; return }
-      selectedId = layer.id; refreshInspector(); refreshLayers(); updateSelection()
+      selectLayer(layer.id)
     }
-    row.addEventListener('click', selectLayer)
+    row.addEventListener('click', selectRowLayer)
     row.addEventListener('keydown', event => {
       if (event.target === row && (event.key === 'Enter' || event.key === ' ')) {
         event.preventDefault()
-        selectLayer()
+        selectRowLayer()
+      } else if (event.target === row && event.key === 'Escape') {
+        event.preventDefault()
+        selectLayer(null)
+        canvas.focus()
       }
     })
     list.append(row)
@@ -336,6 +345,8 @@ function refreshInspector() {
   $('background-image-row').hidden = bg?.type !== 'image'
   $('background-image-name').textContent = bg?.imagePath.split(/[\\/]/).pop() || 'No image selected'
   const layer = selected()
+  $('no-layer-selected').hidden = !!layer
+  $('selected-layer-controls').hidden = !layer
   $('image-options').hidden = layer?.type !== 'image'
   $('text-options').hidden = layer?.type !== 'text'
   $('layer-rotation-row').hidden = layer?.type === 'image' || layer?.type === 'text'
@@ -948,6 +959,28 @@ function finishDrag() {
 }
 selection.addEventListener('pointerup', finishDrag)
 selection.addEventListener('lostpointercapture', finishDrag)
+canvas.addEventListener('pointerdown', event => {
+  if (event.button !== 0 || document.body.classList.contains('stage-fullscreen')) return
+  const bounds = canvas.getBoundingClientRect()
+  const x = (event.clientX - bounds.left) * 1280 / bounds.width
+  const y = (event.clientY - bounds.top) * 720 / bounds.height
+  const hit = [...project.layers].reverse().find(layer => {
+    if (!layer.visible) return false
+    const centerX = layer.x + layer.w / 2
+    const centerY = layer.y + layer.h / 2
+    const angle = layer.rotation * Math.PI / 180
+    const localX = (x - centerX) * Math.cos(angle) + (y - centerY) * Math.sin(angle)
+    const localY = -(x - centerX) * Math.sin(angle) + (y - centerY) * Math.cos(angle)
+    return Math.abs(localX) <= layer.w / 2 && Math.abs(localY) <= layer.h / 2
+  })
+  selectLayer(hit?.id ?? null)
+})
+canvas.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !document.body.classList.contains('stage-fullscreen')) {
+    event.preventDefault()
+    selectLayer(null)
+  }
+})
 
 function addLayer(type = ($<HTMLSelectElement>('add-type')).value) {
   if (project.layers.length >= 32) return setStatus('The project supports at most 32 layers.')

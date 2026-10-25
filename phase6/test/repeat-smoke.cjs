@@ -21,6 +21,42 @@ module.exports = async function repeatSmoke(win) {
     input.dispatchEvent(new Event('change', { bubbles: true })); return true })()`)
   await waitFor('document.querySelector("#status").textContent.includes("Real Prism meter still at 1.00 s") && document.querySelector("#preview-busy").hidden', 'real preview')
   await delay(500)
+  async function stageClick(stageX, stageY) {
+    const point = await evaluate(`(() => { const r = document.getElementById('stage').getBoundingClientRect();
+      return { x: Math.round(r.left + ${stageX} * r.width / 1280),
+        y: Math.round(r.top + ${stageY} * r.height / 720) } })()`)
+    win.webContents.sendInputEvent({ type: 'mouseMove', ...point })
+    win.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 })
+    win.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 })
+    await delay(100)
+  }
+  await stageClick(30, 690)
+  const cleared = await evaluate(`(() => ({ outline: document.getElementById('selection').hidden,
+    selectedRows: document.querySelectorAll('.layer-item.selected').length,
+    emptyHint: !document.getElementById('no-layer-selected').hidden,
+    controlsHidden: document.getElementById('selected-layer-controls').hidden,
+    actionsDisabled: ['duplicate-layer', 'delete-layer', 'layer-up', 'layer-down']
+      .every(id => document.getElementById(id).disabled),
+    backgroundEnabled: !document.getElementById('background').disabled,
+    yLabel: document.getElementById('layer-y').parentElement.textContent.trim() }))()`)
+  assert.deepEqual(cleared, { outline: true, selectedRows: 0, emptyHint: true,
+    controlsHidden: true, actionsDisabled: true, backgroundEnabled: true, yLabel: 'Y (from top)' })
+  if (!win.isVisible()) win.showInactive()
+  win.webContents.invalidate()
+  await delay(500)
+  fs.writeFileSync(path.join(dir, 'editor-clean-preview.png'), (await win.capturePage()).toPNG())
+  await stageClick(640, 420)
+  assert.equal(await evaluate('document.getElementById("selection").hidden'), false)
+  await evaluate(`(() => { const stage = document.getElementById('stage'); stage.focus();
+    stage.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true })()`)
+  assert.equal(await evaluate('document.getElementById("selection").hidden'), true)
+  await evaluate(`(() => { const row = document.querySelector('.layer-item'); row.focus();
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return true })()`)
+  assert.equal(await evaluate('document.getElementById("selection").hidden'), false)
+  await evaluate('document.getElementById("fullscreen-preview").click()')
+  assert.equal(await evaluate('document.body.classList.contains("stage-fullscreen") && getComputedStyle(document.getElementById("selection")).opacity === "0"'), true)
+  await evaluate('document.getElementById("exit-fullscreen-preview").click()')
+  assert.equal(await evaluate('document.body.classList.contains("stage-fullscreen")'), false)
   const stageControls = await evaluate(`(() => {
     const selection = document.getElementById('selection')
     const stage = document.getElementById('stage-wrap').getBoundingClientRect()
@@ -46,6 +82,25 @@ module.exports = async function repeatSmoke(win) {
       restoredHeight: document.getElementById('layer-h').value }
   })()`)
   assert.deepEqual(stageControls, { y: '110', guided: true, cleared: true, scaledHeight: '540', restoredHeight: '500' })
+  const resized = await evaluate(`(() => {
+    const selection = document.getElementById('selection')
+    const handle = selection.querySelector('.resize-handle')
+    const box = handle.getBoundingClientRect()
+    const stage = document.getElementById('stage-wrap').getBoundingClientRect()
+    const x = box.left + box.width / 2
+    const y = box.top + box.height / 2
+    handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 2, clientX: x, clientY: y }))
+    selection.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 2,
+      clientX: x + 60 * stage.width / 1280, clientY: y + 60 * stage.height / 720 }))
+    selection.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 2 }))
+    const width = Number(document.getElementById('layer-w').value)
+    const height = Number(document.getElementById('layer-h').value)
+    const input = document.getElementById('layer-w')
+    input.value = '500'; input.dispatchEvent(new Event('change', { bubbles: true }))
+    return { width, height, restored: Number(document.getElementById('layer-w').value) }
+  })()`)
+  assert.ok(resized.width > 500 && resized.height === resized.width && resized.restored === 500,
+    `Resize handle failed with aspect lock: ${JSON.stringify(resized)}`)
   const baseline = await evaluate('document.getElementById("stage").toDataURL("image/png").split(",")[1]')
   await evaluate(`(() => { const input = document.getElementById('layer-rotation'); input.value = '90';
     input.dispatchEvent(new Event('change', { bubbles: true })); return true })()`)
@@ -67,6 +122,25 @@ module.exports = async function repeatSmoke(win) {
   while (!fs.existsSync(second) && Date.now() < deadline) await delay(100)
   assert.ok(fs.existsSync(second))
   await waitFor('document.querySelector("#status").textContent.includes("MP4 ready:")', 'second export')
+  await evaluate('document.getElementById("save-project").click()')
+  await waitFor('document.querySelector("#status").textContent.includes("Saved project:")', 'project save')
+  const saved = JSON.parse(fs.readFileSync(process.env.PHASE2_TEST_PROJECT_PATH, 'utf8'))
+  assert.equal(saved.layers[0].y, 110)
+  await stageClick(30, 690)
+  assert.equal(await evaluate('document.getElementById("selection").hidden'), true)
+  await evaluate('document.getElementById("open-project").click()')
+  await waitFor('document.getElementById("no-layer-selected").hidden && document.getElementById("layer-y").value === "110"', 'project reload')
+  assert.equal(await evaluate('document.getElementById("layer-y").value'), '110')
+  await stageClick(30, 690)
+  await evaluate('document.getElementById("load-template").click()')
+  await waitFor('document.querySelectorAll(".layer-item").length > 0 && document.getElementById("no-layer-selected").hidden', 'template load')
+  assert.equal(await evaluate('document.getElementById("selection").hidden'), false)
+  const order = await evaluate('Array.from(document.querySelectorAll(".layer-item"), row => row.dataset.id)')
+  assert.ok(order.length > 1, 'Starter template should have multiple layers')
+  await evaluate('document.getElementById("layer-down").click()')
+  assert.notDeepEqual(await evaluate('Array.from(document.querySelectorAll(".layer-item"), row => row.dataset.id)'), order)
+  await evaluate('document.getElementById("layer-up").click()')
+  assert.deepEqual(await evaluate('Array.from(document.querySelectorAll(".layer-item"), row => row.dataset.id)'), order)
   console.log(JSON.stringify({ event: 'repeat-export-pass', first, second }))
   app.quit()
 }

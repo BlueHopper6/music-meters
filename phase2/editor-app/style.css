@@ -770,6 +770,11 @@ body.stage-fullscreen .selection {
   height: 100%;
 }
 
+.stage-wrap canvas:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .stage-option {
   display: inline-flex;
   align-items: center;

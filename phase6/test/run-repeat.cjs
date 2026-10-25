@@ -24,6 +24,7 @@ async function main() {
     env: { ...process.env, PHASE2_HEADLESS: '1', PHASE6_REPEAT_SMOKE: '1',
       PHASE6_REPEAT_DIR: dir, PHASE2_TEST_INPUT: input,
       PHASE2_TEST_OUTPUT_PATH: path.join(dir, 'first-export.mp4'),
+      PHASE2_TEST_PROJECT_PATH: path.join(dir, 'selection-project.json'),
       PHASE5_TEST_USER_DATA: path.join(dir, 'user-data') },
     stdio: ['ignore', log, log], shell: false, windowsHide: true,
   })
