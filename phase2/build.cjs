@@ -1,6 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { execFileSync } = require('node:child_process')
+const { verifyElectronRuntime } = require('../phase6/electron-runtime.cjs')
 
 const ROOT = path.resolve(__dirname, '..')
 const PRISM = path.join(ROOT, 'upstream', 'prism')
@@ -11,10 +12,10 @@ function prerequisites() {
   if (commit !== PIN) throw new Error(`Prism must be checked out at ${PIN}`)
   for (const required of [
     path.join(PRISM, 'native', 'build', 'Release', 'visualizer_dsp.node'),
-    path.join(PRISM, 'node_modules', 'electron', 'dist', 'electron.exe'),
   ]) {
     if (!fs.existsSync(required)) throw new Error(`Missing prerequisite: ${required}`)
   }
+  verifyElectronRuntime()
   execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' })
   execFileSync('ffprobe', ['-version'], { stdio: 'ignore' })
 }
@@ -61,7 +62,7 @@ async function build() {
       outfile: path.join(outdir, output), bundle: true, platform: 'browser',
       format: 'iife', target: 'chrome120', plugins: [plugin] })
   }
-  return path.join(PRISM, 'node_modules', 'electron', 'dist', 'electron.exe')
+  return verifyElectronRuntime()
 }
 
 if (require.main === module) build().catch(error => { console.error(error.message); process.exitCode = 1 })
