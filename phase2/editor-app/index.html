@@ -107,7 +107,13 @@
       <section class="property-group" id="text-options" hidden><h3>Text</h3>
         <label>Content<input id="text-content" type="text" maxlength="500"></label>
         <div class="number-grid">
-          <label>Font<select id="text-font"><option>Arial</option><option>Georgia</option><option>Verdana</option><option>Times New Roman</option><option>Courier New</option></select></label>
+          <div class="font-picker-field">
+            <label for="text-font">Font</label>
+            <div class="font-select-wrap" id="text-font-wrap">
+              <select id="text-font"><option>Arial</option><option>Georgia</option><option>Verdana</option><option>Times New Roman</option><option>Courier New</option></select>
+              <div id="text-font-menu" class="font-preview-menu" role="listbox" aria-label="Font family preview" hidden></div>
+            </div>
+          </div>
           <label>Weight<select id="text-weight"><option value="normal">Regular</option><option value="bold">Bold</option></select></label>
         </div>
         <div class="number-grid">

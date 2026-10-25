@@ -736,6 +736,63 @@ button.danger-button:hover:not(:disabled) {
   font-size: 12px;
 }
 
+.font-picker-field {
+  min-width: 0;
+  margin-bottom: 8px;
+}
+
+.font-picker-field > label {
+  margin-bottom: 0;
+}
+
+.font-select-wrap {
+  position: relative;
+}
+
+.font-preview-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 170px;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.7);
+}
+
+.font-preview-option {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.font-preview-option:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-control);
+}
+
+.font-preview-option.selected {
+  background: var(--accent-muted);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
 @media (max-width: 1160px) {
   .workspace {
     grid-template-columns: 204px minmax(0, 1fr) 236px;

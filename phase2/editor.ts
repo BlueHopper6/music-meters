@@ -151,6 +151,36 @@ function refreshLayers() {
     ;($<HTMLButtonElement>(id)).disabled = !hasLayer
   }
 }
+function syncFontPreview() {
+  const select = $<HTMLSelectElement>('text-font')
+  const menu = $('text-font-menu')
+  const formatFamily = (name: string) => `"${name.replace(/["\\]/g, '')}", sans-serif`
+  for (const option of Array.from(select.options)) {
+    const family = (option.value || option.textContent || '').trim()
+    if (family) option.style.fontFamily = formatFamily(family)
+  }
+  const active = (select.value || '').trim()
+  select.style.fontFamily = active ? formatFamily(active) : ''
+  menu.replaceChildren()
+  for (const option of Array.from(select.options)) {
+    const family = (option.value || option.textContent || '').trim()
+    if (!family) continue
+    const item = document.createElement('button')
+    item.type = 'button'
+    item.setAttribute('role', 'option')
+    item.setAttribute('aria-selected', String(family === active))
+    item.className = `font-preview-option${family === active ? ' selected' : ''}`
+    item.textContent = option.textContent || family
+    item.style.fontFamily = formatFamily(family)
+    item.addEventListener('click', () => {
+      select.value = family
+      syncFontPreview()
+      menu.hidden = true
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    menu.append(item)
+  }
+}
 function refreshInspector() {
   ;($<HTMLInputElement>('title')).value = project.title
   const bg = typeof project.background === 'string' ? null : project.background
@@ -171,11 +201,13 @@ function refreshInspector() {
     ;($<HTMLInputElement>('image-shadow')).value = String(layer.shadow)
     $('image-name').textContent = layer.imagePath.split(/[\\/]/).pop() || 'No image selected'
   }
+  if (layer?.type !== 'text') $('text-font-menu').hidden = true
   if (layer?.type === 'text') {
     for (const [id, value] of [['text-content', layer.text], ['text-font', layer.fontFamily],
       ['text-size', layer.fontSize], ['text-weight', layer.fontWeight], ['text-align', layer.align],
       ['text-rotation', layer.rotation], ['text-shadow', layer.shadow]] as const) {
       ;($<HTMLInputElement | HTMLSelectElement>(id)).value = String(value)
+      if (id === 'text-font') syncFontPreview()
     }
   }
   for (const [id, value] of [
@@ -826,6 +858,29 @@ window.desktop.onExport(event => {
   }
 })
 
+$<HTMLSelectElement>('text-font').addEventListener('mousedown', event => {
+  if (selected()?.locked) return
+  event.preventDefault()
+  syncFontPreview()
+  const menu = $('text-font-menu')
+  menu.hidden = !menu.hidden
+})
+$<HTMLSelectElement>('text-font').addEventListener('keydown', event => {
+  if (selected()?.locked) return
+  if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
+    event.preventDefault()
+    syncFontPreview()
+    $('text-font-menu').hidden = false
+  } else if (event.key === 'Escape') {
+    $('text-font-menu').hidden = true
+  }
+})
+document.addEventListener('pointerdown', event => {
+  const menu = $('text-font-menu')
+  if (!menu.hidden && !$('text-font-wrap').contains(event.target as Node)) {
+    menu.hidden = true
+  }
+})
 async function start() {
   const initial = await window.desktop.initial()
   project = normalizeProject(initial.project) as Project
