@@ -2,3 +2,10 @@ prds
 upstream/
 artifacts/
 phase6/electron-runtime/node_modules/
+phase2/editor-app/assets/brand/logo-master.png
+phase2/editor-app/assets/brand/icon-16.png
+phase2/editor-app/assets/brand/icon-24.png
+phase2/editor-app/assets/brand/icon-48.png
+phase2/editor-app/assets/brand/icon-128.png
+phase2/editor-app/assets/brand/icon-256.png
+phase2/editor-app/assets/brand/icon-512.png
