@@ -28,14 +28,15 @@ function imagePaths(project) {
   return [...paths]
 }
 
-function assetData(project) {
-  if (project.version === 2) {
+function assetData(project, requireComplete = true) {
+  if (project.version === 2 && requireComplete) {
     if (project.background.type === 'image' && !project.background.imagePath) throw new Error('Choose a background image')
     if (project.layers.some(layer => layer.type === 'image' && layer.visible && !layer.imagePath)) throw new Error('Choose artwork for each visible image layer')
   }
   const data = {}
   let totalBytes = 0
   for (const input of imagePaths(project)) {
+    if (!requireComplete && !fs.existsSync(input)) continue
     const { bytes, mime } = readImage(input)
     totalBytes += bytes.length
     if (totalBytes > 24 * 1024 * 1024) throw new Error('Project artwork exceeds 24 MB in total')

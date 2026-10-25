@@ -6,6 +6,8 @@ const fs = require('node:fs')
 const { defaultProject, normalizeProject } = require('../project.cjs')
 const { installedFonts, assertInstalledFonts } = require('../fonts.cjs')
 const { readImage, imagePaths, assetData, saveArtwork, resolveArtwork } = require('../assets.cjs')
+const { listTemplates, readTemplate, saveTemplate, duplicateTemplate, renameTemplate, applyTemplate, titleSuggestion } = require('../templates.cjs')
+const { readPreferences, writePreferences } = require('../preferences.cjs')
 const { probeAudio, analyzeFrame } = require('../audio.cjs')
 const { previewSpectra } = require('../../phase3/spectrum.cjs')
 const { previewOscilloscopes } = require('../../phase3/oscilloscope.cjs')
@@ -27,6 +29,7 @@ const nativeVu = nativeModule.vumeter
 const nativeLoudness = nativeModule.lufsmeter
 const nativeWaterfall = nativeModule.waterfall
 const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.flac'])
+if (process.env.PHASE5_TEST_USER_DATA) app.setPath('userData', process.env.PHASE5_TEST_USER_DATA)
 let win
 let project = defaultProject()
 const allowedImages = new Set()
@@ -37,6 +40,27 @@ let previewGeneration = 0
 let previewQueue = Promise.resolve()
 let exportJob = null
 let closingAfterExport = false
+const userData = () => app.getPath('userData')
+
+function missingMedia(value) {
+  const missing = []
+  if (value.audioPath && !fs.existsSync(value.audioPath)) missing.push({ kind: 'audio', label: 'Audio', path: value.audioPath })
+  if (value.version === 2) {
+    if (value.background.type === 'image' && value.background.imagePath && !fs.existsSync(value.background.imagePath)) {
+      missing.push({ kind: 'background', label: 'Background image', path: value.background.imagePath })
+    }
+    for (const layer of value.layers) if (layer.type === 'image' && layer.imagePath && !fs.existsSync(layer.imagePath)) {
+      missing.push({ kind: 'layer', id: layer.id, label: layer.name, path: layer.imagePath })
+    }
+  }
+  return missing
+}
+
+function suggestedOutput(value) {
+  const title = value.title && value.title !== 'Untitled track' ? value.title : titleSuggestion(value.audioPath)
+  const safe = title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').replace(/[. ]+$/g, '').trim().slice(0, 120) || 'visualizer'
+  return join(projectPath ? dirname(projectPath) : dirname(value.audioPath), `${safe}_visualizer.mp4`)
+}
 
 function audioInfo(input) {
   const absolute = resolve(input)
@@ -61,7 +85,32 @@ function validateActiveProject(raw) {
   return normalized
 }
 
-ipcMain.handle('initial', () => ({ project, metadata, projectPath, fonts: installedFonts() }))
+ipcMain.handle('initial', () => ({ project, metadata, projectPath, fonts: installedFonts(),
+  templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project) }))
+ipcMain.handle('list-templates', () => listTemplates(userData()))
+ipcMain.handle('save-template', (_event, name, raw) => {
+  const value = validateActiveProject(raw)
+  const entry = saveTemplate(userData(), name, value)
+  writePreferences(userData(), { lastTemplateId: entry.id })
+  return entry
+})
+ipcMain.handle('duplicate-template', (_event, id, name) => {
+  const entry = duplicateTemplate(userData(), id, name)
+  writePreferences(userData(), { lastTemplateId: entry.id })
+  return entry
+})
+ipcMain.handle('rename-template', (_event, id, name) => renameTemplate(userData(), id, name))
+ipcMain.handle('load-template', (_event, id, raw) => {
+  const current = validateActiveProject(raw)
+  const next = applyTemplate(readTemplate(userData(), id).layout, current)
+  assertInstalledFonts(next)
+  for (const input of imagePaths(next)) allowedImages.add(input)
+  project = next
+  previewGeneration++
+  writePreferences(userData(), { lastTemplateId: id })
+  return { project: next, missingMedia: missingMedia(next) }
+})
+ipcMain.handle('set-export-preset', (_event, preset) => writePreferences(userData(), { exportPreset: preset }))
 ipcMain.handle('choose-image', async () => {
   let selected = process.env.PHASE4_TEST_IMAGE_PATH || ''
   if (!selected) {
@@ -78,7 +127,7 @@ ipcMain.handle('choose-image', async () => {
 ipcMain.handle('load-assets', (_event, raw) => {
   const value = validateActiveProject(raw)
   for (const input of imagePaths(value)) if (!allowedImages.has(input)) throw new Error('Choose artwork through the local image picker')
-  return assetData(value)
+  return assetData(value, false)
 })
 ipcMain.handle('choose-audio', async () => {
   let selected = process.env.PHASE2_TEST_IMPORT_PATH || ''
@@ -125,12 +174,14 @@ ipcMain.handle('preview-at', async (_event, frame, raw) => {
   previewQueue = job
   return job
 })
-ipcMain.handle('save-project', async (_event, raw) => {
+ipcMain.handle('save-project', async (_event, raw, asNew = false) => {
   const value = validateActiveProject(raw)
-  let target = process.env.PHASE2_TEST_PROJECT_PATH || projectPath
+  if (typeof asNew !== 'boolean') throw new Error('Invalid Save As setting')
+  let target = process.env.PHASE2_TEST_PROJECT_PATH || (asNew ? null : projectPath)
   if (!target) {
     const result = await dialog.showSaveDialog(win, {
-      title: 'Save project', defaultPath: 'visualizer-project.json',
+      title: asNew ? 'Save project as' : 'Save project',
+      defaultPath: projectPath || `${titleSuggestion(value.audioPath || value.title)}-project.json`,
       filters: [{ name: 'Visualizer project', extensions: ['json'] }],
     })
     if (result.canceled) return null
@@ -142,9 +193,10 @@ ipcMain.handle('save-project', async (_event, raw) => {
     audioRelativePath: reference ? relative(dirname(target), reference).replaceAll('\\', '/') : '' }
   fs.mkdirSync(dirname(target), { recursive: true })
   fs.writeFileSync(target, JSON.stringify(document, null, 2) + '\n', { flag: 'w' })
-  project = value
+  project = normalizeProject(resolveArtwork({ ...document, audioPath: reference }, target))
+  for (const input of imagePaths(project)) allowedImages.add(input)
   projectPath = target
-  return target
+  return { path: target, project, missingMedia: missingMedia(project) }
 })
 ipcMain.handle('open-project', async () => {
   let target = process.env.PHASE2_TEST_PROJECT_PATH || ''
@@ -179,7 +231,8 @@ ipcMain.handle('open-project', async () => {
   metadata = nextMetadata
   activeAudio = nextAudio
   projectPath = target
-  return { project, metadata, projectPath, fonts: installedFonts() }
+  return { project, metadata, projectPath, fonts: installedFonts(),
+    templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project) }
 })
 ipcMain.handle('render-mp4', async (_event, raw, preset) => {
   if (exportJob) throw new Error('An export is already running')
@@ -187,14 +240,24 @@ ipcMain.handle('render-mp4', async (_event, raw, preset) => {
   if (!['720p', '1080p'].includes(preset)) throw new Error('Unsupported export preset')
   const value = validateActiveProject(raw)
   assetData(value)
+  writePreferences(userData(), { exportPreset: preset })
   let output = process.env.PHASE2_TEST_OUTPUT_PATH || ''
   if (!output) {
-    const result = await dialog.showSaveDialog(win, {
-      title: 'Render MP4', defaultPath: 'visualizer.mp4',
-      filters: [{ name: 'MP4 video', extensions: ['mp4'] }],
-    })
-    if (result.canceled) return null
-    output = result.filePath
+    let suggestion = suggestedOutput(value)
+    while (true) {
+      const result = await dialog.showSaveDialog(win, {
+        title: 'Render MP4', defaultPath: suggestion,
+        filters: [{ name: 'MP4 video', extensions: ['mp4'] }],
+      })
+      if (result.canceled) return null
+      output = resolve(result.filePath)
+      if (!fs.existsSync(output)) break
+      const response = await dialog.showMessageBox(win, { type: 'warning',
+        message: 'That MP4 already exists.', detail: 'Choose a different filename. Existing videos are never overwritten.',
+        buttons: ['Choose another name', 'Cancel'], defaultId: 0, cancelId: 1 })
+      if (response.response === 1) return null
+      suggestion = output
+    }
   }
   output = resolve(output)
   if (extname(output).toLowerCase() !== '.mp4') throw new Error('Output must end in .mp4')
@@ -253,9 +316,11 @@ app.whenReady().then(() => {
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   })
   return win.loadFile(join(__dirname, 'index.html')).then(async () => {
-    if (process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
+    if (process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
-        if (process.env.PHASE4_LEGACY_SMOKE === '1') await require('../../phase4/test/legacy-smoke.cjs')(win)
+        if (process.env.PHASE5_RELINK_SMOKE === '1') await require('../../phase5/test/relink-smoke.cjs')(win)
+        else if (process.env.PHASE5_WORKFLOW_SMOKE === '1') await require('../../phase5/test/editor-smoke.cjs')(win)
+        else if (process.env.PHASE4_LEGACY_SMOKE === '1') await require('../../phase4/test/legacy-smoke.cjs')(win)
         else if (process.env.PHASE4_COMPOSITION_SMOKE === '1') await require('../../phase4/test/editor-smoke.cjs')(win)
         else if (process.env.PHASE3_ALL_METERS_SMOKE === '1') await require('../../phase3/test/all-meters-smoke.cjs')(win)
         else if (process.env.PHASE3_VECTORSCOPE_SMOKE === '1') await require('../../phase3/test/vectorscope-smoke.cjs')(win)
