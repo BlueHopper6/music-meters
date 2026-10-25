@@ -1132,6 +1132,33 @@ $<HTMLInputElement>('time-input').addEventListener('change', event => {
   updateTimeControls(); schedulePreview()
 })
 $('refresh-still').addEventListener('click', refreshPreview)
+function setStageFullscreen(active: boolean) {
+  document.body.classList.toggle('stage-fullscreen', active)
+  $('exit-fullscreen-preview').hidden = !active
+  $('fullscreen-preview').setAttribute('aria-pressed', String(active))
+  if (active) {
+    document.documentElement.requestFullscreen?.().catch(() => {})
+    $('exit-fullscreen-preview').focus()
+  } else {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
+    $('fullscreen-preview').focus()
+  }
+}
+$('fullscreen-preview').addEventListener('click', () => {
+  setStageFullscreen(!document.body.classList.contains('stage-fullscreen'))
+})
+$('exit-fullscreen-preview').addEventListener('click', () => setStageFullscreen(false))
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && document.body.classList.contains('stage-fullscreen')) {
+    setStageFullscreen(false)
+  }
+})
+window.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && document.body.classList.contains('stage-fullscreen')) {
+    event.preventDefault()
+    setStageFullscreen(false)
+  }
+})
 
 $('import-audio').addEventListener('click', async () => {
   try {

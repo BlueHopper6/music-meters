@@ -71,12 +71,23 @@
       </div>
     </aside>
     <section class="center-panel">
-      <div class="canvas-heading"><div><span class="eyebrow">PREVIEW</span><h1>Composition</h1></div><span class="resolution">1280 × 720 · 16:9</span></div>
-      <div class="stage-shell"><div class="stage-wrap" id="stage-wrap">
+      <div class="canvas-heading">
+        <div><span class="eyebrow">PREVIEW</span><h1>Composition</h1></div>
+        <div class="canvas-heading-meta">
+          <span class="resolution">1280 × 720 · 16:9</span>
+          <button id="fullscreen-preview" type="button" class="fullscreen-toggle-btn" aria-pressed="false" title="Preview still in full screen">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2.5 6V2.5H6M10 2.5H13.5V6M13.5 10V13.5H10M6 13.5H2.5V10"/>
+            </svg>
+            <span>Full screen</span>
+          </button>
+        </div>
+      </div>
+      <div class="stage-shell" id="stage-shell"><div class="stage-wrap" id="stage-wrap">
         <canvas id="stage" width="1280" height="720" aria-label="Composition preview"></canvas>
         <div id="selection" class="selection" hidden><span class="selection-label"></span><span class="resize-handle" data-handle="resize" title="Resize layer"></span></div>
         <div id="preview-busy" class="preview-busy" hidden>Analyzing audio…</div>
-      </div></div>
+      </div><button id="exit-fullscreen-preview" type="button" class="exit-fullscreen-btn" title="Exit full screen (Esc)" hidden>Exit full screen · Esc</button></div>
       <div class="timeline">
         <div class="timeline-top"><div><span class="eyebrow">AUDIO STILL</span><strong id="audio-name">No audio imported</strong></div><span id="audio-details">Choose a WAV, MP3, or FLAC file</span></div>
         <div id="missing-media" class="missing-media" hidden></div>
