@@ -19,3 +19,11 @@ test('preflight uses the nearest existing parent and accepts sufficient space', 
   assert.equal(checked, process.cwd())
   assert.ok(result.availableBytes > result.estimatedBytes)
 })
+
+test('source-audio copy reserves the source stream size on the output drive', () => {
+  const output = path.join(process.cwd(), 'future', 'song.mkv')
+  const volume = () => ({ bavail: 300000n, bsize: 4096n })
+  const base = assertOutputSpace(output, 120, volume)
+  const copied = assertOutputSpace(output, 120, volume, 240000000n)
+  assert.equal(copied.estimatedBytes - base.estimatedBytes, 240000000n)
+})

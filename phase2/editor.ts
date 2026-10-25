@@ -4,7 +4,7 @@ import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type Vec
 import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject } from './project.cjs'
 import { move as moveOnStage, resize as resizeOnStage } from './stage-geometry.cjs'
 
-type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number }
+type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number; codecName: string }
 type TemplateEntry = { id: string; name: string; builtIn: boolean }
 type MissingMedia = { kind: 'audio' | 'background' | 'layer'; id?: string; label: string; path: string }
 type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null; fonts: string[];
@@ -34,7 +34,7 @@ type Desktop = {
   duplicateTemplate(id: string, name: string): Promise<TemplateEntry>
   renameTemplate(id: string, name: string): Promise<TemplateEntry>
   setExportPreset(preset: string): Promise<void>
-  renderMp4(project: Project, preset: string): Promise<string | null>
+  renderVideo(project: Project, preset: string, audioMode: string): Promise<string | null>
   cancelRender(): Promise<void>
   onExport(listener: (event: Record<string, unknown>) => void): () => void
 }
@@ -1276,6 +1276,10 @@ $<HTMLSelectElement>('export-preset').addEventListener('change', async event => 
   try { await window.desktop.setExportPreset((event.target as HTMLSelectElement).value) }
   catch (error) { setStatus(String(error)) }
 })
+$<HTMLSelectElement>('audio-mode').addEventListener('change', event => {
+  const copy = (event.target as HTMLSelectElement).value === 'copy'
+  $('render-mp4').textContent = copy ? 'Render MKV' : 'Render MP4'
+})
 $('save-template').addEventListener('click', async () => {
   try {
     const name = $<HTMLInputElement>('template-name').value.trim()
@@ -1355,10 +1359,12 @@ $('render-mp4').addEventListener('click', async () => {
   if (exportRunning) return
   if (!metadata || !project.audioPath) return setStatus('Import audio before rendering.')
   try {
-    const output = await window.desktop.renderMp4(project, ($<HTMLSelectElement>('export-preset')).value)
+    const output = await window.desktop.renderVideo(project, ($<HTMLSelectElement>('export-preset')).value,
+      ($<HTMLSelectElement>('audio-mode')).value)
     if (!output) return
     exportRunning = true
     ;($<HTMLButtonElement>('render-mp4')).disabled = true
+    ;($<HTMLSelectElement>('audio-mode')).disabled = true
     $('cancel-render').hidden = false
     setStatus(`Rendering to ${output}`)
   } catch (error) { setStatus(String(error)) }
@@ -1397,8 +1403,10 @@ window.desktop.onExport(event => {
   if (event.event === 'finished' || event.event === 'failed' || event.event === 'cancelled') {
     exportRunning = false;
     ;($<HTMLButtonElement>('render-mp4')).disabled = false
+    ;($<HTMLSelectElement>('audio-mode')).disabled = false
     $('cancel-render').hidden = true
-    setStatus(event.event === 'finished' ? `MP4 ready: ${event.output}` : `Export ${event.event}: ${event.message || ''}`)
+    const container = String(event.output).toLowerCase().endsWith('.mkv') ? 'MKV' : 'MP4'
+    setStatus(event.event === 'finished' ? `${container} ready: ${event.output}` : `Export ${event.event}: ${event.message || ''}`)
   }
 })
 

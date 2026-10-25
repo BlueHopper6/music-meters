@@ -7,12 +7,13 @@ const { normalizeProject } = require('./project.cjs')
 const { assertInstalledFonts } = require('./fonts.cjs')
 const { resolveArtwork } = require('./assets.cjs')
 const { jobPath } = require('./runtime.cjs')
+const { validateOutputPath } = require('./audio-output.cjs')
 
 function parse(args) {
   const options = {}
   for (let i = 0; i < args.length; i += 2) {
-    if (!['--project', '--output', '--preset', '--cancel-after-frames'].includes(args[i]) || !args[i + 1]) {
-      throw new Error('Usage: node phase2/export.cjs --project <JSON> --output <MP4> [--preset 720p|1080p]')
+    if (!['--project', '--output', '--preset', '--audio-mode', '--cancel-after-frames'].includes(args[i]) || !args[i + 1]) {
+      throw new Error('Usage: node phase2/export.cjs --project <JSON> --output <MP4|MKV> [--audio-mode aac|copy] [--preset 720p|1080p]')
     }
     options[args[i].slice(2)] = args[i + 1]
   }
@@ -20,8 +21,9 @@ function parse(args) {
   options.project = path.resolve(options.project)
   options.output = path.resolve(options.output)
   options.preset ||= '720p'
+  options['audio-mode'] ||= 'aac'
   if (!['720p', '1080p'].includes(options.preset)) throw new Error('Unsupported export preset')
-  if (path.extname(options.output).toLowerCase() !== '.mp4') throw new Error('Output must end in .mp4')
+  validateOutputPath(options.output, options['audio-mode'])
   if (fs.existsSync(options.output)) throw new Error(`Output already exists: ${options.output}`)
   if (options['cancel-after-frames'] !== undefined) {
     const frame = Number(options['cancel-after-frames'])
@@ -49,7 +51,8 @@ async function main() {
   const cancelFile = path.join(controlDir, `${randomUUID()}.cancel`)
   const child = spawn(electron, [path.join(__dirname, 'export-app')], {
     env: { ...process.env, PHASE2_JOB: JSON.stringify({ project, output: options.output,
-      preset: options.preset, cancelFile, cancelAfterFrames: options.cancelAfterFrames }) },
+      preset: options.preset, audioMode: options['audio-mode'],
+      cancelFile, cancelAfterFrames: options.cancelAfterFrames }) },
     stdio: 'inherit', shell: false, detached: true, windowsHide: true,
   })
   process.on('SIGINT', () => {

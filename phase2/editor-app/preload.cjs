@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld('desktop', {
   duplicateTemplate: (id, name) => ipcRenderer.invoke('duplicate-template', id, name),
   renameTemplate: (id, name) => ipcRenderer.invoke('rename-template', id, name),
   setExportPreset: preset => ipcRenderer.invoke('set-export-preset', preset),
-  renderMp4: (project, preset) => ipcRenderer.invoke('render-mp4', project, preset),
+  renderVideo: (project, preset, audioMode) => ipcRenderer.invoke('render-video', project, preset, audioMode),
   cancelRender: () => ipcRenderer.invoke('cancel-render'),
   onExport: listener => {
     const handler = (_event, value) => listener(value)

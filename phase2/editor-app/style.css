@@ -52,7 +52,7 @@
 
 body {
   margin: 0;
-  min-width: 1000px;
+  min-width: 0;
   height: 100vh;
   overflow: hidden;
   background: var(--bg-app);
@@ -1181,5 +1181,14 @@ body.stage-fullscreen .selection {
   }
   .toolbar-label {
     display: none;
+  }
+  .brand small {
+    display: none;
+  }
+  .toolbar-actions {
+    gap: 8px;
+  }
+  .toolbar-group {
+    padding-left: 8px;
   }
 }

@@ -11,6 +11,7 @@ const { readImage, imagePaths, assetData, saveArtwork, resolveArtwork } = requir
 const { listTemplates, readTemplate, saveTemplate, duplicateTemplate, renameTemplate, applyTemplate, titleSuggestion } = require('../templates.cjs')
 const { readPreferences, writePreferences } = require('../preferences.cjs')
 const { probeAudio } = require('../audio.cjs')
+const { outputFormat, validateOutputPath, validateAudioCopy } = require('../audio-output.cjs')
 
 const ROOT = resolve(__dirname, '..', '..')
 const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.flac'])
@@ -73,10 +74,11 @@ function missingMedia(value) {
   return missing
 }
 
-function suggestedOutput(value) {
+function suggestedOutput(value, audioMode) {
   const title = value.title && value.title !== 'Untitled track' ? value.title : titleSuggestion(value.audioPath)
   const safe = title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').replace(/[. ]+$/g, '').trim().slice(0, 120) || 'visualizer'
-  return join(projectPath ? dirname(projectPath) : dirname(value.audioPath), `${safe}_visualizer.mp4`)
+  return join(projectPath ? dirname(projectPath) : dirname(value.audioPath),
+    `${safe}_visualizer${outputFormat(audioMode).extension}`)
 }
 
 function audioInfo(input) {
@@ -242,39 +244,43 @@ ipcMain.handle('open-project', async () => {
   return { project, metadata, projectPath, fonts: installedFonts(),
     templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project) }
 })
-ipcMain.handle('render-mp4', async (_event, raw, preset) => {
+ipcMain.handle('render-video', async (_event, raw, preset, audioMode) => {
   if (exportJob) throw new Error('An export is already running')
   if (!metadata || !activeAudio) throw new Error('Import audio before rendering')
   if (!['720p', '1080p'].includes(preset)) throw new Error('Unsupported export preset')
+  const format = outputFormat(audioMode)
+  if (audioMode === 'copy') validateAudioCopy(activeAudio, metadata)
   const value = validateActiveProject(raw)
   assetData(value)
   writePreferences(userData(), { exportPreset: preset })
   let output = process.env.PHASE2_TEST_OUTPUT_PATH || ''
   if (!output) {
-    let suggestion = suggestedOutput(value)
+    let suggestion = suggestedOutput(value, audioMode)
     while (true) {
       const result = await dialog.showSaveDialog(win, {
-        title: 'Render MP4', defaultPath: suggestion,
-        filters: [{ name: 'MP4 video', extensions: ['mp4'] }],
+        title: `Render ${format.container} video`, defaultPath: suggestion,
+        filters: [{ name: `${format.container} video`, extensions: [format.extension.slice(1)] }],
       })
       if (result.canceled) return null
       output = resolve(result.filePath)
+      if (!extname(output)) output += format.extension
+      validateOutputPath(output, audioMode)
       if (!fs.existsSync(output)) break
       const response = await dialog.showMessageBox(win, { type: 'warning',
-        message: 'That MP4 already exists.', detail: 'Choose a different filename. Existing videos are never overwritten.',
+        message: `That ${format.container} already exists.`, detail: 'Choose a different filename. Existing videos are never overwritten.',
         buttons: ['Choose another name', 'Cancel'], defaultId: 0, cancelId: 1 })
       if (response.response === 1) return null
       suggestion = output
     }
   }
   output = resolve(output)
-  if (extname(output).toLowerCase() !== '.mp4') throw new Error('Output must end in .mp4')
+  validateOutputPath(output, audioMode)
   if (fs.existsSync(output)) throw new Error(`Output already exists: ${output}`)
   const controlDir = jobPath('jobs')
   fs.mkdirSync(controlDir, { recursive: true })
   const cancelFile = join(controlDir, `${randomUUID()}.cancel`)
   const child = spawn(process.execPath, [join(ROOT, 'phase2', 'export-app')], {
-    env: { ...process.env, PHASE2_JOB: JSON.stringify({ project: value, output, cancelFile, preset }) },
+    env: { ...process.env, PHASE2_JOB: JSON.stringify({ project: value, output, cancelFile, preset, audioMode }) },
     stdio: ['ignore', 'pipe', 'pipe'], shell: false, detached: true, windowsHide: true,
   })
   const job = { child, cancelFile, output, finishedEvent: null, errors: '' }
@@ -327,9 +333,10 @@ app.whenReady().then(() => {
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   })
   return win.loadFile(join(__dirname, 'index.html')).then(async () => {
-    if (process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
+    if (process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
-        if (process.env.PHASE6_PREVIEW_PERF_SMOKE === '1') await require('../../phase6/test/preview-performance-smoke.cjs')(win)
+        if (process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1') await require('../../phase6/test/audio-copy-editor-smoke.cjs')(win)
+        else if (process.env.PHASE6_PREVIEW_PERF_SMOKE === '1') await require('../../phase6/test/preview-performance-smoke.cjs')(win)
         else if (process.env.PHASE6_REPEAT_SMOKE === '1') await require('../../phase6/test/repeat-smoke.cjs')(win)
         else if (process.env.PHASE5_RELINK_SMOKE === '1') await require('../../phase5/test/relink-smoke.cjs')(win)
         else if (process.env.PHASE5_WORKFLOW_SMOKE === '1') await require('../../phase5/test/editor-smoke.cjs')(win)

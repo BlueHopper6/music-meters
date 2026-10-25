@@ -7,7 +7,7 @@
 3. In `upstream/prism`, run `npm ci --ignore-scripts --no-audit --no-fund` and `npm run build:native`. Pinned node-gyp 10 does not detect Visual Studio 2026. If it cannot find Visual Studio 2022, use the host-specific environment setup described in `docs/phase-0-report.md`.
 4. In `phase6/electron-runtime`, run `npm ci --ignore-scripts --no-audit --no-fund` and `node node_modules/electron/install.js`. `phase6/electron-runtime.cjs` rejects a missing or wrong-version runtime.
 5. From the repository root, run `python phase1/make-fixtures.py`, `node phase2/build.cjs`, and the unit command in `docs/phase-6-report.md`. Build a fresh portable folder with `node phase6/package-windows.cjs --output artifacts/phase6/<new-name>`.
-6. Confirm `resources/app/phase2/editor-app/assets/brand/music-meters.ico` exists in the package. Run `node phase6/test/package-smoke.cjs <package-dir> <new-artifact-dir>` and `node phase6/test/run-repeat.cjs --package <package-dir> <new-artifact-dir>`. The package smoke checks the exact Electron version, licenses, decoded audio, and MP4 frames. Check stage controls and editor/export still parity. The Windows CI workflow runs these checks on pull requests, but a local run does not establish that hosted CI passed.
+6. Confirm `resources/app/phase2/editor-app/assets/brand/music-meters.ico` exists in the package. Run `node phase6/test/package-smoke.cjs <package-dir> <new-artifact-dir>`, `node phase6/test/run-repeat.cjs --package <package-dir> <new-artifact-dir>`, `node phase6/test/audio-copy.cjs <package-dir> <new-artifact-dir>`, and `node phase6/test/run-audio-copy-editor.cjs <package-dir> <new-artifact-dir>` with a fresh output directory for each. The checks cover MP4/AAC, MKV stream copy, decoded audio, output frames, and same-session export. Check stage controls and editor/export still parity. The Windows CI workflow runs these checks on pull requests, but a local run does not establish that hosted CI passed.
 
 ## Pair an exact source archive with a release build
 
@@ -19,7 +19,7 @@
 
 ## Use the app
 
-Run `electron.exe` in the portable folder while FFmpeg and FFprobe are on `PATH`. Import a local WAV, FLAC, or MP3 song; choose or edit a template; select a preview timestamp; set artwork/text; and render an MP4. Export defaults to 1080p/30 with H.264 video and lossy AAC audio. Existing MP4s are never silently overwritten. Save the project JSON with its sibling `.assets` folder; relink missing audio or artwork after moving it. Templates and preferences are stored in Electron user data for the current account.
+Run `electron.exe` in the portable folder while FFmpeg and FFprobe are on `PATH`. Import a local WAV, FLAC, or MP3 song; choose or edit a template; select a preview timestamp; set artwork/text; and render a video. Export defaults to 1080p/30 with H.264 video in MP4 and lossy AAC audio at 192 kb/s. Choose MKV source-audio copy for supported MP3, FLAC, and WAV/PCM inputs; this remuxes audio without re-encoding it. The MKV file and MP3 playback padding are not byte-identical to the source audio file. The save dialog and output extension follow the choice, and existing videos are never silently overwritten. Save the project JSON with its sibling `.assets` folder; relink missing audio or artwork after moving it. Templates and preferences are stored in Electron user data for the current account.
 
 ## Before any public binary distribution
 

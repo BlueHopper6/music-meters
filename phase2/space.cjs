@@ -6,7 +6,7 @@ const MIB = 1024n * 1024n
 // A CRF encoder has no fixed output size. Reserve a conservative working
 // estimate before doing CPU-heavy analysis; ENOSPC during encoding is still
 // handled by the export cleanup path.
-function assertOutputSpace(output, duration, statfs = fs.statfsSync) {
+function assertOutputSpace(output, duration, statfs = fs.statfsSync, copiedAudioBytes = 0) {
   let directory = path.dirname(output)
   while (!fs.existsSync(directory)) {
     const parent = path.dirname(directory)
@@ -16,6 +16,7 @@ function assertOutputSpace(output, duration, statfs = fs.statfsSync) {
   const volume = statfs(directory, { bigint: true })
   const available = BigInt(volume.bavail) * BigInt(volume.bsize)
   const estimated = 32n * MIB + BigInt(Math.ceil(duration * 1.5 * Number(MIB)))
+    + BigInt(copiedAudioBytes)
   if (available < estimated) {
     throw new Error(`Insufficient disk space for export: about ${Math.ceil(Number(estimated) / Number(MIB))} MiB is needed on the output drive`)
   }
