@@ -518,6 +518,8 @@ button.danger-button:hover:not(:disabled) {
   font-size: 11px;
 }
 
+.preview-busy[hidden] { display: none; }
+
 .asset-name {
   display: block;
   overflow-wrap: anywhere;

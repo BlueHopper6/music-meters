@@ -1,0 +1,44 @@
+name: Windows build and synthetic export
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Prepare FFmpeg
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+            choco install ffmpeg --yes --no-progress
+            "C:\ProgramData\chocolatey\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          }
+          ffmpeg -version
+          ffprobe -version
+      - name: Prepare pinned Prism and Electron
+        shell: pwsh
+        run: |
+          git clone https://github.com/Boof2015/prism.git upstream/prism
+          git -C upstream/prism checkout 49721802252b115d169e353c98b27408daa5e2b7
+          Push-Location upstream/prism
+          npm ci --ignore-scripts --no-audit --no-fund
+          node node_modules/electron/install.js
+          npm run build:native
+          Pop-Location
+      - name: Build and unit tests
+        shell: pwsh
+        run: |
+          node phase2/build.cjs
+          node --test phase5/test/templates.test.cjs phase2/test/project.test.cjs phase4/test/assets.test.cjs phase2/test/fonts.test.cjs phase1/test/pcm-reader.test.cjs phase3/test/vectorscope-correlation.test.cjs
+      - name: Portable package and MP4 smoke
+        shell: pwsh
+        run: |
+          node phase6/package-windows.cjs --output artifacts/phase6/ci-package
+          node phase6/test/package-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-smoke

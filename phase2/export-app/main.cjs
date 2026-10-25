@@ -4,6 +4,7 @@ const { join, resolve, dirname, extname } = require('node:path')
 const { randomUUID } = require('node:crypto')
 const { performance } = require('node:perf_hooks')
 const fs = require('node:fs')
+const { jobPath } = require('../runtime.cjs')
 const { PcmReader } = require('../../phase1/pcm-reader.cjs')
 const { normalizeProject } = require('../project.cjs')
 const { assertInstalledFonts } = require('../fonts.cjs')
@@ -99,13 +100,13 @@ async function exportVideo() {
   const [width, height] = config.preset === '1080p' ? [1920, 1080] : [1280, 720]
   const temp = `${config.output}.partial-${randomUUID()}.mp4`
   fs.mkdirSync(dirname(config.output), { recursive: true })
-  const spectrumDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
-  const oscilloscopeDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
-  const spectrogramDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
-  const waveformDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
-  const vuDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
-  const loudnessDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
-  const waterfallDirectory = join(ROOT, 'artifacts', 'phase3', 'jobs', randomUUID())
+  const spectrumDirectory = jobPath('analysis', randomUUID())
+  const oscilloscopeDirectory = jobPath('analysis', randomUUID())
+  const spectrogramDirectory = jobPath('analysis', randomUUID())
+  const waveformDirectory = jobPath('analysis', randomUUID())
+  const vuDirectory = jobPath('analysis', randomUUID())
+  const loudnessDirectory = jobPath('analysis', randomUUID())
+  const waterfallDirectory = jobPath('analysis', randomUUID())
   let spectrumCache
   let oscilloscopeCache
   let spectrogramCache
