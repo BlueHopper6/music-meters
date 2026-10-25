@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('desktop', {
   chooseImage: () => ipcRenderer.invoke('choose-image'),
   loadAssets: project => ipcRenderer.invoke('load-assets', project),
   previewAt: (frame, project) => ipcRenderer.invoke('preview-at', frame, project),
+  cancelPreview: () => ipcRenderer.invoke('cancel-preview'),
   saveProject: (project, asNew = false) => ipcRenderer.invoke('save-project', project, asNew),
   openProject: () => ipcRenderer.invoke('open-project'),
   listTemplates: () => ipcRenderer.invoke('list-templates'),

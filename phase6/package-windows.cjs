@@ -49,6 +49,7 @@ async function main() {
       'phase2/editor-app/index.html', 'phase2/editor-app/style.css',
       'phase2/export-app/main.cjs', 'phase2/export-app/index.html',
       'phase6/test/repeat-smoke.cjs',
+      'phase6/test/preview-performance-smoke.cjs',
       'artifacts/phase2/editor.js', 'artifacts/phase2/export-renderer.js',
       'artifacts/phase2/vu-ballistics.cjs',
     ]) copyFile(from, path.join(app, from))

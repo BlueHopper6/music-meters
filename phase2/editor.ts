@@ -25,6 +25,7 @@ type Desktop = {
       waterfalls: Record<string, { columns: number; audioSeconds: number; levels: string; ages: string; frequencies: string }>;
       sampleRate: number; frameIndex: number; superseded?: false }
     | { superseded: true }>
+  cancelPreview(): Promise<void>
   saveProject(project: Project, asNew?: boolean): Promise<{ path: string; project: Project; missingMedia: MissingMedia[] } | null>
   openProject(): Promise<Initial | null>
   listTemplates(): Promise<TemplateEntry[]>
@@ -238,7 +239,7 @@ function refreshLayers() {
       event.stopPropagation()
       layer.visible = !layer.visible
       repaint()
-      if ((layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'vu' || layer.type === 'loudness' || layer.type === 'waterfall' || (layer.type === 'vectorscope' && layer.multiband)) && layer.visible) schedulePreview()
+      if ((layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'vu' || layer.type === 'loudness' || layer.type === 'waterfall' || (layer.type === 'vectorscope' && layer.multiband)) && layer.visible) markPreviewStale()
     })
     const lockBtn = document.createElement('button')
     lockBtn.type = 'button'
@@ -564,6 +565,9 @@ function refreshTemplates(entries: TemplateEntry[], preferred = '') {
 function resetSongPreview() {
   if (previewTimer) clearTimeout(previewTimer)
   previewRequest++
+  void window.desktop.cancelPreview().catch(() => {})
+  $('preview-busy').hidden = true
+  $('preview-stale').hidden = true
   frameIndex = 0
   analysis = emptyAnalysis()
 }
@@ -589,26 +593,43 @@ function nextId(prefix = 'scope') {
   return `${prefix}-${index}`
 }
 async function refreshPreview() {
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = null
   const request = ++previewRequest
-  if (!metadata || !project.audioPath) { render(); return }
+  if (!metadata || !project.audioPath) { $('preview-stale').hidden = true; render(); return }
+  const requestedFrame = frameIndex
+  $('preview-stale').hidden = false
   $('preview-busy').hidden = false
-  setStatus(`Analyzing audio through ${(frameIndex / 30).toFixed(2)} s…`)
+  setStatus(`Analyzing audio through ${(requestedFrame / 30).toFixed(2)} s…`)
   try {
-    const result = await window.desktop.previewAt(frameIndex, project)
+    const result = await window.desktop.previewAt(requestedFrame, project)
     if (request !== previewRequest || result.superseded) return
     analysis = decodeAnalysis(result)
     sampleRate = result.sampleRate
     render()
-    setStatus(`Real Prism meter still at ${(frameIndex / 30).toFixed(2)} s.`)
+    $('preview-stale').hidden = true
+    setStatus(`Real Prism meter still at ${(requestedFrame / 30).toFixed(2)} s.`)
   } catch (error) {
     if (request === previewRequest && !String(error).includes('Preview superseded')) setStatus(String(error))
   } finally {
     if (request === previewRequest) $('preview-busy').hidden = true
   }
 }
-function schedulePreview() {
+function markPreviewStale() {
   if (previewTimer) clearTimeout(previewTimer)
   previewRequest++
+  void window.desktop.cancelPreview().catch(() => {})
+  $('preview-busy').hidden = true
+  $('preview-stale').hidden = !metadata || !project.audioPath
+  if (metadata && project.audioPath && !exportRunning) {
+    setStatus('Audio still is out of date. Press Refresh still to update meter data.')
+  }
+}
+function scheduleTimePreview() {
+  if (previewTimer) clearTimeout(previewTimer)
+  previewRequest++
+  void window.desktop.cancelPreview().catch(() => {})
+  $('preview-stale').hidden = false
   $('preview-busy').hidden = false
   previewTimer = setTimeout(refreshPreview, 180)
 }
@@ -632,7 +653,7 @@ for (const [id, property] of [['layer-x', 'x'], ['layer-y', 'y'], ['layer-w', 'w
       if (property === 'h') layer.h = Math.max(minimum, Math.min(720 - layer.y, value))
     }
     repaint()
-    if ((layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'waterfall') && (property === 'w' || property === 'h')) schedulePreview()
+    if ((layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'waterfall') && (property === 'w' || property === 'h')) markPreviewStale()
   })
 }
 $<HTMLInputElement>('layer-aspect-lock').addEventListener('change', event => {
@@ -736,7 +757,7 @@ for (const [id, property] of [
     if (!layer || layer.type !== 'vectorscope' || layer.locked) return
     layer[property] = (event.target as HTMLInputElement).checked
     render()
-    if (property === 'multiband' && layer.multiband && metadata) schedulePreview()
+    if (property === 'multiband' && layer.multiband && metadata) markPreviewStale()
   })
 }
 for (const [id, property] of [
@@ -756,7 +777,7 @@ for (const [id, property] of [
       refreshInspector()
       if (property === 'fftSize' || property === 'smoothing') {
         analysis.spectra = {}
-        render(); schedulePreview()
+        render(); markPreviewStale()
       } else render()
     } catch (error) {
       Object.assign(layer, previous)
@@ -789,7 +810,7 @@ for (const [id, property] of [
     try {
       project = normalizeProject(project) as Project
       analysis.spectrograms = {}
-      render(); refreshInspector(); schedulePreview()
+      render(); refreshInspector(); markPreviewStale()
     } catch (error) {
       Object.assign(layer, previous)
       refreshInspector(); setStatus(String(error))
@@ -817,7 +838,7 @@ for (const [id, property] of [
       project = normalizeProject(project) as Project
       if (property === 'mode' || property === 'scrollSpeed') analysis.waveforms = {}
       render(); refreshInspector()
-      if (property === 'mode' || property === 'scrollSpeed') schedulePreview()
+      if (property === 'mode' || property === 'scrollSpeed') markPreviewStale()
     } catch (error) {
       Object.assign(layer, previous)
       refreshInspector(); setStatus(String(error))
@@ -877,7 +898,7 @@ for (const [id, property] of [
     try {
       project = normalizeProject(project) as Project
       analysis.waterfalls = {}
-      render(); refreshInspector(); schedulePreview()
+      render(); refreshInspector(); markPreviewStale()
     } catch (error) { Object.assign(layer, previous); refreshInspector(); setStatus(String(error)) }
   })
 }
@@ -886,7 +907,7 @@ $<HTMLInputElement>('waterfall-grid').addEventListener('change', event => {
   if (!layer || layer.type !== 'waterfall' || layer.locked) return
   layer.showGrid = (event.target as HTMLInputElement).checked
   analysis.waterfalls = {}
-  render(); schedulePreview()
+  render(); markPreviewStale()
 })
 for (const [id, property] of [
   ['oscilloscope-pitch-lock', 'pitchLock'],
@@ -897,7 +918,7 @@ for (const [id, property] of [
     const layer = selected()
     if (!layer || layer.type !== 'oscilloscope' || layer.locked) return
     layer[property] = (event.target as HTMLInputElement).checked
-    if (property === 'pitchLock') { analysis.oscilloscopes = {}; render(); schedulePreview() }
+    if (property === 'pitchLock') { analysis.oscilloscopes = {}; render(); markPreviewStale() }
     else render()
   })
 }
@@ -906,7 +927,7 @@ for (const [id, property] of [['layer-visible', 'visible'], ['layer-locked', 'lo
     const layer = selected(); if (!layer) return
     layer[property] = (event.target as HTMLInputElement).checked
     repaint()
-    if (property === 'visible' && (layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'vu' || layer.type === 'loudness' || layer.type === 'waterfall' || (layer.type === 'vectorscope' && layer.multiband)) && layer.visible) schedulePreview()
+    if (property === 'visible' && (layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'vu' || layer.type === 'loudness' || layer.type === 'waterfall' || (layer.type === 'vectorscope' && layer.multiband)) && layer.visible) markPreviewStale()
   })
 }
 
@@ -953,7 +974,7 @@ selection.addEventListener('pointermove', event => {
   render(); refreshInspector()
 })
 function finishDrag() {
-  if (drag?.mode === 'resize' && (selected()?.type === 'spectrogram' || selected()?.type === 'waveform' || selected()?.type === 'waterfall')) schedulePreview()
+  if (drag?.mode === 'resize' && (selected()?.type === 'spectrogram' || selected()?.type === 'waveform' || selected()?.type === 'waterfall')) markPreviewStale()
   drag = null
   showSnapGuides(null, null)
 }
@@ -990,25 +1011,25 @@ function addLayer(type = ($<HTMLSelectElement>('add-type')).value) {
   const id = nextId(type === 'spectrum' ? 'spectrum' : type === 'oscilloscope' ? 'oscilloscope' : type === 'spectrogram' ? 'spectrogram' : type === 'waveform' ? 'waveform' : type === 'vu' ? 'vu' : type === 'loudness' ? 'loudness' : type === 'waterfall' ? 'waterfall' : 'scope')
   if (type === 'spectrum') {
     project.layers.push(spectrumLayer(id, `Spectrum ${project.layers.length + 1}`) as SpectrumLayer)
-    if (metadata) schedulePreview()
+    if (metadata) markPreviewStale()
   } else if (type === 'oscilloscope') {
     project.layers.push(oscilloscopeLayer(id, `Oscilloscope ${project.layers.length + 1}`) as OscilloscopeLayer)
-    if (metadata) schedulePreview()
+    if (metadata) markPreviewStale()
   } else if (type === 'spectrogram') {
     project.layers.push(spectrogramLayer(id, `Spectrogram ${project.layers.length + 1}`) as SpectrogramLayer)
-    if (metadata) schedulePreview()
+    if (metadata) markPreviewStale()
   } else if (type === 'waveform') {
     project.layers.push(waveformLayer(id, `Waveform ${project.layers.length + 1}`) as WaveformLayer)
-    if (metadata) schedulePreview()
+    if (metadata) markPreviewStale()
   } else if (type === 'vu') {
     project.layers.push(vuLayer(id, `VU meter ${project.layers.length + 1}`) as VuLayer)
-    if (metadata) schedulePreview()
+    if (metadata) markPreviewStale()
   } else if (type === 'loudness') {
     project.layers.push(loudnessLayer(id, `Loudness ${project.layers.length + 1}`) as LoudnessLayer)
-    if (metadata) schedulePreview()
+    if (metadata) markPreviewStale()
   } else if (type === 'waterfall') {
     project.layers.push(waterfallLayer(id, `Waterfall ${project.layers.length + 1}`) as WaterfallLayer)
-    if (metadata) schedulePreview()
+    if (metadata) markPreviewStale()
   } else if (type === 'image') {
     upgradeProject()
     project.layers.push(imageLayer(id, `Artwork ${project.layers.length + 1}`) as ImageLayer)
@@ -1017,6 +1038,7 @@ function addLayer(type = ($<HTMLSelectElement>('add-type')).value) {
     project.layers.push(textLayer(id, `Text ${project.layers.length + 1}`, 'Artist name') as TextLayer)
   } else {
     project.layers.push(vectorscopeLayer(id, `Vectorscope ${project.layers.length + 1}`) as VectorscopeLayer)
+    if (metadata) markPreviewStale()
   }
   selectedId = id; repaint()
 }
@@ -1104,7 +1126,7 @@ $('duplicate-layer').addEventListener('click', () => {
   const copy = { ...layer, id: nextId(), name: `${layer.name} copy`.slice(0, 80), locked: false,
     x: Math.min(layer.x + 20, 1280 - layer.w), y: Math.min(layer.y + 20, 720 - layer.h) }
   project.layers.splice(project.layers.indexOf(layer) + 1, 0, copy)
-  if ((copy.type === 'spectrum' || copy.type === 'oscilloscope' || copy.type === 'spectrogram' || copy.type === 'waveform' || copy.type === 'vu' || copy.type === 'loudness' || copy.type === 'waterfall' || (copy.type === 'vectorscope' && copy.multiband)) && metadata) schedulePreview()
+  if ((copy.type === 'spectrum' || copy.type === 'oscilloscope' || copy.type === 'spectrogram' || copy.type === 'waveform' || copy.type === 'vu' || copy.type === 'loudness' || copy.type === 'waterfall' || (copy.type === 'vectorscope' && copy.multiband)) && metadata) markPreviewStale()
   selectedId = copy.id; repaint()
 })
 $('delete-layer').addEventListener('click', () => {
@@ -1198,13 +1220,13 @@ layersList.addEventListener('lostpointercapture', finishLayerDrag)
 
 $<HTMLInputElement>('time-slider').addEventListener('input', event => {
   frameIndex = Number((event.target as HTMLInputElement).value)
-  updateTimeControls(); schedulePreview()
+  updateTimeControls(); scheduleTimePreview()
 })
 $<HTMLInputElement>('time-input').addEventListener('change', event => {
   const seconds = Number((event.target as HTMLInputElement).value)
   if (!Number.isFinite(seconds)) { updateTimeControls(); return }
   frameIndex = Math.max(0, Math.min((metadata?.totalFrames ?? 1) - 1, Math.round(seconds * 30)))
-  updateTimeControls(); schedulePreview()
+  updateTimeControls(); scheduleTimePreview()
 })
 $('refresh-still').addEventListener('click', refreshPreview)
 function setStageFullscreen(active: boolean) {
