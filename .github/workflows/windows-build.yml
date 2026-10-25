@@ -7,7 +7,8 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # Pinned Prism uses node-gyp 10, which cannot detect Visual Studio 2026.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
