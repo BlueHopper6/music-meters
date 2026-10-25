@@ -4,7 +4,10 @@ import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type Vec
 import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject } from './project.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number }
-type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null; fonts: string[] }
+type TemplateEntry = { id: string; name: string; builtIn: boolean }
+type MissingMedia = { kind: 'audio' | 'background' | 'layer'; id?: string; label: string; path: string }
+type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null; fonts: string[];
+  templates: TemplateEntry[]; preferences: { exportPreset: string; lastTemplateId: string }; missingMedia: MissingMedia[] }
 type Desktop = {
   initial(): Promise<Initial>
   chooseAudio(): Promise<{ path: string; metadata: Metadata } | null>
@@ -21,8 +24,14 @@ type Desktop = {
       waterfalls: Record<string, { columns: number; audioSeconds: number; levels: string; ages: string; frequencies: string }>;
       sampleRate: number; frameIndex: number; superseded?: false }
     | { superseded: true }>
-  saveProject(project: Project): Promise<string | null>
+  saveProject(project: Project, asNew?: boolean): Promise<{ path: string; project: Project; missingMedia: MissingMedia[] } | null>
   openProject(): Promise<Initial | null>
+  listTemplates(): Promise<TemplateEntry[]>
+  saveTemplate(name: string, project: Project): Promise<TemplateEntry>
+  loadTemplate(id: string, project: Project): Promise<{ project: Project; missingMedia: MissingMedia[] }>
+  duplicateTemplate(id: string, name: string): Promise<TemplateEntry>
+  renameTemplate(id: string, name: string): Promise<TemplateEntry>
+  setExportPreset(preset: string): Promise<void>
   renderMp4(project: Project, preset: string): Promise<string | null>
   cancelRender(): Promise<void>
   onExport(listener: (event: Record<string, unknown>) => void): () => void
@@ -47,6 +56,7 @@ let previewRequest = 0
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 let exportRunning = false
 let projectPath: string | null = null
+let missingMedia: MissingMedia[] = []
 
 function selected() { return project.layers.find(layer => layer.id === selectedId) }
 function setStatus(message: string) { status.textContent = message }
@@ -387,6 +397,66 @@ function refreshAudio() {
   frameIndex = Math.min(frameIndex, Number(slider.max))
   updateTimeControls()
 }
+function renderMissingMedia() {
+  const panel = $('missing-media')
+  panel.replaceChildren()
+  panel.hidden = missingMedia.length === 0
+  for (const item of missingMedia) {
+    const row = document.createElement('div')
+    row.className = 'missing-media-row'
+    const description = document.createElement('span')
+    description.textContent = `${item.label} is missing: ${item.path}`
+    description.title = item.path
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.textContent = 'Relink…'
+    button.addEventListener('click', async () => {
+      try {
+        if (item.kind === 'audio') {
+          $('import-audio').click()
+          return
+        }
+        const chosen = await window.desktop.chooseImage()
+        if (!chosen) return
+        if (item.kind === 'background' && typeof project.background !== 'string') project.background.imagePath = chosen
+        if (item.kind === 'layer') {
+          const layer = project.layers.find(layer => layer.id === item.id)
+          if (layer?.type === 'image') layer.imagePath = chosen
+        }
+        missingMedia = missingMedia.filter(entry => entry !== item)
+        renderMissingMedia(); refreshInspector(); await syncAssets()
+        setStatus(`Relinked ${item.label}. Save the project to keep the new reference.`)
+      } catch (error) { setStatus(String(error)) }
+    })
+    row.append(description, button)
+    panel.append(row)
+  }
+}
+function refreshTemplates(entries: TemplateEntry[], preferred = '') {
+  const list = $<HTMLSelectElement>('template-list')
+  const previous = preferred || list.value
+  list.replaceChildren(...entries.map(entry => new Option(`${entry.builtIn ? 'Starter · ' : ''}${entry.name}`, entry.id)))
+  if (entries.some(entry => entry.id === previous)) list.value = previous
+  const active = entries.find(entry => entry.id === list.value)
+  ;($<HTMLButtonElement>('rename-template')).disabled = !active || active.builtIn
+}
+function resetSongPreview() {
+  if (previewTimer) clearTimeout(previewTimer)
+  previewRequest++
+  frameIndex = 0
+  analysis = emptyAnalysis()
+}
+function filenameTitle(input: string) {
+  const basename = input.split(/[\\/]/).pop() || input
+  return basename.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200) || 'Untitled track'
+}
+function suggestSongTitle(input: string, previousAudio: string) {
+  const suggested = filenameTitle(input)
+  const previous = previousAudio ? filenameTitle(previousAudio) : 'Untitled track'
+  if (!project.title || project.title === 'Untitled track' || project.title === previous) project.title = suggested
+  for (const layer of project.layers) if (layer.type === 'text' && /^song title$/i.test(layer.name)
+      && (!layer.text || layer.text === 'Untitled track' || layer.text === previous)) layer.text = suggested
+}
 function updateTimeControls() {
   ;($<HTMLInputElement>('time-slider')).value = String(frameIndex)
   ;($<HTMLInputElement>('time-input')).value = (frameIndex / 30).toFixed(2)
@@ -464,7 +534,7 @@ $('image-choose').addEventListener('click', async () => {
   const layer = selected(); if (!layer || layer.type !== 'image' || layer.locked) return
   try {
     const path = await window.desktop.chooseImage(); if (!path) return
-    layer.imagePath = path; refreshInspector(); await syncAssets()
+    layer.imagePath = path; layer.visible = true; refreshInspector(); refreshLayers(); await syncAssets()
   } catch (error) { setStatus(String(error)) }
 })
 for (const [id, property] of [['image-fit', 'fit'], ['image-rotation', 'rotation'], ['image-shadow', 'shadow']] as const) {
@@ -811,15 +881,80 @@ $('import-audio').addEventListener('click', async () => {
   try {
     const chosen = await window.desktop.chooseAudio()
     if (!chosen) return
-    project.audioPath = chosen.path; metadata = chosen.metadata; frameIndex = 0
-    analysis = emptyAnalysis()
-    refreshAudio(); await refreshPreview()
+    const previousAudio = project.audioPath
+    resetSongPreview()
+    project.audioPath = chosen.path; metadata = chosen.metadata
+    suggestSongTitle(chosen.path, previousAudio)
+    missingMedia = missingMedia.filter(item => item.kind !== 'audio')
+    refreshInspector(); refreshAudio(); renderMissingMedia(); await refreshPreview()
+  } catch (error) { setStatus(String(error)) }
+})
+$<HTMLSelectElement>('template-list').addEventListener('change', () => {
+  ;($<HTMLButtonElement>('rename-template')).disabled = $<HTMLSelectElement>('template-list').value.startsWith('starter:')
+})
+$<HTMLSelectElement>('export-preset').addEventListener('change', async event => {
+  try { await window.desktop.setExportPreset((event.target as HTMLSelectElement).value) }
+  catch (error) { setStatus(String(error)) }
+})
+$('save-template').addEventListener('click', async () => {
+  try {
+    const name = $<HTMLInputElement>('template-name').value.trim()
+    const saved = await window.desktop.saveTemplate(name, project)
+    refreshTemplates(await window.desktop.listTemplates(), saved.id)
+    setStatus(`Saved layout template: ${saved.name}`)
+  } catch (error) { setStatus(String(error)) }
+})
+$('load-template').addEventListener('click', async () => {
+  try {
+    const id = $<HTMLSelectElement>('template-list').value
+    const loaded = await window.desktop.loadTemplate(id, project)
+    resetSongPreview()
+    project = normalizeProject(loaded.project) as Project
+    missingMedia = loaded.missingMedia
+    selectedId = project.layers.at(-1)?.id || null
+    refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
+    if (metadata) await refreshPreview()
+    else setStatus('Layout loaded. Import audio to preview and export.')
+  } catch (error) { setStatus(String(error)) }
+})
+$('duplicate-template').addEventListener('click', async () => {
+  try {
+    const id = $<HTMLSelectElement>('template-list').value
+    const name = $<HTMLInputElement>('template-name').value.trim()
+    const saved = await window.desktop.duplicateTemplate(id, name)
+    refreshTemplates(await window.desktop.listTemplates(), saved.id)
+    setStatus(`Duplicated layout template: ${saved.name}`)
+  } catch (error) { setStatus(String(error)) }
+})
+$('rename-template').addEventListener('click', async () => {
+  try {
+    const id = $<HTMLSelectElement>('template-list').value
+    const name = $<HTMLInputElement>('template-name').value.trim()
+    const renamed = await window.desktop.renameTemplate(id, name)
+    refreshTemplates(await window.desktop.listTemplates(), renamed.id)
+    setStatus(`Renamed layout template: ${renamed.name}`)
   } catch (error) { setStatus(String(error)) }
 })
 $('save-project').addEventListener('click', async () => {
   try {
-    const path = await window.desktop.saveProject(project)
-    if (path) { projectPath = path; setStatus(`Saved project: ${path}`) }
+    const saved = await window.desktop.saveProject(project)
+    if (saved) {
+      projectPath = saved.path; project = normalizeProject(saved.project) as Project
+      missingMedia = saved.missingMedia
+      refreshInspector(); renderMissingMedia(); await syncAssets()
+      setStatus(`Saved project: ${saved.path}`)
+    }
+  } catch (error) { setStatus(String(error)) }
+})
+$('save-project-as').addEventListener('click', async () => {
+  try {
+    const saved = await window.desktop.saveProject(project, true)
+    if (saved) {
+      projectPath = saved.path; project = normalizeProject(saved.project) as Project
+      missingMedia = saved.missingMedia
+      refreshInspector(); renderMissingMedia(); await syncAssets()
+      setStatus(`Saved new project: ${saved.path}`)
+    }
   } catch (error) { setStatus(String(error)) }
 })
 $('open-project').addEventListener('click', async () => {
@@ -829,9 +964,9 @@ $('open-project').addEventListener('click', async () => {
     project = normalizeProject(loaded.project) as Project
     setInstalledFonts(loaded.fonts)
     metadata = loaded.metadata; projectPath = loaded.projectPath
-    selectedId = project.layers.at(-1)?.id || null; frameIndex = 0
-    analysis = emptyAnalysis()
-    refreshInspector(); refreshLayers(); refreshAudio(); await syncAssets()
+    selectedId = project.layers.at(-1)?.id || null; resetSongPreview()
+    missingMedia = loaded.missingMedia
+    refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
     if (metadata) await refreshPreview()
     else setStatus('Project opened. Audio is missing; import a replacement file.')
   } catch (error) { setStatus(String(error)) }
@@ -940,8 +1075,11 @@ async function start() {
   project = normalizeProject(initial.project) as Project
   setInstalledFonts(initial.fonts)
   metadata = initial.metadata; projectPath = initial.projectPath
+  missingMedia = initial.missingMedia
   selectedId = project.layers.at(-1)?.id || null
-  refreshInspector(); refreshLayers(); refreshAudio(); await syncAssets()
+  refreshTemplates(initial.templates, initial.preferences.lastTemplateId)
+  ;($<HTMLSelectElement>('export-preset')).value = initial.preferences.exportPreset
+  refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
   if (metadata) await refreshPreview()
 }
 start().catch(error => setStatus(String(error)))

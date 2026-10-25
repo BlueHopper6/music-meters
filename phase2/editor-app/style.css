@@ -220,6 +220,23 @@ button.danger-button:hover:not(:disabled) {
   font-variant-numeric: tabular-nums;
 }
 
+.template-controls {
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.template-controls label { display: grid; gap: 4px; color: var(--text-secondary); font-size: 11px; }
+.template-controls select, .template-controls input { min-width: 0; width: 100%; height: 28px; padding: 4px 7px;
+  color: var(--text-primary); background: var(--bg-well); border: 1px solid var(--border-control); border-radius: 4px; }
+.template-actions { display: flex; gap: 6px; }
+.template-actions button { flex: 1; }
+.missing-media { display: grid; gap: 5px; margin-top: 8px; padding: 8px; border: 1px solid #8a6034;
+  border-radius: 4px; background: #2a2118; }
+.missing-media-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; color: #f0d3aa; }
+.missing-media-row span { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.missing-media-row button { white-space: nowrap; }
+
 .workspace {
   display: grid;
   grid-template-columns: 244px minmax(0, 1fr) 284px;
