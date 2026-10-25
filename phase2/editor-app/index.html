@@ -68,7 +68,7 @@
           <button id="duplicate-layer">Duplicate</button>
           <button id="delete-layer" class="danger-button">Delete</button>
         </div>
-        <p class="hint">Drag layers to reorder, or select a layer to position on the stage.</p>
+        <p class="hint">Drag layers to reorder. Click a layer or its row to select it; click empty stage space to clear the outline.</p>
       </div>
     </aside>
     <section class="center-panel">
@@ -87,7 +87,7 @@
         </div>
       </div>
       <div class="stage-shell" id="stage-shell"><div class="stage-wrap" id="stage-wrap">
-        <canvas id="stage" width="1280" height="720" aria-label="Composition preview"></canvas>
+        <canvas id="stage" width="1280" height="720" tabindex="0" aria-label="Composition preview. Click a layer to select it, or empty space to clear selection. Press Escape to clear selection."></canvas>
         <div id="snap-guide-x" class="snap-guide snap-guide-x" hidden></div>
         <div id="snap-guide-y" class="snap-guide snap-guide-y" hidden></div>
         <div id="selection" class="selection" hidden><span class="selection-label"></span><span class="resize-handle" data-handle="resize" title="Resize layer"></span></div>
@@ -115,15 +115,18 @@
         <div id="background-image-row"><button id="background-choose-image" type="button">Choose background image</button><span id="background-image-name" class="asset-name"></span><label>Image fit<select id="background-fit"><option value="cover">Crop to fill</option><option value="contain">Fit inside</option></select></label></div>
       </section>
       <section class="property-group"><h3>Selected layer</h3>
-        <label>Name<input id="layer-name" type="text" maxlength="80"></label>
-        <div class="number-grid"><label>X<input id="layer-x" type="number" min="0" max="1280"></label><label>Y<input id="layer-y" type="number" min="0" max="720"></label><label>Width<input id="layer-w" type="number" min="80" max="1280"></label><label>Height<input id="layer-h" type="number" min="80" max="720"></label></div>
-        <label class="stage-option"><input id="layer-aspect-lock" type="checkbox"> Lock aspect ratio while resizing</label>
-        <label id="layer-rotation-row">Rotation (°)<input id="layer-rotation" type="number" min="-180" max="180" step="1"></label>
-        <div class="number-grid">
-          <label>Opacity %<input id="layer-opacity" type="number" min="0" max="100" step="1"></label>
-          <label id="layer-color-row">Color<input id="layer-color" type="color"></label>
+        <p id="no-layer-selected" class="hint" hidden>No layer selected. Click a layer on the stage or choose one in Layers.</p>
+        <div id="selected-layer-controls">
+          <label>Name<input id="layer-name" type="text" maxlength="80"></label>
+          <div class="number-grid"><label>X<input id="layer-x" type="number" min="0" max="1280"></label><label>Y (from top)<input id="layer-y" type="number" min="0" max="720"></label><label>Width<input id="layer-w" type="number" min="80" max="1280"></label><label>Height<input id="layer-h" type="number" min="80" max="720"></label></div>
+          <label class="stage-option"><input id="layer-aspect-lock" type="checkbox"> Lock aspect ratio while resizing</label>
+          <label id="layer-rotation-row">Rotation (°)<input id="layer-rotation" type="number" min="-180" max="180" step="1"></label>
+          <div class="number-grid">
+            <label>Opacity %<input id="layer-opacity" type="number" min="0" max="100" step="1"></label>
+            <label id="layer-color-row">Color<input id="layer-color" type="color"></label>
+          </div>
+          <div class="checks"><label><input id="layer-visible" type="checkbox"> Visible</label><label><input id="layer-locked" type="checkbox"> Locked</label></div>
         </div>
-        <div class="checks"><label><input id="layer-visible" type="checkbox"> Visible</label><label><input id="layer-locked" type="checkbox"> Locked</label></div>
       </section>
       <section class="property-group" id="image-options" hidden><h3>Artwork / logo</h3>
         <button id="image-choose" type="button">Choose local image</button><span id="image-name" class="asset-name"></span>
