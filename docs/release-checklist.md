@@ -23,7 +23,7 @@ Run `electron.exe` in the portable folder while FFmpeg and FFprobe are on `PATH`
 
 ## Before any public binary distribution
 
-- Resolve every open item in [the public release review](public-release-review.md), including final copyright attribution and the exact binary/source pair for the combined GPL-3.0-only Prism-based application.
+- Resolve every open item in [the public release review](public-release-review.md), including the final artwork and GPL distribution review and the exact binary/source pair for the combined GPL-3.0-only Prism-based application.
 - Keep `MUSICMETERS-LICENSE.txt`, `LICENSE-NOTICES.md`, `PRISM-LICENSE.txt`, `PRISM-THIRD_PARTY_NOTICES.md`, `PRISM-REFERENCE_DEPENDENCIES.md`, `DR_LIBS-LICENSE.txt`, `R8BRAIN-LICENSE.txt`, `NODE-ADDON-API-LICENSE.md`, `THIRD_PARTY_NOTICES.md`, `BUILD-PROVENANCE.json`, `SOURCE-ARCHIVE.json`, and Electron's `LICENSE` and `LICENSES.chromium.html` in the release package.
 - Use an Electron stable build containing the latest applicable Node.js security fixes; the current stable 45.0.0 contains Node 24.22.0, so this gate remains open for the October 2026 Node fixes.
 - FFmpeg/FFprobe command-line executables are system dependencies in this build. Electron's copied runtime includes `ffmpeg.dll` with a notice in `LICENSES.chromium.html`. If a future package bundles the FFmpeg command-line executables, review the exact binaries' configuration and license obligations first.
