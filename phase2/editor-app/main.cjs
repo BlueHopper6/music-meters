@@ -9,7 +9,7 @@ const { defaultProject, normalizeProject } = require('../project.cjs')
 const { installedFonts, assertInstalledFonts } = require('../fonts.cjs')
 const { readImage, imagePaths, assetData, saveArtwork, resolveArtwork } = require('../assets.cjs')
 const { listTemplates, readTemplate, saveTemplate, duplicateTemplate, renameTemplate, deleteTemplate, applyTemplate, titleSuggestion } = require('../templates.cjs')
-const { readPreferences, writePreferences } = require('../preferences.cjs')
+const { readPreferences, writePreferences, recordRecentProject } = require('../preferences.cjs')
 const { probeAudio } = require('../audio.cjs')
 const { outputFormat, validateOutputPath, validateAudioCopy } = require('../audio-output.cjs')
 const { lockWindowNavigation, assertTrustedSender } = require('../window-security.cjs')
@@ -113,8 +113,66 @@ function validateActiveProject(raw) {
   return normalized
 }
 
+const isAutomatedTest = Boolean(
+  process.env.PHASE2_TEST_INPUT ||
+  process.env.PHASE2_TEST_PROJECT_PATH ||
+  process.env.PHASE6_SECURITY_SMOKE ||
+  process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE ||
+  process.env.PHASE6_PREVIEW_PERF_SMOKE ||
+  process.env.PHASE6_REPEAT_SMOKE ||
+  process.env.PHASE5_RELINK_SMOKE ||
+  process.env.PHASE5_WORKFLOW_SMOKE ||
+  process.env.PHASE4_LEGACY_SMOKE ||
+  process.env.PHASE4_COMPOSITION_SMOKE ||
+  process.env.PHASE3_ALL_METERS_SMOKE ||
+  process.env.PHASE3_VECTORSCOPE_SMOKE ||
+  process.env.PHASE3_WATERFALL_SMOKE ||
+  process.env.PHASE3_LOUDNESS_SMOKE ||
+  process.env.PHASE3_VU_SMOKE ||
+  process.env.PHASE3_WAVEFORM_SMOKE ||
+  process.env.PHASE3_SPECTROGRAM_SMOKE ||
+  process.env.PHASE3_OSCILLOSCOPE_LONG ||
+  process.env.PHASE3_OSCILLOSCOPE_SMOKE ||
+  process.env.PHASE3_SPECTRUM_SMOKE ||
+  process.env.PHASE2_MISSING_SMOKE ||
+  process.env.PHASE2_LONG_PREVIEW ||
+  process.env.PHASE2_SMOKE
+)
+
 handle('initial', () => ({ project, metadata, projectPath, fonts: installedFonts(),
-  templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project) }))
+  templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project),
+  isStartupSession: process.env.PHASE2_STARTUP_SMOKE === '1' || !isAutomatedTest }))
+handle('get-recent-projects', () => readPreferences(userData()).recentProjects || [])
+handle('new-blank-project', () => {
+  cancelPreview()
+  const fresh = defaultProject()
+  fresh.layers = []
+  fresh.title = 'Untitled project'
+  project = fresh
+  projectPath = null
+  activeAudio = ''
+  metadata = null
+  allowedImages.clear()
+  return { project, metadata, projectPath, fonts: installedFonts(),
+    templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: [] }
+})
+handle('new-project-from-template', (_event, templateId) => {
+  if (!templateId || typeof templateId !== 'string') throw new Error('Choose a template')
+  cancelPreview()
+  const tmpl = readTemplate(userData(), templateId)
+  const base = defaultProject()
+  base.title = 'Untitled project'
+  const applied = applyTemplate(tmpl.layout, base)
+  assertInstalledFonts(applied)
+  allowedImages.clear()
+  for (const input of imagePaths(applied)) allowedImages.add(input)
+  project = applied
+  projectPath = null
+  activeAudio = ''
+  metadata = null
+  return { project, metadata, projectPath, fonts: installedFonts(),
+    templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project) }
+})
 handle('list-templates', () => listTemplates(userData()))
 handle('save-template', (_event, name, raw, overwriteId = '') => {
   const value = validateActiveProject(raw)
@@ -202,7 +260,7 @@ handle('cancel-preview', () => cancelPreview())
 handle('save-project', async (_event, raw, asNew = false) => {
   const value = validateActiveProject(raw)
   if (typeof asNew !== 'boolean') throw new Error('Invalid Save As setting')
-  let target = process.env.PHASE2_TEST_PROJECT_PATH || (asNew ? null : projectPath)
+  let target = process.env.PHASE2_TEST_SAVE_PATH || process.env.PHASE2_TEST_PROJECT_PATH || (asNew ? null : projectPath)
   if (!target) {
     const result = await dialog.showSaveDialog(win, {
       title: asNew ? 'Save project as' : 'Save project',
@@ -221,18 +279,10 @@ handle('save-project', async (_event, raw, asNew = false) => {
   project = normalizeProject(resolveArtwork({ ...document, audioPath: reference }, target))
   for (const input of imagePaths(project)) allowedImages.add(input)
   projectPath = target
+  recordRecentProject(userData(), target, project.title)
   return { path: target, project, missingMedia: missingMedia(project) }
 })
-handle('open-project', async () => {
-  let target = process.env.PHASE2_TEST_PROJECT_PATH || ''
-  if (!target) {
-    const result = await dialog.showOpenDialog(win, {
-      title: 'Open project', properties: ['openFile'],
-      filters: [{ name: 'Visualizer project', extensions: ['json'] }],
-    })
-    if (result.canceled) return null
-    target = result.filePaths[0]
-  }
+function loadProjectFromDisk(target) {
   if (fs.statSync(target).size > 1024 * 1024) throw new Error('Project file is too large')
   const stored = JSON.parse(fs.readFileSync(target, 'utf8'))
   const ref = stored.audioRelativePath
@@ -257,8 +307,29 @@ handle('open-project', async () => {
   metadata = nextMetadata
   activeAudio = nextAudio
   projectPath = target
+  recordRecentProject(userData(), target, value.title)
   return { project, metadata, projectPath, fonts: installedFonts(),
     templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project) }
+}
+
+handle('open-project', async () => {
+  let target = process.env.PHASE2_TEST_PROJECT_PATH || ''
+  if (!target) {
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Open project', properties: ['openFile'],
+      filters: [{ name: 'Visualizer project', extensions: ['json'] }],
+    })
+    if (result.canceled) return null
+    target = result.filePaths[0]
+  }
+  return loadProjectFromDisk(target)
+})
+
+handle('open-project-path', async (_event, targetPath) => {
+  if (!targetPath || typeof targetPath !== 'string') throw new Error('Invalid project path')
+  const resolved = resolve(targetPath)
+  if (!fs.existsSync(resolved)) throw new Error('Project file not found: ' + resolved)
+  return loadProjectFromDisk(resolved)
 })
 handle('render-video', async (_event, raw, preset, audioMode) => {
   if (exportJob) throw new Error('An export is already running')
@@ -350,9 +421,10 @@ app.whenReady().then(() => {
   })
   lockWindowNavigation(win.webContents)
   return win.loadFile(editorDocument).then(async () => {
-    if (process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
+    if (process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
-        if (process.env.PHASE6_SECURITY_SMOKE === '1') await require('../../phase6/test/security-smoke.cjs')(win)
+        if (process.env.PHASE2_STARTUP_SMOKE === '1') await require('../test/startup-smoke.cjs')(win)
+        else if (process.env.PHASE6_SECURITY_SMOKE === '1') await require('../../phase6/test/security-smoke.cjs')(win)
         else if (process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1') await require('../../phase6/test/audio-copy-editor-smoke.cjs')(win)
         else if (process.env.PHASE6_PREVIEW_PERF_SMOKE === '1') await require('../../phase6/test/preview-performance-smoke.cjs')(win)
         else if (process.env.PHASE6_REPEAT_SMOKE === '1') await require('../../phase6/test/repeat-smoke.cjs')(win)

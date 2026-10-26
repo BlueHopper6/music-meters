@@ -7,8 +7,10 @@ import { move as moveOnStage, resize as resizeOnStage } from './stage-geometry.c
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number; codecName: string }
 type TemplateEntry = { id: string; name: string; builtIn: boolean }
 type MissingMedia = { kind: 'audio' | 'background' | 'layer'; id?: string; label: string; path: string }
+type RecentProject = { path: string; name: string; lastOpened: number }
 type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null; fonts: string[];
-  templates: TemplateEntry[]; preferences: { exportPreset: string; lastTemplateId: string }; missingMedia: MissingMedia[] }
+  templates: TemplateEntry[]; preferences: { exportPreset: string; lastTemplateId: string; recentProjects?: RecentProject[] };
+  missingMedia: MissingMedia[]; isStartupSession?: boolean }
 type Desktop = {
   initial(): Promise<Initial>
   chooseAudio(): Promise<{ path: string; metadata: Metadata } | null>
@@ -28,6 +30,10 @@ type Desktop = {
   cancelPreview(): Promise<void>
   saveProject(project: Project, asNew?: boolean): Promise<{ path: string; project: Project; missingMedia: MissingMedia[] } | null>
   openProject(): Promise<Initial | null>
+  openProjectPath(path: string): Promise<Initial | null>
+  newBlankProject(): Promise<Initial>
+  newProjectFromTemplate(id: string): Promise<Initial>
+  getRecentProjects(): Promise<RecentProject[]>
   listTemplates(): Promise<TemplateEntry[]>
   saveTemplate(name: string, project: Project, overwriteId?: string): Promise<TemplateEntry>
   loadTemplate(id: string, project: Project): Promise<{ project: Project; missingMedia: MissingMedia[] }>
@@ -1753,20 +1759,163 @@ $('save-project-as').addEventListener('click', async () => {
     }
   } catch (error) { setStatus(String(error)) }
 })
+async function applyLoadedProject(loaded: Initial) {
+  project = normalizeProject(loaded.project) as Project
+  setInstalledFonts(loaded.fonts)
+  metadata = loaded.metadata; projectPath = loaded.projectPath
+  selectedId = project.layers.at(-1)?.id || null; resetSongPreview()
+  missingMedia = loaded.missingMedia
+  refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
+  if (metadata) await refreshPreview()
+  else setStatus(project.audioPath ? 'Project opened.' : 'Ready. Import audio to preview still.')
+}
+
+function showProjectManager() {
+  $<HTMLDivElement>('project-manager-screen').hidden = false
+  $<HTMLDivElement>('editor-screen').hidden = true
+}
+
+function showEditor() {
+  $<HTMLDivElement>('project-manager-screen').hidden = true
+  $<HTMLDivElement>('editor-screen').hidden = false
+  render()
+}
+
+async function openRecent(targetPath: string) {
+  try {
+    const loaded = await window.desktop.openProjectPath(targetPath)
+    if (!loaded) return
+    await applyLoadedProject(loaded)
+    showEditor()
+  } catch (error) { setStatus(String(error)) }
+}
+
+function renderRecentProjects(list: RecentProject[]) {
+  const grid = $('recent-projects-grid')
+  const empty = $('recent-projects-empty')
+  const count = $('recent-projects-count')
+  grid.innerHTML = ''
+  count.textContent = `${list.length} project${list.length === 1 ? '' : 's'}`
+  if (!list.length) {
+    grid.hidden = true
+    empty.hidden = false
+    return
+  }
+  grid.hidden = false
+  empty.hidden = true
+  for (const item of list) {
+    const card = document.createElement('div')
+    card.className = 'project-card'
+    card.setAttribute('role', 'listitem')
+    card.setAttribute('tabindex', '0')
+
+    const thumb = document.createElement('div')
+    thumb.className = 'project-card-thumb'
+    thumb.innerHTML = '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 16V8M12 16V11M17 16V13"/></svg>'
+
+    const info = document.createElement('div')
+    info.className = 'project-card-info'
+
+    const title = document.createElement('div')
+    title.className = 'project-card-title'
+    title.textContent = item.name
+
+    const pathDiv = document.createElement('div')
+    pathDiv.className = 'project-card-path'
+    pathDiv.textContent = item.path
+    pathDiv.title = item.path
+
+    const timeDiv = document.createElement('div')
+    timeDiv.className = 'project-card-time'
+    const date = new Date(item.lastOpened)
+    timeDiv.textContent = Number.isFinite(date.getTime())
+      ? `Opened ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
+      : 'Recently opened'
+
+    info.appendChild(title)
+    info.appendChild(pathDiv)
+    info.appendChild(timeDiv)
+
+    card.appendChild(thumb)
+    card.appendChild(info)
+
+    card.addEventListener('click', () => openRecent(item.path))
+    card.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        openRecent(item.path)
+      }
+    })
+    grid.appendChild(card)
+  }
+}
+
+async function refreshRecentProjects() {
+  try {
+    const list = await window.desktop.getRecentProjects()
+    renderRecentProjects(list)
+  } catch (error) { setStatus(String(error)) }
+}
+
+function openTemplatePicker() {
+  const select = $<HTMLSelectElement>('template-picker-select')
+  select.innerHTML = ''
+  for (const tmpl of templates) {
+    const option = document.createElement('option')
+    option.value = tmpl.id
+    option.textContent = tmpl.name + (tmpl.builtIn ? ' (Starter)' : ' (Custom)')
+    select.appendChild(option)
+  }
+  $<HTMLDivElement>('template-picker-modal').hidden = false
+  select.focus()
+}
+
+function closeTemplatePicker() {
+  $<HTMLDivElement>('template-picker-modal').hidden = true
+  $('pm-new-template').focus()
+}
+
 $('open-project').addEventListener('click', async () => {
   try {
     const loaded = await window.desktop.openProject()
     if (!loaded) return
-    project = normalizeProject(loaded.project) as Project
-    setInstalledFonts(loaded.fonts)
-    metadata = loaded.metadata; projectPath = loaded.projectPath
-    selectedId = project.layers.at(-1)?.id || null; resetSongPreview()
-    missingMedia = loaded.missingMedia
-    refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
-    if (metadata) await refreshPreview()
-    else setStatus('Project opened. Audio is missing; import a replacement file.')
+    await applyLoadedProject(loaded)
   } catch (error) { setStatus(String(error)) }
 })
+$('return-to-projects').addEventListener('click', async () => {
+  await refreshRecentProjects()
+  showProjectManager()
+})
+$('pm-open-project').addEventListener('click', async () => {
+  try {
+    const loaded = await window.desktop.openProject()
+    if (!loaded) return
+    await applyLoadedProject(loaded)
+    showEditor()
+  } catch (error) { setStatus(String(error)) }
+})
+$('pm-new-blank').addEventListener('click', async () => {
+  try {
+    const loaded = await window.desktop.newBlankProject()
+    await applyLoadedProject(loaded)
+    showEditor()
+  } catch (error) { setStatus(String(error)) }
+})
+$('pm-new-template').addEventListener('click', () => openTemplatePicker())
+$('template-picker-close').addEventListener('click', () => closeTemplatePicker())
+$('template-picker-cancel').addEventListener('click', () => closeTemplatePicker())
+$('template-picker-create').addEventListener('click', async () => {
+  const select = $<HTMLSelectElement>('template-picker-select')
+  const tmplId = select.value
+  if (!tmplId) return
+  closeTemplatePicker()
+  try {
+    const loaded = await window.desktop.newProjectFromTemplate(tmplId)
+    await applyLoadedProject(loaded)
+    showEditor()
+  } catch (error) { setStatus(String(error)) }
+})
+
 $('render-mp4').addEventListener('click', async () => {
   if (exportRunning) return
   if (!metadata || !project.audioPath) return setStatus('Import audio before rendering.')
@@ -1881,10 +2030,29 @@ async function start() {
   metadata = initial.metadata; projectPath = initial.projectPath
   missingMedia = initial.missingMedia
   selectedId = project.layers.at(-1)?.id || null
+  templates = initial.templates
   refreshTemplates(initial.templates, initial.preferences.lastTemplateId)
   ;($<HTMLSelectElement>('export-preset')).value = initial.preferences.exportPreset
   refreshExportResolution()
   refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
-  if (metadata) await refreshPreview()
+
+  const recentList = initial.preferences.recentProjects || []
+  renderRecentProjects(recentList)
+
+  if (initial.isStartupSession) {
+    showProjectManager()
+    setTimeout(() => {
+      const splash = $('splash-screen')
+      if (splash) {
+        splash.style.opacity = '0'
+        setTimeout(() => { splash.hidden = true }, 350)
+      }
+    }, 650)
+  } else {
+    const splash = $('splash-screen')
+    if (splash) splash.hidden = true
+    showEditor()
+    if (metadata) await refreshPreview()
+  }
 }
 start().catch(error => setStatus(String(error)))

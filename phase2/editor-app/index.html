@@ -10,8 +10,61 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="splash-screen" class="splash-screen" aria-live="polite">
+    <div class="splash-card">
+      <div class="splash-brand">
+        <img class="splash-logo" src="assets/brand/icon-64.png" width="64" height="64" alt="MusicMeters">
+        <h1 class="splash-title">MusicMeters</h1>
+        <div class="splash-tagline">Offline Canvas &amp; Native Prism Audio Visualizer</div>
+      </div>
+      <div class="splash-progress-wrap">
+        <div class="splash-progress-bar"><div class="splash-progress-indeterminate"></div></div>
+        <span id="splash-status" class="splash-status">Loading MusicMeters…</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="project-manager-screen" class="project-manager-screen" hidden>
+    <header class="pm-header">
+      <div class="pm-brand">
+        <img src="assets/brand/icon-64.png" width="32" height="32" alt="">
+        <div class="pm-brand-text">
+          <strong>MusicMeters</strong>
+          <small>Project Manager</small>
+        </div>
+      </div>
+      <div class="pm-actions">
+        <button id="pm-new-blank" type="button" class="primary">New blank project</button>
+        <button id="pm-new-template" type="button">New from template…</button>
+        <button id="pm-open-project" type="button">Open project…</button>
+        <button id="open-template-manager" type="button" class="pm-manage-btn" title="Browse, rename, duplicate, or delete templates">Manage templates…</button>
+      </div>
+    </header>
+    <div class="pm-body">
+      <div class="pm-section-header">
+        <h2>Recent Projects</h2>
+        <span id="recent-projects-count" class="pm-count">0 projects</span>
+      </div>
+      <div id="recent-projects-grid" class="recent-projects-grid" role="list" aria-label="Recent projects"></div>
+      <div id="recent-projects-empty" class="recent-projects-empty" hidden>
+        <div class="empty-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2" aria-hidden="true">
+            <path d="M4 4h5l2 3h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/>
+          </svg>
+        </div>
+        <h3>No Recent Projects</h3>
+        <p>Create a new blank project, start from a template, or open an existing visualizer project.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="editor-screen" class="editor-screen">
   <header class="toolbar">
-    <div class="brand"><span class="brand-mark"><img class="brand-logo" src="assets/brand/icon-64.png" width="24" height="24" alt=""></span><div><strong>MusicMeters</strong><small>Static layout editor</small></div></div>
+    <div class="brand">
+      <button id="return-to-projects" type="button" class="projects-nav-btn" title="Return to Project Manager">◀ Projects</button>
+      <span class="brand-mark"><img class="brand-logo" src="assets/brand/icon-64.png" width="24" height="24" alt=""></span>
+      <div><strong>MusicMeters</strong><small>Static layout editor</small></div>
+    </div>
     <div class="toolbar-actions">
       <details class="license-disclosure"><summary>License</summary><p>MusicMeters software code and its included Prism code are GPL-3.0-only. You may share and modify the covered software under GPLv3. The separately owned MusicMeters logo and icons may remain in complete, unchanged official releases; modified or repackaged builds must rebrand unless the logo owner separately grants permission. The software comes without warranty. Full terms and copyright information are in MUSICMETERS-LICENSE.txt and LICENSE-NOTICES.md in the portable folder.</p></details>
       <div class="toolbar-group">
@@ -37,7 +90,7 @@
     <aside class="sidebar layers-panel">
       <div class="panel-heading"><div><span class="eyebrow">COMPOSITION</span><h2>Layers</h2></div></div>
       <div class="template-controls">
-        <div class="template-label-row"><label for="template-list">Layout template</label><button id="open-template-manager" type="button" class="template-manage-btn" title="Browse, rename, duplicate, or delete templates">Manage…</button></div>
+        <div class="template-label-row"><label for="template-list">Layout template</label></div>
         <select id="template-list" aria-label="Layout template"></select>
         <div class="template-actions"><button id="load-template" type="button">Use layout</button><button id="duplicate-template" type="button">Duplicate</button></div>
         <label>Template name<input id="template-name" type="text" maxlength="80" placeholder="My layout"></label>
@@ -261,6 +314,26 @@
       <p class="hint">Preview is computed from the imported audio through the selected frame on the 1280 × 720 logical layout canvas. Export scales this composition to the selected resolution.</p>
     </aside>
   </main>
+  </div>
+
+  <div id="template-picker-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="template-picker-title" hidden>
+    <div class="modal-card template-picker-card">
+      <div class="modal-header">
+        <h2 id="template-picker-title" class="modal-title">New from Template</h2>
+        <button id="template-picker-close" type="button" aria-label="Close template picker">Close</button>
+      </div>
+      <p class="modal-body">Select a layout template to start your new project with.</p>
+      <div class="template-picker-body">
+        <label for="template-picker-select">Available templates</label>
+        <select id="template-picker-select" class="template-picker-select"></select>
+      </div>
+      <div class="modal-actions">
+        <button id="template-picker-cancel" type="button">Cancel</button>
+        <button id="template-picker-create" type="button" class="primary">Create project</button>
+      </div>
+    </div>
+  </div>
+
   <div id="template-manager-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="template-manager-title" hidden>
     <div class="modal-card template-manager-card">
       <div class="template-manager-header">
