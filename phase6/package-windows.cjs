@@ -49,6 +49,7 @@ async function main() {
       'phase2/editor-app/index.html', 'phase2/editor-app/style.css',
       'phase2/export-app/main.cjs', 'phase2/export-app/index.html',
       'phase2/export-app/style.css',
+      'phase2/test/startup-smoke.cjs',
       'phase6/test/repeat-smoke.cjs',
       'phase6/test/security-smoke.cjs',
       'phase6/test/audio-copy-editor-smoke.cjs',

@@ -1,6 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { defaultProject, compositionProject, imageLayer, textLayer, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } = require('../project.cjs')
+const { encapsulateProjectPath } = require('../project-path.cjs')
 
 test('meter rotation and aspect lock round-trip with legacy defaults', () => {
   const project = { ...defaultProject(), layers: [{ ...spectrumLayer(), rotation: -90, aspectLocked: true }] }
@@ -238,4 +239,22 @@ test('rejects malformed waveform mode, speed, multiband, and color settings', ()
   assert.throws(() => normalizeProject(invalid(layer => { layer.scrollSpeed = 9 })), /speed/)
   assert.throws(() => normalizeProject(invalid(layer => { layer.multiband = 'yes' })), /multiband/)
   assert.throws(() => normalizeProject(invalid(layer => { layer.bandLowColor = 'red' })), /hex color/)
+})
+
+test('encapsulateProjectPath creates dedicated project subfolder without double nesting', () => {
+  const path = require('node:path')
+  const baseDir = path.resolve('C:/music-projects')
+  const result1 = encapsulateProjectPath(path.join(baseDir, 'my-project.json'))
+  assert.equal(result1, path.join(baseDir, 'my-project', 'my-project.json'))
+
+  const result2 = encapsulateProjectPath(result1)
+  assert.equal(result2, result1)
+
+  const result3 = encapsulateProjectPath(path.join(baseDir, 'song-b'))
+  assert.equal(result3, path.join(baseDir, 'song-b', 'song-b.json'))
+
+  const result4 = encapsulateProjectPath(path.join(baseDir, 'song-c.JSON'))
+  assert.equal(result4, path.join(baseDir, 'song-c', 'song-c.json'))
+
+  assert.throws(() => encapsulateProjectPath(''), /Invalid target path/)
 })
