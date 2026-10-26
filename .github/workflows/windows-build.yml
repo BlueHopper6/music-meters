@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    # Pinned Prism uses node-gyp 10, which cannot detect Visual Studio 2026.
+    # Use a stable Visual Studio 2022 image for the pinned native build.
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +48,7 @@ jobs:
           python phase1/make-fixtures.py
           node phase2/build.cjs
           node phase6/build-tools/node_modules/typescript/lib/tsc.js --noEmit --strict --skipLibCheck --allowJs --checkJs false --target es2022 --module esnext --moduleResolution bundler --lib es2022,dom,dom.iterable --typeRoots phase6/build-tools/node_modules/@types --types node upstream/prism/src/renderer/env.d.ts phase2/composition.ts phase2/editor.ts phase2/export-renderer.ts
-          node --test phase6/test/space.test.cjs phase6/test/window-security.test.cjs phase5/test/templates.test.cjs phase2/test/project.test.cjs phase2/test/stage-geometry.test.cjs phase4/test/assets.test.cjs phase2/test/fonts.test.cjs phase1/test/pcm-reader.test.cjs phase3/test/vectorscope-correlation.test.cjs
+          node --test phase6/test/space.test.cjs phase6/test/window-security.test.cjs phase5/test/templates.test.cjs phase2/test/project.test.cjs phase2/test/stage-geometry.test.cjs phase2/test/audio-output.test.cjs phase4/test/assets.test.cjs phase2/test/fonts.test.cjs phase1/test/pcm-reader.test.cjs phase3/test/vectorscope-correlation.test.cjs
       - name: Portable package and audio export smokes
         shell: pwsh
         run: |
@@ -58,6 +58,8 @@ jobs:
           node phase6/test/run-repeat.cjs --package artifacts/phase6/ci-package artifacts/phase6/ci-editor-smoke
           node phase6/test/audio-copy.cjs artifacts/phase6/ci-package artifacts/phase6/ci-audio-copy
           node phase6/test/run-audio-copy-editor.cjs artifacts/phase6/ci-package artifacts/phase6/ci-audio-copy-editor
+          node phase6/test/audio-matrix.cjs artifacts/phase6/ci-package artifacts/phase6/ci-audio-matrix
+          node phase6/test/run-preview-performance.cjs artifacts/phase6/ci-package artifacts/phase6/ci-preview-performance
       - name: Matching source archive and extracted rebuild
         shell: pwsh
         run: |
