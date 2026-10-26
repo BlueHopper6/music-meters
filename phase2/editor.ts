@@ -649,8 +649,10 @@ function suggestSongTitle(input: string, previousAudio: string) {
       && (!layer.text || layer.text === 'Untitled track' || layer.text === previous)) layer.text = suggested
 }
 function updateTimeControls() {
+  project.previewFrame = frameIndex
   ;($<HTMLInputElement>('time-slider')).value = String(frameIndex)
   ;($<HTMLInputElement>('time-input')).value = (frameIndex / 30).toFixed(2)
+  updateTitleDirtyIndicator()
 }
 function repaint() { project = normalizeProject(project) as Project; render(); refreshInspector(); refreshLayers() }
 function nextId(prefix = 'scope') {
@@ -665,6 +667,7 @@ async function refreshPreview() {
   if (!metadata || !project.audioPath) { $('preview-stale').hidden = true; render(); return }
   const requestedFrame = frameIndex
   $('preview-stale').hidden = false
+  $('preview-busy').textContent = `Analyzing preview at ${(requestedFrame / 30).toFixed(2)} s…`
   $('preview-busy').hidden = false
   setStatus(`Analyzing audio through ${(requestedFrame / 30).toFixed(2)} s…`)
   try {
@@ -696,6 +699,7 @@ function scheduleTimePreview() {
   previewRequest++
   void window.desktop.cancelPreview().catch(() => {})
   $('preview-stale').hidden = false
+  $('preview-busy').textContent = `Analyzing preview at ${(frameIndex / 30).toFixed(2)} s…`
   $('preview-busy').hidden = false
   previewTimer = setTimeout(refreshPreview, 180)
 }
@@ -1845,9 +1849,10 @@ async function applyLoadedProject(loaded: Initial) {
   setInstalledFonts(loaded.fonts)
   metadata = loaded.metadata; projectPath = loaded.projectPath
   selectedId = project.layers.at(-1)?.id || null; resetSongPreview()
+  frameIndex = project.previewFrame ?? 0
   missingMedia = loaded.missingMedia
-  markProjectSaved()
-  refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
+  refreshInspector(); refreshLayers(); refreshAudio(); markProjectSaved(); renderMissingMedia(); await syncAssets()
+  showEditor()
   if (metadata) await refreshPreview()
   else setStatus(project.audioPath ? 'Project opened.' : 'Ready. Import audio to preview still.')
 }
@@ -1869,7 +1874,6 @@ function showEditor() {
 async function createProjectFromTemplate(id: string) {
   const loaded = await window.desktop.newProjectFromTemplate(id)
   await applyLoadedProject(loaded)
-  showEditor()
 }
 
 async function openRecent(targetPath: string) {
@@ -1877,7 +1881,6 @@ async function openRecent(targetPath: string) {
     const loaded = await window.desktop.openProjectPath(targetPath)
     if (!loaded) return
     await applyLoadedProject(loaded)
-    showEditor()
   } catch (error) { setStatus(String(error)) }
 }
 
@@ -2042,14 +2045,12 @@ $('pm-open-project').addEventListener('click', async () => {
     const loaded = await window.desktop.openProject()
     if (!loaded) return
     await applyLoadedProject(loaded)
-    showEditor()
   } catch (error) { setStatus(String(error)) }
 })
 $('pm-new-blank').addEventListener('click', async () => {
   try {
     const loaded = await window.desktop.newBlankProject()
     await applyLoadedProject(loaded)
-    showEditor()
   } catch (error) { setStatus(String(error)) }
 })
 $('pm-new-template').addEventListener('click', () => openTemplatePicker())
@@ -2117,7 +2118,9 @@ window.desktop.onExport(event => {
     ;($<HTMLSelectElement>('audio-mode')).disabled = false
     $('cancel-render').hidden = true
     const container = String(event.output).toLowerCase().endsWith('.mkv') ? 'MKV' : 'MP4'
-    setStatus(event.event === 'finished' ? `${container} ready: ${event.output}` : `Export ${event.event}: ${event.message || ''}`)
+    setStatus(event.event === 'finished' ? `${container} ready: ${event.output}`
+      : event.event === 'cancelled' ? 'Export cancelled. No video was saved.'
+      : `Export failed: ${event.message || ''}`)
   }
 })
 
@@ -2180,12 +2183,12 @@ async function start() {
   metadata = initial.metadata; projectPath = initial.projectPath
   missingMedia = initial.missingMedia
   selectedId = project.layers.at(-1)?.id || null
-  markProjectSaved()
+  frameIndex = project.previewFrame ?? 0
   templates = initial.templates
   refreshTemplates(initial.templates, initial.preferences.lastTemplateId)
   ;($<HTMLSelectElement>('export-preset')).value = initial.preferences.exportPreset
   refreshExportResolution()
-  refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
+  refreshInspector(); refreshLayers(); refreshAudio(); markProjectSaved(); renderMissingMedia(); await syncAssets()
 
   const recentList = initial.preferences.recentProjects || []
   renderRecentProjects(recentList)

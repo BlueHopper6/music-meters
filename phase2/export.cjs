@@ -49,8 +49,10 @@ async function main() {
   const controlDir = jobPath('jobs')
   fs.mkdirSync(controlDir, { recursive: true })
   const cancelFile = path.join(controlDir, `${randomUUID()}.cancel`)
+  const exportProfile = fs.mkdtempSync(path.join(controlDir, 'export-profile-'))
   const child = spawn(electron, [path.join(__dirname, 'export-app')], {
-    env: { ...process.env, PHASE2_JOB: JSON.stringify({ project, output: options.output,
+    env: { ...process.env, MUSICMETERS_EXPORT_PROFILE: exportProfile,
+      PHASE2_JOB: JSON.stringify({ project, output: options.output,
       preset: options.preset, audioMode: options['audio-mode'],
       cancelFile, cancelAfterFrames: options.cancelAfterFrames }) },
     stdio: 'inherit', shell: false, detached: true, windowsHide: true,
@@ -59,11 +61,17 @@ async function main() {
     fs.writeFileSync(cancelFile, 'cancel')
     console.error('Cancellation requested; waiting for cleanup...')
   })
-  const code = await new Promise((resolveCode, reject) => {
-    child.once('error', reject)
-    child.once('close', resolveCode)
-  })
-  fs.rmSync(cancelFile, { force: true })
+  let code
+  try {
+    code = await new Promise((resolveCode, reject) => {
+      child.once('error', reject)
+      child.once('close', resolveCode)
+    })
+  } finally {
+    fs.rmSync(cancelFile, { force: true })
+    try { await fs.promises.rm(exportProfile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }) }
+    catch (error) { console.error(`Could not remove temporary exporter profile: ${error.message}`) }
+  }
   process.exitCode = code ?? 1
 }
 main().catch(error => { console.error(error.message); process.exitCode = 1 })

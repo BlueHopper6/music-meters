@@ -122,6 +122,21 @@ module.exports = async function repeatSmoke(win) {
   while (!fs.existsSync(second) && Date.now() < deadline) await delay(100)
   assert.ok(fs.existsSync(second))
   await waitFor('document.querySelector("#status").textContent.includes("MP4 ready:")', 'second export')
+  const cancelled = path.join(dir, 'cancelled-export.mp4')
+  process.env.PHASE2_TEST_OUTPUT_PATH = cancelled
+  await evaluate('document.getElementById("render-mp4").click()')
+  await waitFor('/^Rendering \\d+\\//.test(document.getElementById("status").textContent)', 'frames rendering before cancellation')
+  await evaluate('document.getElementById("cancel-render").click()')
+  await waitFor('document.getElementById("status").textContent === "Export cancelled. No video was saved."', 'clean cancellation status')
+  assert.equal(fs.existsSync(cancelled), false, 'Cancellation must not leave a final video')
+  assert.equal(fs.readdirSync(dir).some(name => name.startsWith('cancelled-export.mp4.partial-')), false,
+    'Cancellation must remove partial video files')
+  assert.equal(await evaluate('document.getElementById("render-mp4").disabled'), false)
+  const recovered = path.join(dir, 'after-cancel-export.mp4')
+  process.env.PHASE2_TEST_OUTPUT_PATH = recovered
+  await evaluate('document.getElementById("render-mp4").click()')
+  await waitFor('document.getElementById("status").textContent.includes("MP4 ready:")', 'successful export after cancellation')
+  assert.ok(fs.existsSync(recovered))
   await evaluate('document.getElementById("save-project").click()')
   await waitFor('document.querySelector("#status").textContent.includes("Saved project:")', 'project save')
   const saved = JSON.parse(fs.readFileSync(process.env.PHASE2_TEST_PROJECT_PATH, 'utf8'))
@@ -141,6 +156,6 @@ module.exports = async function repeatSmoke(win) {
   assert.notDeepEqual(await evaluate('Array.from(document.querySelectorAll(".layer-item"), row => row.dataset.id)'), order)
   await evaluate('document.getElementById("layer-up").click()')
   assert.deepEqual(await evaluate('Array.from(document.querySelectorAll(".layer-item"), row => row.dataset.id)'), order)
-  console.log(JSON.stringify({ event: 'repeat-export-pass', first, second }))
+  console.log(JSON.stringify({ event: 'repeat-export-pass', first, second, recovered, cancellation: 'PASS' }))
   app.quit()
 }

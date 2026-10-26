@@ -51,7 +51,7 @@ type MeterLayer = Exclude<Layer, ImageLayer | TextLayer>
 export type Background = { type: 'solid' | 'gradient' | 'image'; color: string; color2: string; imagePath: string; fit: 'cover' | 'contain' }
 export type Project = {
   version: number; width: number; height: number; fps: number; title: string
-  background: string | Background; audioPath: string; layers: Layer[]
+  background: string | Background; audioPath: string; previewFrame?: number; layers: Layer[]
 }
 export type Points = { x: Float32Array; y: Float32Array }
 export type VectorscopeFrame = Points & { multiband: Float32Array }

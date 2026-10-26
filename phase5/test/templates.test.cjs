@@ -3,12 +3,31 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const { compositionProject, imageLayer, textLayer, spectrumLayer, normalizeProject } = require('../../phase2/project.cjs')
-const { BUILTINS, starter, saveTemplate, readTemplate, listTemplates, duplicateTemplate,
+const { BUILTINS, starter, layoutFromProject, saveTemplate, readTemplate, listTemplates, duplicateTemplate,
   renameTemplate, deleteTemplate, applyTemplate, titleSuggestion } = require('../../phase2/templates.cjs')
 const { readPreferences, writePreferences, recordRecentProject } = require('../../phase2/preferences.cjs')
 
 const root = path.resolve(__dirname, '..', '..', 'artifacts', 'phase5')
 fs.mkdirSync(root, { recursive: true })
+
+test('recent project names replace placeholder titles with the saved filename, including existing preferences', () => {
+  const dir = fs.mkdtempSync(path.join(root, 'recent-names-test-'))
+  for (const placeholder of ['Untitled project', 'Untitled track', '   ']) {
+    recordRecentProject(dir, path.join(dir, 'WAV check.json'), placeholder)
+    assert.equal(readPreferences(dir).recentProjects[0].name, 'WAV check')
+  }
+  fs.writeFileSync(path.join(dir, 'workflow-preferences.json'), JSON.stringify({
+    recentProjects: [{ path: path.join(dir, 'Existing check.json'), name: 'Untitled project' }],
+  }))
+  assert.equal(readPreferences(dir).recentProjects[0].name, 'Existing check')
+})
+
+test('templates clear saved song position while applying a layout preserves the current song position', () => {
+  const song = { ...compositionProject(), previewFrame: 120 }
+  const layout = layoutFromProject(song)
+  assert.equal(layout.previewFrame, 0)
+  assert.equal(applyTemplate(layout, song).previewFrame, 120)
+})
 
 test('three original starter layouts are valid, song-independent, and differently arranged', () => {
   const layouts = BUILTINS.map(starter)

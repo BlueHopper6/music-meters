@@ -1,6 +1,6 @@
 const fs = require('node:fs')
 const path = require('node:path')
-const { spawn } = require('node:child_process')
+const { spawn, spawnSync } = require('node:child_process')
 const { build } = require('../build.cjs')
 
 const root = path.resolve(__dirname, '..', '..')
@@ -21,6 +21,10 @@ async function main() {
   fs.mkdirSync(userData, { recursive: true })
 
   const savePath = path.join(outDir, 'saved-smoke-project.json')
+  const audioPath = path.join(outDir, 'startup-song.wav')
+  const fixture = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi',
+    '-i', 'sine=frequency=440:duration=6', '-ac', '2', '-ar', '48000', audioPath], { encoding: 'utf8' })
+  if (fixture.status !== 0) throw new Error(`Cannot create startup audio: ${fixture.stderr || fixture.error}`)
   const logPath = path.join(outDir, 'electron.log')
   const log = fs.openSync(logPath, 'w')
 
@@ -34,6 +38,7 @@ async function main() {
       PHASE2_STARTUP_SMOKE_DIR: outDir,
       PHASE5_TEST_USER_DATA: userData,
       PHASE2_TEST_SAVE_PATH: savePath,
+      PHASE2_TEST_IMPORT_PATH: audioPath,
     },
     stdio: ['ignore', log, log],
     shell: false,

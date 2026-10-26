@@ -28,7 +28,10 @@ module.exports = async function audioCopyEditorSmoke(win) {
   await delay(150)
   const toolbar = await evaluate(`(() => ({
     brandRight: document.querySelector('.brand').getBoundingClientRect().right,
+    brandBottom: document.querySelector('.brand').getBoundingClientRect().bottom,
     actionsLeft: document.querySelector('.toolbar-actions').getBoundingClientRect().left,
+    actionsTop: document.querySelector('.toolbar-actions').getBoundingClientRect().top,
+    actionsRight: document.querySelector('.toolbar-actions').getBoundingClientRect().right,
     presetRight: document.getElementById('export-preset').getBoundingClientRect().right,
     audioModeLeft: document.getElementById('audio-mode').getBoundingClientRect().left,
     audioModeRight: document.getElementById('audio-mode').getBoundingClientRect().right,
@@ -38,7 +41,9 @@ module.exports = async function audioCopyEditorSmoke(win) {
     licenseRight: document.querySelector('.license-disclosure').getBoundingClientRect().right,
     viewport: innerWidth,
   }))()`)
-  assert.ok(toolbar.brandRight < toolbar.actionsLeft
+  // Responsive toolbars may place branding above the actions at this width.
+  assert.ok((toolbar.brandRight <= toolbar.actionsLeft || toolbar.brandBottom <= toolbar.actionsTop)
+    && toolbar.actionsLeft >= 0 && toolbar.actionsRight <= toolbar.viewport
     && toolbar.presetRight < toolbar.audioModeLeft
     && toolbar.audioModeRight < toolbar.renderLeft
     && toolbar.renderRight < toolbar.licenseLeft

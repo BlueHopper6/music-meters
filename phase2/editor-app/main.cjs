@@ -17,7 +17,10 @@ const { lockWindowNavigation, assertTrustedSender } = require('../window-securit
 
 const ROOT = resolve(__dirname, '..', '..')
 const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.flac'])
-if (process.env.PHASE5_TEST_USER_DATA) app.setPath('userData', process.env.PHASE5_TEST_USER_DATA)
+if (process.env.PHASE5_TEST_USER_DATA) {
+  app.setPath('userData', process.env.PHASE5_TEST_USER_DATA)
+  app.setPath('sessionData', process.env.PHASE5_TEST_USER_DATA)
+}
 let win
 let forceQuit = false
 let project = defaultProject()
@@ -392,8 +395,10 @@ handle('render-video', async (_event, raw, preset, audioMode) => {
   const controlDir = jobPath('jobs')
   fs.mkdirSync(controlDir, { recursive: true })
   const cancelFile = join(controlDir, `${randomUUID()}.cancel`)
+  const exportProfile = fs.mkdtempSync(join(controlDir, 'export-profile-'))
   const child = spawn(process.execPath, [join(ROOT, 'phase2', 'export-app')], {
-    env: { ...process.env, PHASE2_JOB: JSON.stringify({ project: value, output, cancelFile, preset, audioMode }) },
+    env: { ...process.env, MUSICMETERS_EXPORT_PROFILE: exportProfile,
+      PHASE2_JOB: JSON.stringify({ project: value, output, cancelFile, preset, audioMode }) },
     stdio: ['ignore', 'pipe', 'pipe'], shell: false, detached: true, windowsHide: true,
   })
   const job = { child, cancelFile, output, finishedEvent: null, errors: '' }
@@ -415,12 +420,15 @@ handle('render-video', async (_event, raw, preset, audioMode) => {
   })
   child.stderr.on('data', chunk => { job.errors = (job.errors + chunk.toString()).slice(-4096) })
   child.once('error', error => { job.errors = error.message })
-  child.once('close', code => {
+  child.once('close', async code => {
     fs.rmSync(cancelFile, { force: true })
+    try { await fs.promises.rm(exportProfile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }) }
+    catch (error) { console.error(`Could not remove temporary exporter profile: ${error.message}`) }
     exportJob = null
+    if (job.errors.trim()) console.error(`Exporter diagnostics:\n${job.errors.trim()}`)
     if (code === 0 && job.finishedEvent) sendExport(job.finishedEvent)
     else sendExport({ event: code === 2 ? 'cancelled' : 'failed',
-      message: job.errors.trim() || `Exporter exited ${code}`, output })
+      message: code === 2 ? 'Export cancelled' : job.errors.trim() || `Exporter exited ${code}`, output })
     if (closingAfterExport) app.quit()
   })
   return output

@@ -87,7 +87,7 @@ function compositionProject() {
 function defaultProject() {
   return {
     version: 1, width: WIDTH, height: HEIGHT, fps: FPS,
-    title: 'Untitled track', background: '#101628', audioPath: '',
+    title: 'Untitled track', background: '#101628', audioPath: '', previewFrame: 0,
     layers: [vectorscopeLayer()],
   }
 }
@@ -135,6 +135,8 @@ function normalizeProject(raw) {
   }
   if (typeof raw.title !== 'string' || raw.title.length > 200) throw new Error('Invalid project title')
   if (typeof raw.audioPath !== 'string' || raw.audioPath.length > 4096) throw new Error('Invalid audio path')
+  const previewFrame = raw.previewFrame === undefined ? 0 : raw.previewFrame
+  if (!Number.isSafeInteger(previewFrame) || previewFrame < 0) throw new Error('Invalid preview frame')
   if (!Array.isArray(raw.layers) || raw.layers.length > 32) throw new Error('Project supports at most 32 layers')
   const seen = new Set()
   const layers = raw.layers.map((layer, index) => {
@@ -286,7 +288,7 @@ function normalizeProject(raw) {
   })
   return { version: raw.version, width: WIDTH, height: HEIGHT, fps: FPS,
     title: raw.title, background: raw.version === 1 ? color(raw.background, 'Background') : background(raw.background),
-    audioPath: raw.audioPath, layers }
+    audioPath: raw.audioPath, previewFrame, layers }
 }
 
 module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, VECTORSCOPE_MODES, defaultProject, compositionProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, validFontFamily, normalizeProject }

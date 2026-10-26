@@ -3,6 +3,16 @@ const assert = require('node:assert/strict')
 const { defaultProject, compositionProject, imageLayer, textLayer, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } = require('../project.cjs')
 const { encapsulateProjectPath } = require('../project-path.cjs')
 
+test('saved preview frames survive normalization and older projects default to zero', () => {
+  const legacy = defaultProject()
+  delete legacy.previewFrame
+  assert.equal(normalizeProject(legacy).previewFrame, 0)
+  assert.equal(normalizeProject({ ...legacy, previewFrame: 120 }).previewFrame, 120)
+  for (const previewFrame of [-1, 1.5, NaN, Infinity, '120', Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => normalizeProject({ ...legacy, previewFrame }), /Invalid preview frame/)
+  }
+})
+
 test('meter rotation and aspect lock round-trip with legacy defaults', () => {
   const project = { ...defaultProject(), layers: [{ ...spectrumLayer(), rotation: -90, aspectLocked: true }] }
   assert.deepEqual(normalizeProject(project).layers, project.layers)

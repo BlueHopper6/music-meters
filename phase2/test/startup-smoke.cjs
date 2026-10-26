@@ -104,15 +104,24 @@ module.exports = async function startupSmoke(win) {
   console.log('Step 7: Testing Save and Recent Projects')
   await evaluate(`(() => {
     const title = document.getElementById("title");
-    title.value = "Startup Smoke Project";
+    title.value = "Untitled project";
     title.dispatchEvent(new Event("input", { bubbles: true }));
     return true;
   })()`)
   await click('add-layer')
+  await click('import-audio')
+  await waitFor('document.getElementById("status").textContent.includes("Real Prism")', 'imported song preview')
+  await evaluate(`(() => {
+    const time = document.getElementById('time-input'); time.value = '4';
+    time.dispatchEvent(new Event('change', { bubbles: true })); return true;
+  })()`)
+  await waitFor('document.getElementById("status").textContent.includes("Real Prism meter still at 4.00 s.")', 'preview at saved marker')
   await click('save-project')
   await waitFor('document.querySelector("#status").textContent.includes("Saved project:")', 'project save completed')
   const statusText = await evaluate('document.querySelector("#status").textContent')
   assert.ok(statusText.includes('saved-smoke-project'), 'Project must be saved inside dedicated subfolder')
+  const savedPath = path.join(path.dirname(process.env.PHASE2_TEST_SAVE_PATH), 'saved-smoke-project', 'saved-smoke-project.json')
+  assert.equal(JSON.parse(fs.readFileSync(savedPath, 'utf8')).previewFrame, 120)
 
   console.log('Step 8: Verifying Recent Project card')
   await click('close-project')
@@ -120,7 +129,7 @@ module.exports = async function startupSmoke(win) {
   await waitFor('document.querySelectorAll("#recent-projects-grid .project-card").length > 0', 'recent projects card rendered')
 
   const cardTitle = await evaluate('document.querySelector("#recent-projects-grid .project-card-title").textContent')
-  assert.equal(cardTitle, 'Startup Smoke Project')
+  assert.equal(cardTitle, 'saved-smoke-project', 'Placeholder project titles must fall back to the saved filename')
   const cardPath = await evaluate('document.querySelector("#recent-projects-grid .project-card-path").textContent')
   assert.ok(cardPath.includes('saved-smoke-project'), 'Card path must point to encapsulated folder')
   const unlistedPath = path.join(process.env.PHASE5_TEST_USER_DATA, 'workflow-preferences.json')
@@ -129,10 +138,53 @@ module.exports = async function startupSmoke(win) {
   assert.equal(rejectedUnlisted, true, 'Recent-project IPC must reject other local files')
 
   console.log('Step 9: Testing Reopen from card')
+  await evaluate(`(() => {
+    window.projectOpenPreviewStates = [];
+    const busy = document.getElementById('preview-busy');
+    window.projectOpenPreviewObserver = new MutationObserver(() => {
+      if (!busy.hidden) window.projectOpenPreviewStates.push({
+        editorVisible: !document.getElementById('editor-screen').hidden,
+        managerHidden: document.getElementById('project-manager-screen').hidden,
+        message: busy.textContent,
+      });
+    });
+    window.projectOpenPreviewObserver.observe(busy, { attributes: true, attributeFilter: ['hidden'] });
+    return true;
+  })()`)
   await evaluate('document.querySelector("#recent-projects-grid .project-card").click()')
   await waitFor('!document.getElementById("editor-screen").hidden', 'editor visible after card click')
   const reopenedTitle = await evaluate('document.getElementById("title").value')
-  assert.equal(reopenedTitle, 'Startup Smoke Project')
+  assert.equal(reopenedTitle, 'Untitled project')
+  assert.equal(await evaluate('Number(document.getElementById("time-input").value)'), 4,
+    'Reopening must restore the saved preview marker')
+  await waitFor('document.getElementById("status").textContent.includes("Real Prism meter still at 4.00 s.")', 'restored marker preview')
+  const previewStates = await evaluate('window.projectOpenPreviewStates')
+  assert.ok(previewStates.length > 0, 'Reopening audio must report preview analysis')
+  assert.ok(previewStates.every(state => state.editorVisible && state.managerHidden),
+    `Preview analysis must run in the editor, not the Project Manager: ${JSON.stringify(previewStates)}`)
+  assert.equal(previewStates[0].message, 'Analyzing preview at 4.00 s…')
+  await evaluate('window.projectOpenPreviewObserver.disconnect()')
+  assert.equal(await evaluate('document.title.endsWith(" *")'), false, 'Reopening at the saved marker must not make the project dirty')
+
+  // Closing while a reopened preview is pending must not bounce back into the editor.
+  await click('close-project')
+  await waitFor('!document.getElementById("project-manager-screen").hidden', 'manager before pending-preview close')
+  await evaluate(`(() => {
+    const busy = document.getElementById('preview-busy');
+    const observer = new MutationObserver(() => {
+      if (!busy.hidden) {
+        observer.disconnect(); document.getElementById('close-project').click();
+      }
+    });
+    observer.observe(busy, { attributes: true, attributeFilter: ['hidden'] });
+    document.querySelector('#recent-projects-grid .project-card').click(); return true;
+  })()`)
+  await waitFor('document.getElementById("status").textContent === "Project closed."', 'close during restored preview')
+  await delay(300)
+  assert.equal(await evaluate('document.getElementById("editor-screen").hidden'), true)
+  assert.equal(await evaluate('document.getElementById("project-manager-screen").hidden'), false)
+  await evaluate('document.querySelector("#recent-projects-grid .project-card").click()')
+  await waitFor('document.getElementById("status").textContent.includes("Real Prism meter still at 4.00 s.")', 'reopen after cancelling preview')
 
   await click('add-layer')
   assert.equal(await evaluate('document.title.endsWith(" *")'), true, 'An edited project must be marked dirty')

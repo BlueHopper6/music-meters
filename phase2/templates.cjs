@@ -52,6 +52,7 @@ function layoutFromProject(raw) {
   if (layout.version !== 2) throw new Error('Upgrade this older project to composition graphics before saving a template')
   layout.audioPath = ''
   layout.title = ''
+  layout.previewFrame = 0
   for (const layer of layout.layers) {
     if (layer.type === 'image') layer.imagePath = ''
     if (layer.type === 'text') layer.text = ''
@@ -193,7 +194,7 @@ function applyTemplate(layout, current) {
   for (const layer of validated.layers) if (layer.type === 'text' && /^song title$/i.test(layer.name)) {
     layer.text = song.title === 'Untitled track' && song.audioPath ? titleSuggestion(song.audioPath) : song.title
   }
-  return normalizeProject({ ...validated, audioPath: song.audioPath, title: song.title })
+  return normalizeProject({ ...validated, audioPath: song.audioPath, title: song.title, previewFrame: song.previewFrame })
 }
 
 function titleSuggestion(audioPath) {
