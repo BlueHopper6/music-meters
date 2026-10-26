@@ -143,7 +143,8 @@ const isAutomatedTest = Boolean(
 
 handle('initial', () => ({ project, metadata, projectPath, fonts: installedFonts(),
   templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project),
-  isStartupSession: process.env.PHASE2_STARTUP_SMOKE === '1' || !isAutomatedTest }))
+  isStartupSession: process.env.PHASE2_STARTUP_SMOKE === '1' || !isAutomatedTest,
+  isAutomatedTest: Boolean(isAutomatedTest) }))
 handle('get-recent-projects', () => readPreferences(userData()).recentProjects || [])
 handle('new-blank-project', () => {
   cancelPreview()

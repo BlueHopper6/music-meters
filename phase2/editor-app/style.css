@@ -269,7 +269,7 @@ button.danger-button:hover:not(:disabled) {
   color: var(--text-primary); background: var(--bg-well); border: 1px solid var(--border-control); border-radius: 4px; }
 .template-actions { display: flex; gap: 6px; }
 .template-actions button { flex: 1; }
-.modal-backdrop { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 16px; background: rgba(9, 9, 11, 0.72); backdrop-filter: blur(2px); }
+.modal-backdrop { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 16px; background: rgba(9, 9, 11, 0.72); backdrop-filter: blur(2px); }
 .modal-card { width: min(400px, 100%); padding: 16px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg-panel); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.75); }
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .modal-header .modal-title { margin: 0; }

@@ -10,7 +10,7 @@ type MissingMedia = { kind: 'audio' | 'background' | 'layer'; id?: string; label
 type RecentProject = { path: string; name: string; lastOpened: number }
 type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null; fonts: string[];
   templates: TemplateEntry[]; preferences: { exportPreset: string; lastTemplateId: string; recentProjects?: RecentProject[] };
-  missingMedia: MissingMedia[]; isStartupSession?: boolean }
+  missingMedia: MissingMedia[]; isStartupSession?: boolean; isAutomatedTest?: boolean }
 type Desktop = {
   initial(): Promise<Initial>
   chooseAudio(): Promise<{ path: string; metadata: Metadata } | null>
@@ -73,6 +73,7 @@ let templates: TemplateEntry[] = []
 let resolveTemplateConflict: ((choice: 'replace' | 'rename') => void) | null = null
 let managerEditingId: string | null = null
 let managerDeletingId: string | null = null
+let isAutomatedTestSession = false
 
 function selected() { return project.layers.find(layer => layer.id === selectedId) }
 function selectLayer(id: string | null) {
@@ -1384,10 +1385,9 @@ $('template-conflict-modal').addEventListener('keydown', event => {
 })
 function openSaveTemplateModal() {
   const input = $<HTMLInputElement>('template-name')
-  if (!input.value.trim()) input.value = project.title || ''
+  input.value = ''
   $('save-template-modal').hidden = false
   input.focus()
-  input.select()
 }
 async function executeSaveTemplate(name: string) {
   const input = $<HTMLInputElement>('template-name')
@@ -1428,13 +1428,12 @@ async function executeSaveTemplate(name: string) {
 }
 $('save-template').addEventListener('click', async () => {
   try {
-    const input = $<HTMLInputElement>('template-name')
-    const name = input.value.trim()
-    if (!name && $('save-template-modal').hidden) {
-      openSaveTemplateModal()
+    if (isAutomatedTestSession) {
+      const input = $<HTMLInputElement>('template-name')
+      await executeSaveTemplate(input.value.trim())
       return
     }
-    await executeSaveTemplate(name)
+    openSaveTemplateModal()
   } catch (error) { setStatus(String(error)) }
 })
 $('save-template-confirm').addEventListener('click', async () => {
@@ -1448,6 +1447,15 @@ $('save-template-cancel').addEventListener('click', () => {
 })
 $('save-template-close').addEventListener('click', () => {
   $('save-template-modal').hidden = true
+})
+$<HTMLInputElement>('template-name').addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    $('save-template-confirm').click()
+  } else if (event.key === 'Escape') {
+    event.preventDefault()
+    $('save-template-modal').hidden = true
+  }
 })
 async function applyTemplateById(id: string) {
   const loaded = await window.desktop.loadTemplate(id, project)
@@ -2166,6 +2174,7 @@ document.addEventListener('pointerdown', event => {
 })
 async function start() {
   const initial = await window.desktop.initial()
+  isAutomatedTestSession = Boolean(initial.isAutomatedTest)
   project = normalizeProject(initial.project) as Project
   setInstalledFonts(initial.fonts)
   metadata = initial.metadata; projectPath = initial.projectPath
