@@ -39,11 +39,14 @@ async function main() {
   if (fs.existsSync(dir)) throw new Error(`Matrix output already exists: ${dir}`)
   fs.mkdirSync(dir, { recursive: true })
   const cases = [
-    { name: 'mono-44100', filter: 'sine=frequency=440:duration=1.5', channels: 1, rate: 44100, ext: 'wav' },
-    { name: 'stereo-48000', filter: 'sine=frequency=880:duration=1.5', channels: 2, rate: 48000, ext: 'flac' },
-    { name: 'stereo-96000', filter: 'sine=frequency=1000:duration=1.5', channels: 2, rate: 96000, ext: 'wav' },
-    { name: 'silent-stereo', filter: 'anullsrc=channel_layout=stereo:sample_rate=48000:d=1.5', channels: 2, rate: 48000, ext: 'wav' },
-    { name: 'clipped-mp3', filter: 'sine=frequency=440:duration=1.5', channels: 2, rate: 48000, ext: 'mp3', volume: true },
+    { name: 'mono-8000', filter: 'sine=frequency=440:duration=1.5', channels: 1, rate: 8000, ext: 'wav', expectedBitrate: '32k' },
+    { name: 'mono-44100', filter: 'sine=frequency=440:duration=1.5', channels: 1, rate: 44100, ext: 'wav', expectedBitrate: '160k' },
+    { name: 'mono-48000', filter: 'sine=frequency=440:duration=1.5', channels: 1, rate: 48000, ext: 'wav', expectedBitrate: '160k' },
+    { name: 'stereo-44100', filter: 'sine=frequency=880:duration=1.5', channels: 2, rate: 44100, ext: 'wav', expectedBitrate: '320k' },
+    { name: 'stereo-48000', filter: 'sine=frequency=880:duration=1.5', channels: 2, rate: 48000, ext: 'flac', expectedBitrate: '320k' },
+    { name: 'stereo-96000', filter: 'sine=frequency=1000:duration=1.5', channels: 2, rate: 96000, ext: 'wav', expectedBitrate: '320k' },
+    { name: 'silent-stereo', filter: 'anullsrc=channel_layout=stereo:sample_rate=48000:d=1.5', channels: 2, rate: 48000, ext: 'wav', expectedBitrate: '320k' },
+    { name: 'clipped-mp3', filter: 'sine=frequency=440:duration=1.5', channels: 2, rate: 48000, ext: 'mp3', volume: true, expectedBitrate: '320k' },
   ]
   const summary = []
   for (const item of cases) {
@@ -59,8 +62,14 @@ async function main() {
     const video = probe.streams.find(stream => stream.codec_type === 'video')
     const audio = probe.streams.find(stream => stream.codec_type === 'audio')
     assert.equal(Number(video.nb_frames), 45)
+    const startedLine = result.text.split(/\r?\n/).find(line => line.includes('"event":"started"'))
+    assert.ok(startedLine, `Missing started event for ${item.name}`)
+    const started = JSON.parse(startedLine)
+    assert.equal(started.audioBitrate, item.expectedBitrate)
     assert.equal(audio.codec_name, 'aac')
     summary.push({ name: item.name, inputChannels: item.channels, inputRate: item.rate,
+      targetAudioBitrate: started.audioBitrate, outputSampleRate: Number(audio.sample_rate),
+      outputChannels: audio.channels, observedAudioBitrate: Number(audio.bit_rate),
       videoFrames: Number(video.nb_frames), output: result.output, logPath: result.logPath })
   }
   const sample = path.join(dir, 'stereo-48000.flac')

@@ -18,6 +18,8 @@ module.exports = async function audioCopyEditorSmoke(win) {
   }
   await waitFor('document.getElementById("status").textContent.includes("Real Prism")', 'initial still')
   assert.equal(await evaluate('document.getElementById("audio-mode").value'), 'aac')
+  assert.equal(await evaluate('document.querySelector("#audio-mode option[value=\\"aac\\"]").textContent'), 'MP4 · AAC up to 320 kb/s')
+  assert.equal(await evaluate('document.querySelector("#audio-mode option[value=\\"copy\\"]").textContent'), 'MKV · Source audio copy (no re-encode)')
   await evaluate(`(() => { const mode = document.getElementById('audio-mode');
     mode.value = 'copy'; mode.dispatchEvent(new Event('change', { bubbles: true })); return true })()`)
   assert.equal(await evaluate('document.getElementById("render-mp4").textContent'), 'Render MKV')
@@ -26,10 +28,20 @@ module.exports = async function audioCopyEditorSmoke(win) {
   const toolbar = await evaluate(`(() => ({
     brandRight: document.querySelector('.brand').getBoundingClientRect().right,
     actionsLeft: document.querySelector('.toolbar-actions').getBoundingClientRect().left,
+    presetRight: document.getElementById('export-preset').getBoundingClientRect().right,
+    audioModeLeft: document.getElementById('audio-mode').getBoundingClientRect().left,
+    audioModeRight: document.getElementById('audio-mode').getBoundingClientRect().right,
+    renderLeft: document.getElementById('render-mp4').getBoundingClientRect().left,
+    renderRight: document.getElementById('render-mp4').getBoundingClientRect().right,
+    licenseLeft: document.querySelector('.license-disclosure').getBoundingClientRect().left,
     licenseRight: document.querySelector('.license-disclosure').getBoundingClientRect().right,
     viewport: innerWidth,
   }))()`)
-  assert.ok(toolbar.brandRight < toolbar.actionsLeft && toolbar.licenseRight <= toolbar.viewport,
+  assert.ok(toolbar.brandRight < toolbar.actionsLeft
+    && toolbar.presetRight < toolbar.audioModeLeft
+    && toolbar.audioModeRight < toolbar.renderLeft
+    && toolbar.renderRight < toolbar.licenseLeft
+    && toolbar.licenseRight <= toolbar.viewport,
     `Export controls overflow the minimum window: ${JSON.stringify(toolbar)}`)
   await evaluate('document.getElementById("export-preset").value = "720p"')
   const first = path.join(dir, 'Editor copy one.mkv')
