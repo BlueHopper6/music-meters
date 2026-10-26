@@ -11,7 +11,7 @@ const { normalizeProject } = require('../project.cjs')
 const { assertInstalledFonts } = require('../fonts.cjs')
 const { assetData } = require('../assets.cjs')
 const { probeAudio } = require('../audio.cjs')
-const { outputFormat, validateOutputPath, validateAudioCopy } = require('../audio-output.cjs')
+const { outputFormat, aacBitrate, validateOutputPath, validateAudioCopy } = require('../audio-output.cjs')
 const { lockWindowNavigation } = require('../window-security.cjs')
 const { precomputeSpectra } = require('../../phase3/spectrum.cjs')
 const { precomputeOscilloscopes } = require('../../phase3/oscilloscope.cjs')
@@ -46,9 +46,10 @@ function validate() {
   return project
 }
 
-function startEncoder(temp, input, totalFrames, audioMode) {
+function startEncoder(temp, input, totalFrames, audioMode, metadata) {
+  const audioBitrate = audioMode === 'copy' ? null : aacBitrate(metadata)
   const audioArgs = audioMode === 'copy' ? ['-c:a', 'copy']
-    : ['-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart']
+    : ['-c:a', 'aac', '-b:a', audioBitrate, '-movflags', '+faststart']
   const args = [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-n',
     '-f', 'image2pipe', '-framerate', String(FPS), '-vcodec', 'png', '-i', 'pipe:0',
@@ -70,7 +71,7 @@ function startEncoder(temp, input, totalFrames, audioMode) {
       : reject(new Error(`Video encoder exited ${code}: ${errors}`)))
   })
   done.catch(() => {})
-  return { child, done }
+  return { child, done, audioBitrate }
 }
 
 async function writeFrame(encoder, png) {
@@ -163,7 +164,6 @@ async function exportVideo() {
       waterfallDirectory, width / project.width, () => !fs.existsSync(config.cancelFile),
       (configuration, configurations, frames, total) => console.log(JSON.stringify({
         event: 'waterfall-progress', configuration, configurations, frames, total })))
-    reader = new PcmReader(project.audioPath, metadata.sampleRate)
     win = new BrowserWindow({ show: false, width, height,
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
         backgroundThrottling: false } })
@@ -182,9 +182,14 @@ async function exportVideo() {
       `window.phase2Export.initialize(${JSON.stringify(project)},${width},${height},${metadata.sampleRate},${JSON.stringify(images)})`)
     native.reset()
     native.setSampleRate(metadata.sampleRate)
-    encoder = startEncoder(temp, project.audioPath, totalFrames, config.audioMode)
+    encoder = startEncoder(temp, project.audioPath, totalFrames, config.audioMode, metadata)
+    // Open the decoder when rendering is ready to consume it. Starting it
+    // before the hidden renderer initializes caused packaged 8 kHz exports
+    // to report EOF at the first frame.
+    reader = new PcmReader(project.audioPath, metadata.sampleRate)
     console.log(JSON.stringify({ event: 'started', input: project.audioPath, output: config.output,
-      ...metadata, width, height, encoderPid: encoder.child.pid, decoderPid: reader.child.pid }))
+      ...metadata, width, height, audioBitrate: encoder.audioBitrate,
+      encoderPid: encoder.child.pid, decoderPid: reader.child.pid }))
     for (let index = 0; index < totalFrames; index++) {
       checkCancel(index)
       const nextSample = Math.min(Math.floor((index + 1) * metadata.sampleRate / FPS),

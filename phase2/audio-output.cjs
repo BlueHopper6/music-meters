@@ -1,7 +1,7 @@
 const { extname } = require('node:path')
 
 const FORMATS = Object.freeze({
-  aac: { extension: '.mp4', container: 'MP4', audio: 'AAC at 192 kb/s' },
+  aac: { extension: '.mp4', container: 'MP4', audio: 'AAC up to 320 kb/s' },
   copy: { extension: '.mkv', container: 'MKV', audio: 'source audio stream copy' },
 })
 
@@ -30,4 +30,20 @@ function validateAudioCopy(input, metadata) {
   throw new Error(`Cannot copy ${codec || 'unknown'} audio from ${extension || 'this file'} into MKV. Use compatible MP4/AAC instead.`)
 }
 
-module.exports = { outputFormat, validateOutputPath, validateAudioCopy }
+// Cap AAC at 160 kb/s per channel (320 kb/s stereo, 160 kb/s mono) and 4 bits
+// per sample per channel so low-sample-rate inputs stay well below FFmpeg's
+// 6144-bit-per-channel AAC frame ceiling without relying on silent clamping.
+function aacBitrate(metadata) {
+  const channels = metadata?.channels
+  const sampleRate = metadata?.sampleRate
+  if (channels !== 1 && channels !== 2) {
+    throw new Error(`Only mono or stereo audio is supported (found ${channels} channels)`)
+  }
+  if (!Number.isSafeInteger(sampleRate) || sampleRate < 8000 || sampleRate > 192000) {
+    throw new Error(`Unsupported sample rate: ${sampleRate}`)
+  }
+  const kbps = Math.min(160 * channels, Math.floor((sampleRate * channels * 4) / 1000))
+  return `${kbps}k`
+}
+
+module.exports = { outputFormat, aacBitrate, validateOutputPath, validateAudioCopy }
