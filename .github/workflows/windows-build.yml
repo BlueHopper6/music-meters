@@ -53,6 +53,7 @@ jobs:
         shell: pwsh
         run: |
           node phase6/package-windows.cjs --output artifacts/phase6/ci-package
+          node phase2/test/run-startup-smoke.cjs --package artifacts/phase6/ci-package
           node phase6/test/package-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-smoke
           node phase6/test/run-security.cjs artifacts/phase6/ci-package artifacts/phase6/ci-security
           node phase6/test/run-repeat.cjs --package artifacts/phase6/ci-package artifacts/phase6/ci-editor-smoke

@@ -1,11 +1,11 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron')
-const { join, resolve, dirname, extname, relative, isAbsolute, basename } = require('node:path')
+const { join, resolve, dirname, extname, relative, isAbsolute } = require('node:path')
 const { spawn } = require('node:child_process')
 const { Worker } = require('node:worker_threads')
 const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
 const { jobPath } = require('../runtime.cjs')
-const { defaultProject, normalizeProject } = require('../project.cjs')
+const { defaultProject, compositionProject, normalizeProject } = require('../project.cjs')
 const { encapsulateProjectPath } = require('../project-path.cjs')
 const { installedFonts, assertInstalledFonts } = require('../fonts.cjs')
 const { readImage, imagePaths, assetData, saveArtwork, resolveArtwork } = require('../assets.cjs')
@@ -146,12 +146,15 @@ handle('initial', () => ({ project, metadata, projectPath, fonts: installedFonts
   isStartupSession: process.env.PHASE2_STARTUP_SMOKE === '1' || !isAutomatedTest,
   isAutomatedTest: Boolean(isAutomatedTest) }))
 handle('get-recent-projects', () => readPreferences(userData()).recentProjects || [])
-handle('new-blank-project', () => {
-  cancelPreview()
-  const fresh = defaultProject()
+function freshBlankProject() {
+  const fresh = compositionProject()
   fresh.layers = []
   fresh.title = 'Untitled project'
-  project = fresh
+  return fresh
+}
+handle('new-blank-project', () => {
+  cancelPreview()
+  project = freshBlankProject()
   projectPath = null
   activeAudio = ''
   metadata = null
@@ -161,10 +164,7 @@ handle('new-blank-project', () => {
 })
 handle('close-project', () => {
   cancelPreview()
-  const fresh = defaultProject()
-  fresh.layers = []
-  fresh.title = 'Untitled project'
-  project = fresh
+  project = freshBlankProject()
   projectPath = null
   activeAudio = ''
   metadata = null
@@ -346,8 +346,14 @@ handle('open-project', async () => {
 })
 
 handle('open-project-path', async (_event, targetPath) => {
-  if (!targetPath || typeof targetPath !== 'string') throw new Error('Invalid project path')
+  if (typeof targetPath !== 'string' || !isAbsolute(targetPath) || targetPath.length > 4096) {
+    throw new Error('Invalid project path')
+  }
   const resolved = resolve(targetPath)
+  const recent = readPreferences(userData()).recentProjects
+  if (!recent.some(item => item.path.toLowerCase() === resolved.toLowerCase())) {
+    throw new Error('Project is not in recent projects')
+  }
   if (!fs.existsSync(resolved)) throw new Error('Project file not found: ' + resolved)
   return loadProjectFromDisk(resolved)
 })

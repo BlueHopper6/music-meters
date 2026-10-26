@@ -81,7 +81,14 @@ function selectLayer(id: string | null) {
   selectedId = id
   refreshInspector(); refreshLayers(); updateSelection()
 }
-function setStatus(message: string) { status.textContent = message }
+function setStatus(message: string) {
+  status.textContent = message
+  if (!$('project-manager-screen').hidden) {
+    const managerStatus = $('project-manager-status')
+    managerStatus.textContent = message
+    managerStatus.hidden = !message
+  }
+}
 function background(): Background { return project.background as Background }
 function upgradeProject() {
   if (project.version === 2) return
@@ -1457,20 +1464,6 @@ $<HTMLInputElement>('template-name').addEventListener('keydown', event => {
     $('save-template-modal').hidden = true
   }
 })
-async function applyTemplateById(id: string) {
-  const loaded = await window.desktop.loadTemplate(id, project)
-  const activeTemplate = templates.find(entry => entry.id === id)
-  if (activeTemplate && !activeTemplate.builtIn) $<HTMLInputElement>('template-name').value = activeTemplate.name
-  $<HTMLSelectElement>('template-list').value = id
-  ;($<HTMLButtonElement>('rename-template')).disabled = id.startsWith('starter:')
-  resetSongPreview()
-  project = normalizeProject(loaded.project) as Project
-  missingMedia = loaded.missingMedia
-  selectedId = project.layers.at(-1)?.id || null
-  refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
-  if (metadata) await refreshPreview()
-  else setStatus('Layout loaded. Import audio to preview and export.')
-}
 function setManagerStatus(message: string) {
   $('template-manager-status').textContent = message
   if (message) setStatus(message)
@@ -1515,7 +1508,7 @@ function renderTemplateManager() {
     useBtn.addEventListener('click', async () => {
       try {
         closeTemplateManager()
-        await applyTemplateById(entry.id)
+        await createProjectFromTemplate(entry.id)
       } catch (error) { setStatus(String(error)) }
     })
     const dupBtn = document.createElement('button')
@@ -1672,7 +1665,7 @@ function renderTemplateManager() {
       useBtn.addEventListener('click', async () => {
         try {
           closeTemplateManager()
-          await applyTemplateById(entry.id)
+          await createProjectFromTemplate(entry.id)
         } catch (error) { setStatus(String(error)) }
       })
       const dupBtn = document.createElement('button')
@@ -1841,6 +1834,7 @@ $('save-project-as').addEventListener('click', async () => {
     if (saved) {
       projectPath = saved.path; project = normalizeProject(saved.project) as Project
       missingMedia = saved.missingMedia
+      markProjectSaved()
       refreshInspector(); renderMissingMedia(); await syncAssets()
       setStatus(`Saved new project: ${saved.path}`)
     }
@@ -1859,6 +1853,9 @@ async function applyLoadedProject(loaded: Initial) {
 }
 
 function showProjectManager() {
+  const managerStatus = $('project-manager-status')
+  managerStatus.textContent = ''
+  managerStatus.hidden = true
   $<HTMLDivElement>('project-manager-screen').hidden = false
   $<HTMLDivElement>('editor-screen').hidden = true
 }
@@ -1867,6 +1864,12 @@ function showEditor() {
   $<HTMLDivElement>('project-manager-screen').hidden = true
   $<HTMLDivElement>('editor-screen').hidden = false
   render()
+}
+
+async function createProjectFromTemplate(id: string) {
+  const loaded = await window.desktop.newProjectFromTemplate(id)
+  await applyLoadedProject(loaded)
+  showEditor()
 }
 
 async function openRecent(targetPath: string) {
@@ -2003,7 +2006,6 @@ $('unsaved-changes-cancel').addEventListener('click', () => {
 $('unsaved-changes-discard').addEventListener('click', async () => {
   const action = pendingUnsavedAction
   closeUnsavedChangesModal()
-  markProjectSaved()
   if (action) await action()
 })
 $('unsaved-changes-save').addEventListener('click', async () => {
@@ -2059,9 +2061,7 @@ $('template-picker-create').addEventListener('click', async () => {
   if (!tmplId) return
   closeTemplatePicker()
   try {
-    const loaded = await window.desktop.newProjectFromTemplate(tmplId)
-    await applyLoadedProject(loaded)
-    showEditor()
+    await createProjectFromTemplate(tmplId)
   } catch (error) { setStatus(String(error)) }
 })
 

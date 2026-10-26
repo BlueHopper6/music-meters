@@ -253,5 +253,8 @@ test('encapsulateProjectPath creates dedicated project subfolder without double 
   const result3 = encapsulateProjectPath(path.join(baseDir, 'song-b'))
   assert.equal(result3, path.join(baseDir, 'song-b', 'song-b.json'))
 
+  const result4 = encapsulateProjectPath(path.join(baseDir, 'song-c.JSON'))
+  assert.equal(result4, path.join(baseDir, 'song-c', 'song-c.json'))
+
   assert.throws(() => encapsulateProjectPath(''), /Invalid target path/)
 })
