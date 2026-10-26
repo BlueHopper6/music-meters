@@ -8,7 +8,7 @@ const { jobPath } = require('../runtime.cjs')
 const { defaultProject, normalizeProject } = require('../project.cjs')
 const { installedFonts, assertInstalledFonts } = require('../fonts.cjs')
 const { readImage, imagePaths, assetData, saveArtwork, resolveArtwork } = require('../assets.cjs')
-const { listTemplates, readTemplate, saveTemplate, duplicateTemplate, renameTemplate, applyTemplate, titleSuggestion } = require('../templates.cjs')
+const { listTemplates, readTemplate, saveTemplate, duplicateTemplate, renameTemplate, deleteTemplate, applyTemplate, titleSuggestion } = require('../templates.cjs')
 const { readPreferences, writePreferences } = require('../preferences.cjs')
 const { probeAudio } = require('../audio.cjs')
 const { outputFormat, validateOutputPath, validateAudioCopy } = require('../audio-output.cjs')
@@ -107,9 +107,9 @@ function validateActiveProject(raw) {
 ipcMain.handle('initial', () => ({ project, metadata, projectPath, fonts: installedFonts(),
   templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project) }))
 ipcMain.handle('list-templates', () => listTemplates(userData()))
-ipcMain.handle('save-template', (_event, name, raw) => {
+ipcMain.handle('save-template', (_event, name, raw, overwriteId = '') => {
   const value = validateActiveProject(raw)
-  const entry = saveTemplate(userData(), name, value)
+  const entry = saveTemplate(userData(), name, value, overwriteId)
   writePreferences(userData(), { lastTemplateId: entry.id })
   return entry
 })
@@ -119,6 +119,13 @@ ipcMain.handle('duplicate-template', (_event, id, name) => {
   return entry
 })
 ipcMain.handle('rename-template', (_event, id, name) => renameTemplate(userData(), id, name))
+ipcMain.handle('delete-template', (_event, id) => {
+  const removed = deleteTemplate(userData(), id)
+  if (readPreferences(userData()).lastTemplateId === id) {
+    writePreferences(userData(), { lastTemplateId: '' })
+  }
+  return removed
+})
 ipcMain.handle('load-template', (_event, id, raw) => {
   const current = validateActiveProject(raw)
   const next = applyTemplate(readTemplate(userData(), id).layout, current)
