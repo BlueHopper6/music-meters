@@ -74,7 +74,7 @@ def main():
     for name, expected in provenance["appFileSha256"].items():
         if hashlib.sha256((package / name).read_bytes()).hexdigest() != expected:
             raise RuntimeError(f"Packaged application file changed after build: {name}")
-    addon = PRISM / "node_modules" / "node-addon-api"
+    addon = ROOT / "phase6" / "build-tools" / "node_modules" / "node-addon-api"
     if json.loads((addon / "package.json").read_text())["version"] != "8.6.0":
         raise RuntimeError("Expected node-addon-api 8.6.0")
     if output.is_relative_to(package):

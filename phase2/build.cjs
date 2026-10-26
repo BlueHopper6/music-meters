@@ -25,7 +25,7 @@ function prerequisites() {
 
 async function build() {
   prerequisites()
-  const esbuild = require(path.join(PRISM, 'node_modules', 'esbuild'))
+  const esbuild = require(path.join(ROOT, 'phase6', 'build-tools', 'node_modules', 'esbuild'))
   const targets = new Set(['Vectorscope.ts', 'SpectrumAnalyzer.ts', 'Oscilloscope.ts', 'Spectrogram.ts', 'Waveform.ts', 'VUMeter.ts', 'LUFSMeter.ts', 'Waterfall.ts'].map(name =>
     fs.realpathSync(path.join(PRISM, 'src', 'renderer', 'visualizers', name))))
   const marker = '  private drawFrame = (): void => {'

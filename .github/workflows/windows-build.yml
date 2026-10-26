@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    # Pinned Prism uses node-gyp 10, which cannot detect Visual Studio 2026.
+    # Use a stable Visual Studio 2022 image for the pinned native build.
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -29,15 +29,17 @@ jobs:
         run: |
           git clone https://github.com/Boof2015/prism.git upstream/prism
           git -C upstream/prism checkout 49721802252b115d169e353c98b27408daa5e2b7
-          Push-Location upstream/prism
+          Push-Location phase6/build-tools
           npm ci --ignore-scripts --no-audit --no-fund
-          npm run build:native
+          npm audit --audit-level=low
           Pop-Location
+          node phase6/build-native.cjs
       - name: Prepare locked Electron runtime
         shell: pwsh
         run: |
           Push-Location phase6/electron-runtime
           npm ci --ignore-scripts --no-audit --no-fund
+          npm audit --audit-level=low
           node node_modules/electron/install.js
           Pop-Location
       - name: Build and unit tests
@@ -45,24 +47,28 @@ jobs:
         run: |
           python phase1/make-fixtures.py
           node phase2/build.cjs
-          node --test phase6/test/space.test.cjs phase5/test/templates.test.cjs phase2/test/project.test.cjs phase2/test/stage-geometry.test.cjs phase4/test/assets.test.cjs phase2/test/fonts.test.cjs phase1/test/pcm-reader.test.cjs phase3/test/vectorscope-correlation.test.cjs
+          node phase6/build-tools/node_modules/typescript/lib/tsc.js --noEmit --strict --skipLibCheck --allowJs --checkJs false --target es2022 --module esnext --moduleResolution bundler --lib es2022,dom,dom.iterable --typeRoots phase6/build-tools/node_modules/@types --types node upstream/prism/src/renderer/env.d.ts phase2/composition.ts phase2/editor.ts phase2/export-renderer.ts
+          node --test phase6/test/space.test.cjs phase6/test/window-security.test.cjs phase5/test/templates.test.cjs phase2/test/project.test.cjs phase2/test/stage-geometry.test.cjs phase2/test/audio-output.test.cjs phase4/test/assets.test.cjs phase2/test/fonts.test.cjs phase1/test/pcm-reader.test.cjs phase3/test/vectorscope-correlation.test.cjs
       - name: Portable package and audio export smokes
         shell: pwsh
         run: |
           node phase6/package-windows.cjs --output artifacts/phase6/ci-package
           node phase6/test/package-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-smoke
+          node phase6/test/run-security.cjs artifacts/phase6/ci-package artifacts/phase6/ci-security
           node phase6/test/run-repeat.cjs --package artifacts/phase6/ci-package artifacts/phase6/ci-editor-smoke
           node phase6/test/audio-copy.cjs artifacts/phase6/ci-package artifacts/phase6/ci-audio-copy
           node phase6/test/run-audio-copy-editor.cjs artifacts/phase6/ci-package artifacts/phase6/ci-audio-copy-editor
+          node phase6/test/audio-matrix.cjs artifacts/phase6/ci-package artifacts/phase6/ci-audio-matrix
+          node phase6/test/run-preview-performance.cjs artifacts/phase6/ci-package artifacts/phase6/ci-preview-performance
       - name: Matching source archive and extracted rebuild
         shell: pwsh
         run: |
           python phase6/release-source.py --package artifacts/phase6/ci-package --output artifacts/phase6/ci-source.zip
           python phase6/test/source-archive.py artifacts/phase6/ci-package artifacts/phase6/ci-source.zip artifacts/phase6/ci-extracted
-          Push-Location artifacts/phase6/ci-extracted/musicmeters/upstream/prism
+          Push-Location artifacts/phase6/ci-extracted/musicmeters/phase6/build-tools
           npm ci --ignore-scripts --no-audit --no-fund
-          npm run build:native
           Pop-Location
+          node artifacts/phase6/ci-extracted/musicmeters/phase6/build-native.cjs
           Push-Location artifacts/phase6/ci-extracted/musicmeters/phase6/electron-runtime
           npm ci --ignore-scripts --no-audit --no-fund
           node node_modules/electron/install.js
