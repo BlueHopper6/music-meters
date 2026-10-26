@@ -1989,13 +1989,6 @@ $('close-project').addEventListener('click', () => {
     } catch (error) { setStatus(String(error)) }
   })
 })
-$('return-to-projects').addEventListener('click', () => {
-  confirmDiscardIfDirty(async () => {
-    try {
-      await closeCurrentProject()
-    } catch (error) { setStatus(String(error)) }
-  })
-})
 $('unsaved-changes-cancel').addEventListener('click', () => {
   closeUnsavedChangesModal()
 })

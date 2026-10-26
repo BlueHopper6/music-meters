@@ -65,7 +65,7 @@ module.exports = async function startupSmoke(win) {
   assert.ok(templateLayers > 0, 'Starter template should have layers')
 
   console.log('Step 5: Testing Return to Projects')
-  await click('return-to-projects')
+  await click('close-project')
   await waitFor('!document.getElementById("project-manager-screen").hidden', 'project manager visible after return')
   assert.equal(await evaluate('document.getElementById("editor-screen").hidden'), true)
 
@@ -88,7 +88,7 @@ module.exports = async function startupSmoke(win) {
   assert.ok(statusText.includes('saved-smoke-project'), 'Project must be saved inside dedicated subfolder')
 
   console.log('Step 8: Verifying Recent Project card')
-  await click('return-to-projects')
+  await click('close-project')
   await waitFor('!document.getElementById("project-manager-screen").hidden', 'project manager visible')
   await waitFor('document.querySelectorAll("#recent-projects-grid .project-card").length > 0', 'recent projects card rendered')
 
@@ -107,7 +107,7 @@ module.exports = async function startupSmoke(win) {
   // Mutate project to make it dirty
   await click('add-layer')
   // Try to return to projects - should be intercepted by unsaved changes modal
-  await click('return-to-projects')
+  await click('close-project')
   await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'unsaved changes modal shown')
   assert.equal(await evaluate('document.getElementById("project-manager-screen").hidden'), true)
 
@@ -117,7 +117,7 @@ module.exports = async function startupSmoke(win) {
   assert.equal(await evaluate('document.getElementById("editor-screen").hidden'), false)
 
   // Try again and click Discard
-  await click('return-to-projects')
+  await click('close-project')
   await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'unsaved changes modal shown second time')
   await click('unsaved-changes-discard')
   await waitFor('!document.getElementById("project-manager-screen").hidden', 'returned to project manager after discard')
@@ -130,9 +130,17 @@ module.exports = async function startupSmoke(win) {
   // Verify sidebar does not contain template controls
   assert.equal(await evaluate('Boolean(document.querySelector(".layers-panel .template-controls"))'), false, 'Sidebar must not contain template controls')
 
+  // Verify Projects button was removed and Close Project exists
+  assert.equal(await evaluate('Boolean(document.getElementById("return-to-projects"))'), false, 'Projects button should be removed')
   // Verify Close Project and Save as template buttons exist in toolbar
   assert.equal(await evaluate('document.getElementById("close-project").textContent'), 'Close project')
   assert.equal(await evaluate('document.getElementById("save-template").textContent'), 'Save as template…')
+
+  // Test Save as Template modal opens with top-right close button
+  await click('save-template')
+  await waitFor('!document.getElementById("save-template-modal").hidden', 'save template modal visible')
+  await click('save-template-close')
+  await waitFor('document.getElementById("save-template-modal").hidden', 'save template modal closed via x')
 
   // Clicking close-project returns to project manager
   await click('close-project')
