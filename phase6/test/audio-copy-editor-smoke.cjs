@@ -20,6 +20,7 @@ module.exports = async function audioCopyEditorSmoke(win) {
   assert.equal(await evaluate('document.getElementById("audio-mode").value'), 'aac')
   assert.equal(await evaluate('document.querySelector("#audio-mode option[value=\\"aac\\"]").textContent'), 'MP4 · AAC up to 320 kb/s')
   assert.equal(await evaluate('document.querySelector("#audio-mode option[value=\\"copy\\"]").textContent'), 'MKV · Source audio copy (no re-encode)')
+  assert.equal(await evaluate('document.getElementById("stage-resolution").textContent'), 'Layout 1280 × 720 · Export 1920 × 1080 · 16:9')
   await evaluate(`(() => { const mode = document.getElementById('audio-mode');
     mode.value = 'copy'; mode.dispatchEvent(new Event('change', { bubbles: true })); return true })()`)
   assert.equal(await evaluate('document.getElementById("render-mp4").textContent'), 'Render MKV')
@@ -43,7 +44,21 @@ module.exports = async function audioCopyEditorSmoke(win) {
     && toolbar.renderRight < toolbar.licenseLeft
     && toolbar.licenseRight <= toolbar.viewport,
     `Export controls overflow the minimum window: ${JSON.stringify(toolbar)}`)
-  await evaluate('document.getElementById("export-preset").value = "720p"')
+  const heading = await evaluate(`(() => ({
+    panelRight: document.querySelector('.center-panel').getBoundingClientRect().right,
+    resolutionRight: document.getElementById('stage-resolution').getBoundingClientRect().right,
+    fullscreenRight: document.getElementById('fullscreen-preview').getBoundingClientRect().right,
+    headingBottom: document.querySelector('.canvas-heading').getBoundingClientRect().bottom,
+    stageTop: document.getElementById('stage').getBoundingClientRect().top,
+  }))()`)
+  assert.ok(heading.resolutionRight <= heading.panelRight
+    && heading.fullscreenRight <= heading.panelRight
+    && heading.headingBottom <= heading.stageTop,
+  `Layout and export size label overlaps the stage at the minimum window: ${JSON.stringify(heading)}`)
+  await evaluate(`(() => { const preset = document.getElementById('export-preset');
+    preset.value = '720p'; preset.dispatchEvent(new Event('change', { bubbles: true })); return true })()`)
+  assert.equal(await evaluate('document.getElementById("stage-resolution").textContent'), 'Layout 1280 × 720 · Export 1280 × 720 · 16:9')
+  assert.deepEqual(await evaluate('({ width: document.getElementById("stage").width, height: document.getElementById("stage").height })'), { width: 1280, height: 720 })
   const first = path.join(dir, 'Editor copy one.mkv')
   let saveOptions
   const originalDialog = dialog.showSaveDialog

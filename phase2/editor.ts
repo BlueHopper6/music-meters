@@ -29,10 +29,11 @@ type Desktop = {
   saveProject(project: Project, asNew?: boolean): Promise<{ path: string; project: Project; missingMedia: MissingMedia[] } | null>
   openProject(): Promise<Initial | null>
   listTemplates(): Promise<TemplateEntry[]>
-  saveTemplate(name: string, project: Project): Promise<TemplateEntry>
+  saveTemplate(name: string, project: Project, overwriteId?: string): Promise<TemplateEntry>
   loadTemplate(id: string, project: Project): Promise<{ project: Project; missingMedia: MissingMedia[] }>
-  duplicateTemplate(id: string, name: string): Promise<TemplateEntry>
+  duplicateTemplate(id: string, name?: string): Promise<TemplateEntry>
   renameTemplate(id: string, name: string): Promise<TemplateEntry>
+  deleteTemplate(id: string): Promise<{ id: string; name: string }>
   setExportPreset(preset: string): Promise<void>
   renderVideo(project: Project, preset: string, audioMode: string): Promise<string | null>
   cancelRender(): Promise<void>
@@ -59,6 +60,10 @@ let previewTimer: ReturnType<typeof setTimeout> | null = null
 let exportRunning = false
 let projectPath: string | null = null
 let missingMedia: MissingMedia[] = []
+let templates: TemplateEntry[] = []
+let resolveTemplateConflict: ((choice: 'replace' | 'rename') => void) | null = null
+let managerEditingId: string | null = null
+let managerDeletingId: string | null = null
 
 function selected() { return project.layers.find(layer => layer.id === selectedId) }
 function selectLayer(id: string | null) {
@@ -555,12 +560,14 @@ function renderMissingMedia() {
   }
 }
 function refreshTemplates(entries: TemplateEntry[], preferred = '') {
+  templates = entries
   const list = $<HTMLSelectElement>('template-list')
   const previous = preferred || list.value
   list.replaceChildren(...entries.map(entry => new Option(`${entry.builtIn ? 'Starter · ' : ''}${entry.name}`, entry.id)))
   if (entries.some(entry => entry.id === previous)) list.value = previous
   const active = entries.find(entry => entry.id === list.value)
   ;($<HTMLButtonElement>('rename-template')).disabled = !active || active.builtIn
+  if (!$('template-manager-modal').hidden) renderTemplateManager()
 }
 function resetSongPreview() {
   if (previewTimer) clearTimeout(previewTimer)
@@ -1272,7 +1279,13 @@ $('import-audio').addEventListener('click', async () => {
 $<HTMLSelectElement>('template-list').addEventListener('change', () => {
   ;($<HTMLButtonElement>('rename-template')).disabled = $<HTMLSelectElement>('template-list').value.startsWith('starter:')
 })
+function refreshExportResolution() {
+  const preset = ($<HTMLSelectElement>('export-preset')).value
+  const exportSize = preset === '720p' ? '1280 × 720' : '1920 × 1080'
+  $('stage-resolution').textContent = `Layout 1280 × 720 · Export ${exportSize} · 16:9`
+}
 $<HTMLSelectElement>('export-preset').addEventListener('change', async event => {
+  refreshExportResolution()
   try { await window.desktop.setExportPreset((event.target as HTMLSelectElement).value) }
   catch (error) { setStatus(String(error)) }
 })
@@ -1280,18 +1293,390 @@ $<HTMLSelectElement>('audio-mode').addEventListener('change', event => {
   const copy = (event.target as HTMLSelectElement).value === 'copy'
   $('render-mp4').textContent = copy ? 'Render MKV' : 'Render MP4'
 })
+function closeTemplateConflict(choice: 'replace' | 'rename') {
+  if (!resolveTemplateConflict) return
+  const finish = resolveTemplateConflict
+  resolveTemplateConflict = null
+  $('template-conflict-modal').hidden = true
+  $<HTMLInputElement>('template-name').focus()
+  finish(choice)
+}
+function askTemplateConflict(existingName: string): Promise<'replace' | 'rename'> {
+  if (resolveTemplateConflict) closeTemplateConflict('rename')
+  $('template-conflict-message').textContent = `A layout template named "${existingName}" already exists. Replace it with the current layout or choose a different name?`
+  $('template-conflict-modal').hidden = false
+  $<HTMLButtonElement>('template-conflict-rename').focus()
+  return new Promise(resolve => { resolveTemplateConflict = resolve })
+}
+$('template-conflict-rename').addEventListener('click', () => closeTemplateConflict('rename'))
+$('template-conflict-replace').addEventListener('click', () => closeTemplateConflict('replace'))
+$('template-conflict-modal').addEventListener('click', event => {
+  if (event.target === $('template-conflict-modal')) closeTemplateConflict('rename')
+})
+$('template-conflict-modal').addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    event.stopPropagation()
+    closeTemplateConflict('rename')
+  } else if (event.key === 'Tab') {
+    const renameBtn = $<HTMLButtonElement>('template-conflict-rename')
+    const replaceBtn = $<HTMLButtonElement>('template-conflict-replace')
+    if (event.shiftKey && document.activeElement === renameBtn) {
+      event.preventDefault()
+      replaceBtn.focus()
+    } else if (!event.shiftKey && document.activeElement === replaceBtn) {
+      event.preventDefault()
+      renameBtn.focus()
+    }
+  }
+})
 $('save-template').addEventListener('click', async () => {
   try {
     const name = $<HTMLInputElement>('template-name').value.trim()
+    const input = $<HTMLInputElement>('template-name')
+    if (!name) {
+      input.focus()
+      setStatus('Template name must be 1–80 characters')
+      return
+    }
+    templates = await window.desktop.listTemplates()
+    const existing = templates.find(entry => entry.name.toLowerCase() === name.toLowerCase())
+    if (existing?.builtIn) {
+      input.focus()
+      input.select()
+      setStatus(`"${existing.name}" is a built-in starter template. Choose a different name.`)
+      return
+    }
+    if (existing) {
+      const choice = await askTemplateConflict(existing.name)
+      if (choice === 'rename') {
+        input.focus()
+        input.select()
+        setStatus('Choose a different template name to save a new template.')
+        return
+      }
+      const replaced = await window.desktop.saveTemplate(name, project, existing.id)
+      refreshTemplates(await window.desktop.listTemplates(), replaced.id)
+      setStatus(`Replaced layout template: ${replaced.name}`)
+      return
+    }
     const saved = await window.desktop.saveTemplate(name, project)
     refreshTemplates(await window.desktop.listTemplates(), saved.id)
     setStatus(`Saved layout template: ${saved.name}`)
   } catch (error) { setStatus(String(error)) }
 })
+async function applyTemplateById(id: string) {
+  const loaded = await window.desktop.loadTemplate(id, project)
+  const activeTemplate = templates.find(entry => entry.id === id)
+  if (activeTemplate && !activeTemplate.builtIn) $<HTMLInputElement>('template-name').value = activeTemplate.name
+  $<HTMLSelectElement>('template-list').value = id
+  ;($<HTMLButtonElement>('rename-template')).disabled = id.startsWith('starter:')
+  resetSongPreview()
+  project = normalizeProject(loaded.project) as Project
+  missingMedia = loaded.missingMedia
+  selectedId = project.layers.at(-1)?.id || null
+  refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
+  if (metadata) await refreshPreview()
+  else setStatus('Layout loaded. Import audio to preview and export.')
+}
+function setManagerStatus(message: string) {
+  $('template-manager-status').textContent = message
+  if (message) setStatus(message)
+}
+function closeTemplateManager() {
+  managerEditingId = null
+  managerDeletingId = null
+  $('template-manager-modal').hidden = true
+  $('open-template-manager').focus()
+}
+function focusManagerAction(id: string, action: string) {
+  const row = Array.from($('template-manager-custom').querySelectorAll<HTMLElement>('.template-manager-row'))
+    .find(item => item.dataset.templateId === id)
+  row?.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)?.focus()
+}
+function renderTemplateManager() {
+  const builtinsHost = $('template-manager-builtins')
+  const customHost = $('template-manager-custom')
+  const selectedTemplateId = $<HTMLSelectElement>('template-list').value
+  builtinsHost.replaceChildren()
+  customHost.replaceChildren()
+  for (const entry of templates.filter(item => item.builtIn)) {
+    const row = document.createElement('div')
+    row.className = `template-manager-row${entry.id === selectedTemplateId ? ' selected' : ''}`
+    row.dataset.templateId = entry.id
+    row.setAttribute('role', 'listitem')
+    const info = document.createElement('div')
+    info.className = 'template-manager-info'
+    const name = document.createElement('span')
+    name.className = 'template-manager-name'
+    name.textContent = entry.name
+    const badge = document.createElement('span')
+    badge.className = 'template-badge template-badge-factory'
+    badge.textContent = 'Factory · Read-only'
+    info.append(name, badge)
+    const actions = document.createElement('div')
+    actions.className = 'template-manager-row-actions'
+    const useBtn = document.createElement('button')
+    useBtn.type = 'button'
+    useBtn.dataset.action = 'use'
+    useBtn.textContent = 'Use layout'
+    useBtn.addEventListener('click', async () => {
+      try {
+        closeTemplateManager()
+        await applyTemplateById(entry.id)
+      } catch (error) { setStatus(String(error)) }
+    })
+    const dupBtn = document.createElement('button')
+    dupBtn.type = 'button'
+    dupBtn.dataset.action = 'duplicate'
+    dupBtn.textContent = 'Duplicate'
+    dupBtn.addEventListener('click', async () => {
+      try {
+        const saved = await window.desktop.duplicateTemplate(entry.id, '')
+        $<HTMLInputElement>('template-name').value = saved.name
+        managerDeletingId = null
+        managerEditingId = saved.id
+        refreshTemplates(await window.desktop.listTemplates(), saved.id)
+        setManagerStatus(`Duplicated factory template as "${saved.name}".`)
+      } catch (error) { setManagerStatus(String(error)) }
+    })
+    actions.append(useBtn, dupBtn)
+    row.append(info, actions)
+    builtinsHost.append(row)
+  }
+  const customEntries = templates.filter(item => !item.builtIn)
+  if (customEntries.length === 0) {
+    const empty = document.createElement('p')
+    empty.className = 'template-manager-empty'
+    empty.textContent = 'No custom templates saved yet. Save the current layout or duplicate a factory template above.'
+    customHost.append(empty)
+    return
+  }
+  for (const entry of customEntries) {
+    const row = document.createElement('div')
+    row.className = `template-manager-row${entry.id === selectedTemplateId ? ' selected' : ''}`
+    row.dataset.templateId = entry.id
+    row.setAttribute('role', 'listitem')
+    if (managerEditingId === entry.id) {
+      const input = document.createElement('input')
+      input.type = 'text'
+      input.className = 'template-manager-rename-input'
+      input.maxLength = 80
+      input.value = entry.name
+      input.setAttribute('aria-label', `New name for ${entry.name}`)
+      const actions = document.createElement('div')
+      actions.className = 'template-manager-row-actions'
+      const saveBtn = document.createElement('button')
+      saveBtn.type = 'button'
+      saveBtn.className = 'primary'
+      saveBtn.dataset.action = 'save-rename'
+      saveBtn.textContent = 'Save'
+      const cancelBtn = document.createElement('button')
+      cancelBtn.type = 'button'
+      cancelBtn.dataset.action = 'cancel-rename'
+      cancelBtn.textContent = 'Cancel'
+      const commitRename = async () => {
+        const nextName = input.value.trim()
+        if (!nextName || nextName.length > 80 || /[\u0000-\u001f]/.test(nextName)) {
+          input.focus()
+          setManagerStatus('Template name must be 1–80 characters')
+          return
+        }
+        templates = await window.desktop.listTemplates()
+        const conflict = templates.find(item => item.id !== entry.id && item.name.toLowerCase() === nextName.toLowerCase())
+        if (conflict?.builtIn) {
+          input.focus()
+          input.select()
+          setManagerStatus(`"${conflict.name}" is a built-in starter template. Choose a different name.`)
+          return
+        }
+        if (conflict) {
+          input.focus()
+          input.select()
+          setManagerStatus(`Template "${conflict.name}" already exists. Choose a different name.`)
+          return
+        }
+        try {
+          const renamed = await window.desktop.renameTemplate(entry.id, nextName)
+          managerEditingId = null
+          $<HTMLInputElement>('template-name').value = renamed.name
+          refreshTemplates(await window.desktop.listTemplates(), renamed.id)
+          focusManagerAction(renamed.id, 'rename')
+          setManagerStatus(`Renamed layout template: ${renamed.name}`)
+        } catch (error) { setManagerStatus(String(error)) }
+      }
+      saveBtn.addEventListener('click', () => { void commitRename() })
+      cancelBtn.addEventListener('click', () => {
+        managerEditingId = null
+        renderTemplateManager()
+        focusManagerAction(entry.id, 'rename')
+      })
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          void commitRename()
+        } else if (event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          managerEditingId = null
+          renderTemplateManager()
+          focusManagerAction(entry.id, 'rename')
+        }
+      })
+      actions.append(saveBtn, cancelBtn)
+      row.append(input, actions)
+      customHost.append(row)
+      queueMicrotask(() => { input.focus(); input.select() })
+    } else if (managerDeletingId === entry.id) {
+      const prompt = document.createElement('span')
+      prompt.className = 'template-manager-confirm-text'
+      prompt.textContent = `Delete "${entry.name}"?`
+      const actions = document.createElement('div')
+      actions.className = 'template-manager-row-actions'
+      const confirmBtn = document.createElement('button')
+      confirmBtn.type = 'button'
+      confirmBtn.className = 'danger-button'
+      confirmBtn.dataset.action = 'confirm-delete'
+      confirmBtn.textContent = 'Delete'
+      const cancelBtn = document.createElement('button')
+      cancelBtn.type = 'button'
+      cancelBtn.dataset.action = 'cancel-delete'
+      cancelBtn.textContent = 'Cancel'
+      confirmBtn.addEventListener('click', async () => {
+        try {
+          const removed = await window.desktop.deleteTemplate(entry.id)
+          managerDeletingId = null
+          const nameInput = $<HTMLInputElement>('template-name')
+          if (nameInput.value.trim().toLowerCase() === removed.name.toLowerCase()) nameInput.value = ''
+          refreshTemplates(await window.desktop.listTemplates())
+          $<HTMLButtonElement>('template-manager-close').focus()
+          setManagerStatus(`Deleted layout template: ${removed.name}`)
+        } catch (error) { setManagerStatus(String(error)) }
+      })
+      cancelBtn.addEventListener('click', () => {
+        managerDeletingId = null
+        renderTemplateManager()
+        focusManagerAction(entry.id, 'delete')
+      })
+      actions.append(confirmBtn, cancelBtn)
+      row.append(prompt, actions)
+      customHost.append(row)
+    } else {
+      const info = document.createElement('div')
+      info.className = 'template-manager-info'
+      const name = document.createElement('span')
+      name.className = 'template-manager-name'
+      name.textContent = entry.name
+      const badge = document.createElement('span')
+      badge.className = 'template-badge'
+      badge.textContent = 'Custom'
+      info.append(name, badge)
+      const actions = document.createElement('div')
+      actions.className = 'template-manager-row-actions'
+      const useBtn = document.createElement('button')
+      useBtn.type = 'button'
+      useBtn.dataset.action = 'use'
+      useBtn.textContent = 'Use layout'
+      useBtn.addEventListener('click', async () => {
+        try {
+          closeTemplateManager()
+          await applyTemplateById(entry.id)
+        } catch (error) { setStatus(String(error)) }
+      })
+      const dupBtn = document.createElement('button')
+      dupBtn.type = 'button'
+      dupBtn.dataset.action = 'duplicate'
+      dupBtn.textContent = 'Duplicate'
+      dupBtn.addEventListener('click', async () => {
+        try {
+          const saved = await window.desktop.duplicateTemplate(entry.id, '')
+          $<HTMLInputElement>('template-name').value = saved.name
+          managerDeletingId = null
+          managerEditingId = null
+          refreshTemplates(await window.desktop.listTemplates(), saved.id)
+          focusManagerAction(saved.id, 'duplicate')
+          setManagerStatus(`Duplicated layout template: ${saved.name}`)
+        } catch (error) { setManagerStatus(String(error)) }
+      })
+      const renameBtn = document.createElement('button')
+      renameBtn.type = 'button'
+      renameBtn.dataset.action = 'rename'
+      renameBtn.textContent = 'Rename'
+      renameBtn.addEventListener('click', () => {
+        managerDeletingId = null
+        managerEditingId = entry.id
+        renderTemplateManager()
+      })
+      const deleteBtn = document.createElement('button')
+      deleteBtn.type = 'button'
+      deleteBtn.className = 'danger-button'
+      deleteBtn.dataset.action = 'delete'
+      deleteBtn.textContent = 'Delete'
+      deleteBtn.addEventListener('click', () => {
+        managerEditingId = null
+        managerDeletingId = entry.id
+        renderTemplateManager()
+      })
+      actions.append(useBtn, dupBtn, renameBtn, deleteBtn)
+      row.append(info, actions)
+      customHost.append(row)
+    }
+  }
+}
+$('open-template-manager').addEventListener('click', async () => {
+  try {
+    managerEditingId = null
+    managerDeletingId = null
+    $('template-manager-status').textContent = ''
+    templates = await window.desktop.listTemplates()
+    refreshTemplates(templates)
+    $('template-manager-modal').hidden = false
+    renderTemplateManager()
+    $('template-manager-close').focus()
+  } catch (error) { setStatus(String(error)) }
+})
+$('template-manager-close').addEventListener('click', () => closeTemplateManager())
+$('template-manager-modal').addEventListener('click', event => {
+  if (event.target === $('template-manager-modal')) closeTemplateManager()
+})
+$('template-manager-modal').addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    event.stopPropagation()
+    if (managerEditingId || managerDeletingId) {
+      const id = managerEditingId || managerDeletingId || ''
+      const action = managerEditingId ? 'rename' : 'delete'
+      managerEditingId = null
+      managerDeletingId = null
+      renderTemplateManager()
+      focusManagerAction(id, action)
+    } else {
+      closeTemplateManager()
+    }
+  } else if (event.key === 'Tab') {
+    const modal = $('template-manager-modal')
+    const focusable = Array.from(modal.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button:not([disabled]), input:not([disabled])'))
+    if (focusable.length === 0) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    } else if (!modal.contains(document.activeElement)) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
+})
 $('load-template').addEventListener('click', async () => {
   try {
     const id = $<HTMLSelectElement>('template-list').value
     const loaded = await window.desktop.loadTemplate(id, project)
+    const activeTemplate = templates.find(entry => entry.id === id)
+    if (activeTemplate && !activeTemplate.builtIn) $<HTMLInputElement>('template-name').value = activeTemplate.name
     resetSongPreview()
     project = normalizeProject(loaded.project) as Project
     missingMedia = loaded.missingMedia
@@ -1305,7 +1690,10 @@ $('duplicate-template').addEventListener('click', async () => {
   try {
     const id = $<HTMLSelectElement>('template-list').value
     const name = $<HTMLInputElement>('template-name').value.trim()
-    const saved = await window.desktop.duplicateTemplate(id, name)
+    templates = await window.desktop.listTemplates()
+    const hasConflict = !!name && templates.some(entry => entry.name.toLowerCase() === name.toLowerCase())
+    const saved = await window.desktop.duplicateTemplate(id, !name || hasConflict ? '' : name)
+    $<HTMLInputElement>('template-name').value = saved.name
     refreshTemplates(await window.desktop.listTemplates(), saved.id)
     setStatus(`Duplicated layout template: ${saved.name}`)
   } catch (error) { setStatus(String(error)) }
@@ -1314,6 +1702,30 @@ $('rename-template').addEventListener('click', async () => {
   try {
     const id = $<HTMLSelectElement>('template-list').value
     const name = $<HTMLInputElement>('template-name').value.trim()
+    if (id.startsWith('starter:')) {
+      setStatus('Duplicate a starter template before renaming it.')
+      return
+    }
+    const input = $<HTMLInputElement>('template-name')
+    if (!name || name.length > 80 || /[\u0000-\u001f]/.test(name)) {
+      input.focus()
+      setStatus('Template name must be 1–80 characters')
+      return
+    }
+    templates = await window.desktop.listTemplates()
+    const conflict = templates.find(entry => entry.id !== id && entry.name.toLowerCase() === name.toLowerCase())
+    if (conflict?.builtIn) {
+      input.focus()
+      input.select()
+      setStatus(`"${conflict.name}" is a built-in starter template. Choose a different name.`)
+      return
+    }
+    if (conflict) {
+      input.focus()
+      input.select()
+      setStatus(`Template "${conflict.name}" already exists. Choose a different name.`)
+      return
+    }
     const renamed = await window.desktop.renameTemplate(id, name)
     refreshTemplates(await window.desktop.listTemplates(), renamed.id)
     setStatus(`Renamed layout template: ${renamed.name}`)
@@ -1359,6 +1771,7 @@ $('render-mp4').addEventListener('click', async () => {
   if (exportRunning) return
   if (!metadata || !project.audioPath) return setStatus('Import audio before rendering.')
   try {
+    refreshExportResolution()
     const output = await window.desktop.renderVideo(project, ($<HTMLSelectElement>('export-preset')).value,
       ($<HTMLSelectElement>('audio-mode')).value)
     if (!output) return
@@ -1470,6 +1883,7 @@ async function start() {
   selectedId = project.layers.at(-1)?.id || null
   refreshTemplates(initial.templates, initial.preferences.lastTemplateId)
   ;($<HTMLSelectElement>('export-preset')).value = initial.preferences.exportPreset
+  refreshExportResolution()
   refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
   if (metadata) await refreshPreview()
 }
