@@ -123,6 +123,22 @@ module.exports = async function startupSmoke(win) {
   await waitFor('!document.getElementById("project-manager-screen").hidden', 'returned to project manager after discard')
   assert.equal(await evaluate('document.getElementById("editor-screen").hidden'), true)
 
+  console.log('Step 11: Testing Close Project button and layout options removal from sidebar')
+  await evaluate('document.querySelector("#recent-projects-grid .project-card").click()')
+  await waitFor('!document.getElementById("editor-screen").hidden', 'editor visible after card click')
+
+  // Verify sidebar does not contain template controls
+  assert.equal(await evaluate('Boolean(document.querySelector(".layers-panel .template-controls"))'), false, 'Sidebar must not contain template controls')
+
+  // Verify Close Project and Save as template buttons exist in toolbar
+  assert.equal(await evaluate('document.getElementById("close-project").textContent'), 'Close project')
+  assert.equal(await evaluate('document.getElementById("save-template").textContent'), 'Save as template…')
+
+  // Clicking close-project returns to project manager
+  await click('close-project')
+  await waitFor('!document.getElementById("project-manager-screen").hidden', 'returned to project manager via close-project')
+  assert.equal(await evaluate('document.getElementById("editor-screen").hidden'), true)
+
   console.log(JSON.stringify({ event: 'startup-smoke', status: 'PASS' }))
   app.quit()
 }

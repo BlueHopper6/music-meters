@@ -158,6 +158,19 @@ handle('new-blank-project', () => {
   return { project, metadata, projectPath, fonts: installedFonts(),
     templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: [] }
 })
+handle('close-project', () => {
+  cancelPreview()
+  const fresh = defaultProject()
+  fresh.layers = []
+  fresh.title = 'Untitled project'
+  project = fresh
+  projectPath = null
+  activeAudio = ''
+  metadata = null
+  allowedImages.clear()
+  return { project, metadata, projectPath, fonts: installedFonts(),
+    templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: [] }
+})
 handle('new-project-from-template', (_event, templateId) => {
   if (!templateId || typeof templateId !== 'string') throw new Error('Choose a template')
   cancelPreview()

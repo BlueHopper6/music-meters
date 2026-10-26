@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('desktop', {
   setExportPreset: preset => ipcRenderer.invoke('set-export-preset', preset),
   renderVideo: (project, preset, audioMode) => ipcRenderer.invoke('render-video', project, preset, audioMode),
   cancelRender: () => ipcRenderer.invoke('cancel-render'),
+  closeProject: () => ipcRenderer.invoke('close-project'),
   confirmAppClose: () => ipcRenderer.invoke('confirm-app-close'),
   onAppCloseRequested: listener => {
     const handler = () => listener()

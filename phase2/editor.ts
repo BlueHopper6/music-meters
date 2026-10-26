@@ -33,6 +33,7 @@ type Desktop = {
   openProjectPath(path: string): Promise<Initial | null>
   newBlankProject(): Promise<Initial>
   newProjectFromTemplate(id: string): Promise<Initial>
+  closeProject(): Promise<Initial>
   getRecentProjects(): Promise<RecentProject[]>
   listTemplates(): Promise<TemplateEntry[]>
   saveTemplate(name: string, project: Project, overwriteId?: string): Promise<TemplateEntry>
@@ -1348,6 +1349,7 @@ function closeTemplateConflict(choice: 'replace' | 'rename') {
   const finish = resolveTemplateConflict
   resolveTemplateConflict = null
   $('template-conflict-modal').hidden = true
+  $('save-template-modal').hidden = false
   $<HTMLInputElement>('template-name').focus()
   finish(choice)
 }
@@ -1380,40 +1382,72 @@ $('template-conflict-modal').addEventListener('keydown', event => {
     }
   }
 })
-$('save-template').addEventListener('click', async () => {
-  try {
-    const name = $<HTMLInputElement>('template-name').value.trim()
-    const input = $<HTMLInputElement>('template-name')
-    if (!name) {
-      input.focus()
-      setStatus('Template name must be 1–80 characters')
-      return
-    }
-    templates = await window.desktop.listTemplates()
-    const existing = templates.find(entry => entry.name.toLowerCase() === name.toLowerCase())
-    if (existing?.builtIn) {
+function openSaveTemplateModal() {
+  const input = $<HTMLInputElement>('template-name')
+  if (!input.value.trim()) input.value = project.title || ''
+  $('save-template-modal').hidden = false
+  input.focus()
+  input.select()
+}
+async function executeSaveTemplate(name: string) {
+  const input = $<HTMLInputElement>('template-name')
+  if (!name) {
+    $('save-template-modal').hidden = false
+    input.focus()
+    setStatus('Template name must be 1–80 characters')
+    return
+  }
+  templates = await window.desktop.listTemplates()
+  const existing = templates.find(entry => entry.name.toLowerCase() === name.toLowerCase())
+  if (existing?.builtIn) {
+    $('save-template-modal').hidden = false
+    input.focus()
+    input.select()
+    setStatus(`"${existing.name}" is a built-in starter template. Choose a different name.`)
+    return
+  }
+  if (existing) {
+    const choice = await askTemplateConflict(existing.name)
+    if (choice === 'rename') {
+      $('save-template-modal').hidden = false
       input.focus()
       input.select()
-      setStatus(`"${existing.name}" is a built-in starter template. Choose a different name.`)
+      setStatus('Choose a different template name to save a new template.')
       return
     }
-    if (existing) {
-      const choice = await askTemplateConflict(existing.name)
-      if (choice === 'rename') {
-        input.focus()
-        input.select()
-        setStatus('Choose a different template name to save a new template.')
-        return
-      }
-      const replaced = await window.desktop.saveTemplate(name, project, existing.id)
-      refreshTemplates(await window.desktop.listTemplates(), replaced.id)
-      setStatus(`Replaced layout template: ${replaced.name}`)
+    const replaced = await window.desktop.saveTemplate(name, project, existing.id)
+    refreshTemplates(await window.desktop.listTemplates(), replaced.id)
+    $('save-template-modal').hidden = true
+    setStatus(`Replaced layout template: ${replaced.name}`)
+    return
+  }
+  const saved = await window.desktop.saveTemplate(name, project)
+  refreshTemplates(await window.desktop.listTemplates(), saved.id)
+  $('save-template-modal').hidden = true
+  setStatus(`Saved layout template: ${saved.name}`)
+}
+$('save-template').addEventListener('click', async () => {
+  try {
+    const input = $<HTMLInputElement>('template-name')
+    const name = input.value.trim()
+    if (!name && $('save-template-modal').hidden) {
+      openSaveTemplateModal()
       return
     }
-    const saved = await window.desktop.saveTemplate(name, project)
-    refreshTemplates(await window.desktop.listTemplates(), saved.id)
-    setStatus(`Saved layout template: ${saved.name}`)
+    await executeSaveTemplate(name)
   } catch (error) { setStatus(String(error)) }
+})
+$('save-template-confirm').addEventListener('click', async () => {
+  try {
+    const input = $<HTMLInputElement>('template-name')
+    await executeSaveTemplate(input.value.trim())
+  } catch (error) { setStatus(String(error)) }
+})
+$('save-template-cancel').addEventListener('click', () => {
+  $('save-template-modal').hidden = true
+})
+$('save-template-close').addEventListener('click', () => {
+  $('save-template-modal').hidden = true
 })
 async function applyTemplateById(id: string) {
   const loaded = await window.desktop.loadTemplate(id, project)
@@ -1930,10 +1964,36 @@ $('open-project').addEventListener('click', () => {
     } catch (error) { setStatus(String(error)) }
   })
 })
+async function closeCurrentProject() {
+  const result = await window.desktop.closeProject()
+  project = normalizeProject(result.project) as Project
+  projectPath = null
+  metadata = null
+  missingMedia = []
+  selectedId = null
+  markProjectSaved()
+  refreshInspector()
+  refreshLayers()
+  refreshAudio()
+  renderMissingMedia()
+  await syncAssets()
+  resetSongPreview()
+  await refreshRecentProjects()
+  showProjectManager()
+  setStatus('Project closed.')
+}
+$('close-project').addEventListener('click', () => {
+  confirmDiscardIfDirty(async () => {
+    try {
+      await closeCurrentProject()
+    } catch (error) { setStatus(String(error)) }
+  })
+})
 $('return-to-projects').addEventListener('click', () => {
   confirmDiscardIfDirty(async () => {
-    await refreshRecentProjects()
-    showProjectManager()
+    try {
+      await closeCurrentProject()
+    } catch (error) { setStatus(String(error)) }
   })
 })
 $('unsaved-changes-cancel').addEventListener('click', () => {

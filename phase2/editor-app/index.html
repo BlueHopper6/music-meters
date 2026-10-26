@@ -72,6 +72,8 @@
         <button id="open-project">Open project</button>
         <button id="save-project">Save project</button>
         <button id="save-project-as">Save as…</button>
+        <button id="save-template">Save as template…</button>
+        <button id="close-project">Close project</button>
       </div>
       <div class="toolbar-group">
         <span class="toolbar-label">Audio</span>
@@ -89,13 +91,6 @@
   <main class="workspace">
     <aside class="sidebar layers-panel">
       <div class="panel-heading"><div><span class="eyebrow">COMPOSITION</span><h2>Layers</h2></div></div>
-      <div class="template-controls">
-        <div class="template-label-row"><label for="template-list">Layout template</label></div>
-        <select id="template-list" aria-label="Layout template"></select>
-        <div class="template-actions"><button id="load-template" type="button">Use layout</button><button id="duplicate-template" type="button">Duplicate</button></div>
-        <label>Template name<input id="template-name" type="text" maxlength="80" placeholder="My layout"></label>
-        <div class="template-actions"><button id="save-template" type="button">Save current</button><button id="rename-template" type="button">Rename selected</button></div>
-      </div>
       <div class="add-layer-bar" id="add-layer-wrap">
         <select id="add-type" aria-label="Layer type" hidden>
           <optgroup label="Audio Meters">
@@ -378,6 +373,29 @@
         <button id="unsaved-changes-save" type="button" class="primary">Save</button>
       </div>
     </div>
+  </div>
+  <div id="save-template-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="save-template-title" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="save-template-title" class="modal-title">Save as Template</h2>
+        <button id="save-template-close" type="button" aria-label="Close">✕</button>
+      </div>
+      <p class="modal-body">Save the current visualizer layers and styling as a reusable layout template.</p>
+      <div style="margin: 16px 0;">
+        <label for="template-name" style="display:block; font-size:12px; margin-bottom:6px; color:var(--text-secondary);">Template name</label>
+        <input id="template-name" type="text" maxlength="80" placeholder="My layout template" style="width: 100%; box-sizing: border-box; background: var(--bg-well); border: 1px solid var(--border-control); color: var(--text-primary); padding: 8px 10px; border-radius: 4px;">
+      </div>
+      <div class="modal-actions">
+        <button id="save-template-cancel" type="button">Cancel</button>
+        <button id="save-template-confirm" type="button" class="primary">Save template</button>
+      </div>
+    </div>
+  </div>
+  <div id="legacy-template-controls" hidden aria-hidden="true" style="display:none;">
+    <select id="template-list" aria-label="Layout template"></select>
+    <button id="load-template" type="button">Use layout</button>
+    <button id="duplicate-template" type="button">Duplicate</button>
+    <button id="rename-template" type="button">Rename selected</button>
   </div>
   <script src="../../artifacts/phase2/editor.js"></script>
 </body>
