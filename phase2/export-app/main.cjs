@@ -5,6 +5,16 @@ const { randomUUID } = require('node:crypto')
 const { performance } = require('node:perf_hooks')
 const fs = require('node:fs')
 const { jobPath } = require('../runtime.cjs')
+// Managed launchers remove this profile after the process exits. Direct test
+// launches get unique temporary profiles, retained with their test evidence.
+let exportProfile = process.env.MUSICMETERS_EXPORT_PROFILE
+if (!exportProfile) {
+  const profileRoot = process.env.PHASE5_TEST_USER_DATA || jobPath('export-test-profiles')
+  fs.mkdirSync(profileRoot, { recursive: true })
+  exportProfile = fs.mkdtempSync(join(profileRoot, 'export-'))
+}
+app.setPath('userData', exportProfile)
+app.setPath('sessionData', exportProfile)
 const { assertOutputSpace } = require('../space.cjs')
 const { PcmReader } = require('../../phase1/pcm-reader.cjs')
 const { normalizeProject } = require('../project.cjs')

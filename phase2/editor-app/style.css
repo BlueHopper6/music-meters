@@ -881,6 +881,10 @@ body.stage-fullscreen .selection {
 }
 
 .preview-busy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
   position: absolute;
   right: 12px;
   top: 12px;
@@ -894,6 +898,23 @@ body.stage-fullscreen .selection {
 }
 
 .preview-busy[hidden] { display: none; }
+
+.preview-busy::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: preview-loading 0.8s linear infinite;
+}
+
+@keyframes preview-loading { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .preview-busy::before { animation: none; }
+}
 
 .asset-name {
   display: block;

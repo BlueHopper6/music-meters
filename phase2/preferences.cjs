@@ -1,6 +1,12 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
+function recentProjectName(projectPath, name) {
+  const supplied = typeof name === 'string' ? name.trim() : ''
+  return supplied && !['Untitled track', 'Untitled project'].includes(supplied)
+    ? supplied : path.basename(projectPath, path.extname(projectPath))
+}
+
 function normalizeRecentProjects(list) {
   if (!Array.isArray(list)) return []
   const result = []
@@ -8,7 +14,7 @@ function normalizeRecentProjects(list) {
     if (!item || typeof item !== 'object') continue
     if (typeof item.path !== 'string' || !item.path.trim()) continue
     const safePath = path.resolve(item.path.trim())
-    const name = typeof item.name === 'string' && item.name.trim() ? item.name.trim() : path.basename(safePath, '.json')
+    const name = recentProjectName(safePath, item.name)
     const lastOpened = typeof item.lastOpened === 'number' && Number.isFinite(item.lastOpened) ? item.lastOpened : Date.now()
     result.push({ path: safePath, name, lastOpened })
     if (result.length >= 10) break
@@ -51,7 +57,7 @@ function writePreferences(userData, update) {
 function recordRecentProject(userData, projectPath, projectName = '') {
   const current = readPreferences(userData)
   const resolved = path.resolve(projectPath)
-  const name = projectName && projectName !== 'Untitled track' ? projectName : path.basename(resolved, '.json')
+  const name = recentProjectName(resolved, projectName)
   const filtered = current.recentProjects.filter(p => path.resolve(p.path) !== resolved)
   filtered.unshift({ path: resolved, name, lastOpened: Date.now() })
   return writePreferences(userData, { recentProjects: filtered.slice(0, 10) })

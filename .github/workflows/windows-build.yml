@@ -17,6 +17,8 @@ jobs:
       - name: Prepare FFmpeg
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
             choco install ffmpeg --yes --no-progress
             "C:\ProgramData\chocolatey\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
@@ -27,6 +29,8 @@ jobs:
       - name: Prepare pinned Prism
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           git clone https://github.com/Boof2015/prism.git upstream/prism
           git -C upstream/prism checkout 49721802252b115d169e353c98b27408daa5e2b7
           Push-Location phase6/build-tools
@@ -37,6 +41,8 @@ jobs:
       - name: Prepare locked Electron runtime
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           Push-Location phase6/electron-runtime
           npm ci --ignore-scripts --no-audit --no-fund
           npm audit --audit-level=low
@@ -45,6 +51,8 @@ jobs:
       - name: Build and unit tests
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           python phase1/make-fixtures.py
           node phase2/build.cjs
           node phase6/build-tools/node_modules/typescript/lib/tsc.js --noEmit --strict --skipLibCheck --allowJs --checkJs false --target es2022 --module esnext --moduleResolution bundler --lib es2022,dom,dom.iterable --typeRoots phase6/build-tools/node_modules/@types --types node upstream/prism/src/renderer/env.d.ts phase2/composition.ts phase2/editor.ts phase2/export-renderer.ts
@@ -52,6 +60,8 @@ jobs:
       - name: Portable package and audio export smokes
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           node phase6/package-windows.cjs --output artifacts/phase6/ci-package
           node phase2/test/run-startup-smoke.cjs --package artifacts/phase6/ci-package
           node phase6/test/package-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-smoke
@@ -64,6 +74,8 @@ jobs:
       - name: Matching source archive and extracted rebuild
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           python phase6/release-source.py --package artifacts/phase6/ci-package --output artifacts/phase6/ci-source.zip
           python phase6/test/source-archive.py artifacts/phase6/ci-package artifacts/phase6/ci-source.zip artifacts/phase6/ci-extracted
           Push-Location artifacts/phase6/ci-extracted/musicmeters/phase6/build-tools

@@ -17,7 +17,8 @@ async function main() {
     'sine=frequency=660:duration=2', '-ac', '2', '-ar', '48000', input], { encoding: 'utf8' })
   if (fixture.status !== 0) throw new Error(fixture.stderr)
   const electron = packaged ? path.join(path.resolve(process.argv[3]), 'electron.exe') : await build()
-  const electronArgs = packaged ? [] : [path.resolve(__dirname, '..', '..', 'phase2', 'editor-app')]
+  const electronArgs = [...(packaged ? [] : [path.resolve(__dirname, '..', '..', 'phase2', 'editor-app')]),
+    `--disk-cache-dir=${path.join(dir, 'user-data', 'Cache')}`]
   const logPath = path.join(dir, 'editor.log')
   const log = fs.openSync(logPath, 'w')
   const child = spawn(electron, electronArgs, {
@@ -35,7 +36,7 @@ async function main() {
   })
   fs.closeSync(log)
   if (code !== 0) throw new Error(`Repeat editor smoke exited ${code}; see ${logPath}`)
-  for (const name of ['first-export.mp4', 'second-export.mp4']) {
+  for (const name of ['first-export.mp4', 'second-export.mp4', 'after-cancel-export.mp4']) {
     const probe = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=nb_frames',
       '-select_streams', 'v:0', '-of', 'default=nw=1:nk=1', path.join(dir, name)], { encoding: 'utf8' })
     if (probe.status !== 0 || Number(probe.stdout.trim()) !== 60) throw new Error(`Invalid ${name}: ${probe.stderr}`)
@@ -54,7 +55,11 @@ async function main() {
   for (let i = 0; i < still.stdout.length; i++) difference += Math.abs(still.stdout[i] - frame.stdout[i])
   const meanAbsoluteDifference = difference / still.stdout.length
   assert.ok(meanAbsoluteDifference < 12, `Rotated editor still differs from exported frame: ${meanAbsoluteDifference}`)
-  console.log(JSON.stringify({ dir, logPath, exports: 2, framesEach: 60, rotatedFrameMeanDifference: meanAbsoluteDifference }))
+  const diagnostics = fs.readFileSync(logPath, 'utf8')
+  assert.doesNotMatch(diagnostics, /Unable to move the cache|Unable to create cache|Gpu Cache Creation failed/i,
+    'Exporters must not contend with editor disk caches')
+  console.log(JSON.stringify({ dir, logPath, exports: 3, cancellation: 'clean status and no partial files',
+    framesEach: 60, rotatedFrameMeanDifference: meanAbsoluteDifference }))
 }
 
 main().catch(error => { console.error(error.stack || error); process.exitCode = 1 })
