@@ -368,6 +368,17 @@
       </div>
     </div>
   </div>
+  <div id="unsaved-changes-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="unsaved-changes-title" aria-describedby="unsaved-changes-message" hidden>
+    <div class="modal-card">
+      <h2 id="unsaved-changes-title" class="modal-title">Unsaved Changes</h2>
+      <p id="unsaved-changes-message" class="modal-body">You have unsaved changes in your project. Do you want to save before closing?</p>
+      <div class="modal-actions">
+        <button id="unsaved-changes-cancel" type="button">Cancel</button>
+        <button id="unsaved-changes-discard" type="button">Discard</button>
+        <button id="unsaved-changes-save" type="button" class="primary">Save</button>
+      </div>
+    </div>
+  </div>
   <script src="../../artifacts/phase2/editor.js"></script>
 </body>
 </html>

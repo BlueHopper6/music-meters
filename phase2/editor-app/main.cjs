@@ -1,11 +1,12 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron')
-const { join, resolve, dirname, extname, relative, isAbsolute } = require('node:path')
+const { join, resolve, dirname, extname, relative, isAbsolute, basename } = require('node:path')
 const { spawn } = require('node:child_process')
 const { Worker } = require('node:worker_threads')
 const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
 const { jobPath } = require('../runtime.cjs')
 const { defaultProject, normalizeProject } = require('../project.cjs')
+const { encapsulateProjectPath } = require('../project-path.cjs')
 const { installedFonts, assertInstalledFonts } = require('../fonts.cjs')
 const { readImage, imagePaths, assetData, saveArtwork, resolveArtwork } = require('../assets.cjs')
 const { listTemplates, readTemplate, saveTemplate, duplicateTemplate, renameTemplate, deleteTemplate, applyTemplate, titleSuggestion } = require('../templates.cjs')
@@ -18,6 +19,7 @@ const ROOT = resolve(__dirname, '..', '..')
 const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.flac'])
 if (process.env.PHASE5_TEST_USER_DATA) app.setPath('userData', process.env.PHASE5_TEST_USER_DATA)
 let win
+let forceQuit = false
 let project = defaultProject()
 const allowedImages = new Set()
 let metadata = null
@@ -260,15 +262,19 @@ handle('cancel-preview', () => cancelPreview())
 handle('save-project', async (_event, raw, asNew = false) => {
   const value = validateActiveProject(raw)
   if (typeof asNew !== 'boolean') throw new Error('Invalid Save As setting')
-  let target = process.env.PHASE2_TEST_SAVE_PATH || process.env.PHASE2_TEST_PROJECT_PATH || (asNew ? null : projectPath)
+  let target = process.env.PHASE2_TEST_PROJECT_PATH || (asNew ? null : projectPath)
   if (!target) {
-    const result = await dialog.showSaveDialog(win, {
-      title: asNew ? 'Save project as' : 'Save project',
-      defaultPath: projectPath || `${titleSuggestion(value.audioPath || value.title)}-project.json`,
-      filters: [{ name: 'Visualizer project', extensions: ['json'] }],
-    })
-    if (result.canceled) return null
-    target = result.filePath
+    if (process.env.PHASE2_TEST_SAVE_PATH) {
+      target = encapsulateProjectPath(process.env.PHASE2_TEST_SAVE_PATH)
+    } else {
+      const result = await dialog.showSaveDialog(win, {
+        title: asNew ? 'Save project as' : 'Save project',
+        defaultPath: projectPath || `${titleSuggestion(value.audioPath || value.title)}-project.json`,
+        filters: [{ name: 'Visualizer project', extensions: ['json'] }],
+      })
+      if (result.canceled) return null
+      target = encapsulateProjectPath(result.filePath)
+    }
   }
   if (extname(target).toLowerCase() !== '.json') throw new Error('Project file must end in .json')
   const reference = activeAudio || value.audioPath
@@ -399,6 +405,10 @@ handle('render-video', async (_event, raw, preset, audioMode) => {
   })
   return output
 })
+handle('confirm-app-close', () => {
+  forceQuit = true
+  if (win && !win.isDestroyed()) win.close()
+})
 handle('cancel-render', () => {
   if (exportJob) fs.writeFileSync(exportJob.cancelFile, 'cancel')
 })
@@ -420,6 +430,11 @@ app.whenReady().then(() => {
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   })
   lockWindowNavigation(win.webContents)
+  win.on('close', event => {
+    if (forceQuit || isAutomatedTest) return
+    event.preventDefault()
+    win.webContents.send('app-close-requested')
+  })
   return win.loadFile(editorDocument).then(async () => {
     if (process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {

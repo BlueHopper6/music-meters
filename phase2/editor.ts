@@ -43,6 +43,8 @@ type Desktop = {
   setExportPreset(preset: string): Promise<void>
   renderVideo(project: Project, preset: string, audioMode: string): Promise<string | null>
   cancelRender(): Promise<void>
+  confirmAppClose(): Promise<void>
+  onAppCloseRequested(listener: () => void): () => void
   onExport(listener: (event: Record<string, unknown>) => void): () => void
 }
 declare global { interface Window { desktop: Desktop } }
@@ -93,9 +95,51 @@ async function syncAssets() {
   try { await composition.setAssets(await window.desktop.loadAssets(project)); render() }
   catch (error) { setStatus(`Artwork unavailable: ${String(error)}`); render() }
 }
+let savedProjectSnapshot = ''
+let pendingUnsavedAction: (() => void | Promise<void>) | null = null
+
+function snapshotProject(p: Project): string {
+  return JSON.stringify(p)
+}
+
+function markProjectSaved() {
+  savedProjectSnapshot = snapshotProject(project)
+  updateTitleDirtyIndicator()
+}
+
+function isProjectDirty(): boolean {
+  if (!savedProjectSnapshot) return false
+  return snapshotProject(project) !== savedProjectSnapshot
+}
+
+function updateTitleDirtyIndicator() {
+  const dirty = isProjectDirty()
+  const baseTitle = project.title || 'Untitled track'
+  document.title = dirty ? `MusicMeters — ${baseTitle} *` : `MusicMeters — ${baseTitle}`
+}
+
+function confirmDiscardIfDirty(onProceed: () => void | Promise<void>) {
+  if (!isProjectDirty()) {
+    return Promise.resolve(onProceed())
+  }
+  pendingUnsavedAction = onProceed
+  const modal = $<HTMLDivElement>('unsaved-changes-modal')
+  const message = $('unsaved-changes-message')
+  const title = project.title || 'Untitled track'
+  message.textContent = `You have unsaved changes in "${title}". Do you want to save before closing?`
+  modal.hidden = false
+  $('unsaved-changes-save').focus()
+}
+
+function closeUnsavedChangesModal() {
+  $<HTMLDivElement>('unsaved-changes-modal').hidden = true
+  pendingUnsavedAction = null
+}
+
 function render() {
   composition.render(project, analysis, frameIndex, sampleRate)
   updateSelection()
+  updateTitleDirtyIndicator()
 }
 function updateSelection() {
   const layer = selected()
@@ -1743,6 +1787,7 @@ $('save-project').addEventListener('click', async () => {
     if (saved) {
       projectPath = saved.path; project = normalizeProject(saved.project) as Project
       missingMedia = saved.missingMedia
+      markProjectSaved()
       refreshInspector(); renderMissingMedia(); await syncAssets()
       setStatus(`Saved project: ${saved.path}`)
     }
@@ -1765,6 +1810,7 @@ async function applyLoadedProject(loaded: Initial) {
   metadata = loaded.metadata; projectPath = loaded.projectPath
   selectedId = project.layers.at(-1)?.id || null; resetSongPreview()
   missingMedia = loaded.missingMedia
+  markProjectSaved()
   refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
   if (metadata) await refreshPreview()
   else setStatus(project.audioPath ? 'Project opened.' : 'Ready. Import audio to preview still.')
@@ -1875,16 +1921,58 @@ function closeTemplatePicker() {
   $('pm-new-template').focus()
 }
 
-$('open-project').addEventListener('click', async () => {
-  try {
-    const loaded = await window.desktop.openProject()
-    if (!loaded) return
-    await applyLoadedProject(loaded)
-  } catch (error) { setStatus(String(error)) }
+$('open-project').addEventListener('click', () => {
+  confirmDiscardIfDirty(async () => {
+    try {
+      const loaded = await window.desktop.openProject()
+      if (!loaded) return
+      await applyLoadedProject(loaded)
+    } catch (error) { setStatus(String(error)) }
+  })
 })
-$('return-to-projects').addEventListener('click', async () => {
-  await refreshRecentProjects()
-  showProjectManager()
+$('return-to-projects').addEventListener('click', () => {
+  confirmDiscardIfDirty(async () => {
+    await refreshRecentProjects()
+    showProjectManager()
+  })
+})
+$('unsaved-changes-cancel').addEventListener('click', () => {
+  closeUnsavedChangesModal()
+})
+$('unsaved-changes-discard').addEventListener('click', async () => {
+  const action = pendingUnsavedAction
+  closeUnsavedChangesModal()
+  markProjectSaved()
+  if (action) await action()
+})
+$('unsaved-changes-save').addEventListener('click', async () => {
+  const action = pendingUnsavedAction
+  closeUnsavedChangesModal()
+  try {
+    const result = await window.desktop.saveProject(project, false)
+    if (result) {
+      projectPath = result.path
+      project = normalizeProject(result.project) as Project
+      missingMedia = result.missingMedia
+      markProjectSaved()
+      refreshInspector()
+      renderMissingMedia()
+      await syncAssets()
+      setStatus(`Saved project: ${result.path}`)
+      if (action) await action()
+    }
+  } catch (error) {
+    setStatus(`Save failed: ${String(error)}`)
+  }
+})
+window.desktop.onAppCloseRequested(() => {
+  if ($('editor-screen').hidden || !isProjectDirty()) {
+    window.desktop.confirmAppClose()
+    return
+  }
+  confirmDiscardIfDirty(() => {
+    window.desktop.confirmAppClose()
+  })
 })
 $('pm-open-project').addEventListener('click', async () => {
   try {
@@ -2030,6 +2118,7 @@ async function start() {
   metadata = initial.metadata; projectPath = initial.projectPath
   missingMedia = initial.missingMedia
   selectedId = project.layers.at(-1)?.id || null
+  markProjectSaved()
   templates = initial.templates
   refreshTemplates(initial.templates, initial.preferences.lastTemplateId)
   ;($<HTMLSelectElement>('export-preset')).value = initial.preferences.exportPreset

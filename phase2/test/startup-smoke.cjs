@@ -31,6 +31,10 @@ module.exports = async function startupSmoke(win) {
   await waitFor('!document.getElementById("project-manager-screen").hidden', 'project manager visible')
   assert.equal(await evaluate('document.getElementById("editor-screen").hidden'), true)
 
+  // Verify empty state uses dashed SVG icon (no emoji)
+  const emptyIconSvg = await evaluate('Boolean(document.querySelector(".empty-icon svg"))')
+  assert.ok(emptyIconSvg, 'Empty state must use an SVG icon')
+
   console.log('Step 2: Checking buttons')
   assert.ok(await evaluate('Boolean(document.getElementById("pm-new-blank"))'))
   assert.ok(await evaluate('Boolean(document.getElementById("pm-new-template"))'))
@@ -80,6 +84,8 @@ module.exports = async function startupSmoke(win) {
   await click('add-layer')
   await click('save-project')
   await waitFor('document.querySelector("#status").textContent.includes("Saved project:")', 'project save completed')
+  const statusText = await evaluate('document.querySelector("#status").textContent')
+  assert.ok(statusText.includes('saved-smoke-project'), 'Project must be saved inside dedicated subfolder')
 
   console.log('Step 8: Verifying Recent Project card')
   await click('return-to-projects')
@@ -88,12 +94,34 @@ module.exports = async function startupSmoke(win) {
 
   const cardTitle = await evaluate('document.querySelector("#recent-projects-grid .project-card-title").textContent')
   assert.equal(cardTitle, 'Startup Smoke Project')
+  const cardPath = await evaluate('document.querySelector("#recent-projects-grid .project-card-path").textContent')
+  assert.ok(cardPath.includes('saved-smoke-project'), 'Card path must point to encapsulated folder')
 
   console.log('Step 9: Testing Reopen from card')
   await evaluate('document.querySelector("#recent-projects-grid .project-card").click()')
   await waitFor('!document.getElementById("editor-screen").hidden', 'editor visible after card click')
   const reopenedTitle = await evaluate('document.getElementById("title").value')
   assert.equal(reopenedTitle, 'Startup Smoke Project')
+
+  console.log('Step 10: Testing Unsaved Changes Guard')
+  // Mutate project to make it dirty
+  await click('add-layer')
+  // Try to return to projects - should be intercepted by unsaved changes modal
+  await click('return-to-projects')
+  await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'unsaved changes modal shown')
+  assert.equal(await evaluate('document.getElementById("project-manager-screen").hidden'), true)
+
+  // Cancel should abort return and keep editor open
+  await click('unsaved-changes-cancel')
+  await waitFor('document.getElementById("unsaved-changes-modal").hidden', 'modal closed on cancel')
+  assert.equal(await evaluate('document.getElementById("editor-screen").hidden'), false)
+
+  // Try again and click Discard
+  await click('return-to-projects')
+  await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'unsaved changes modal shown second time')
+  await click('unsaved-changes-discard')
+  await waitFor('!document.getElementById("project-manager-screen").hidden', 'returned to project manager after discard')
+  assert.equal(await evaluate('document.getElementById("editor-screen").hidden'), true)
 
   console.log(JSON.stringify({ event: 'startup-smoke', status: 'PASS' }))
   app.quit()
