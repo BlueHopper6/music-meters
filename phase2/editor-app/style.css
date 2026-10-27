@@ -791,9 +791,9 @@ body.stage-fullscreen .selection {
 
 .stage-wrap {
   position: relative;
-  width: min(100cqw, calc(100cqh * 16 / 9));
-  height: min(100cqh, calc(100cqw * 9 / 16));
-  aspect-ratio: 16 / 9;
+  width: min(100cqw, calc(100cqh * var(--stage-ratio, 1.777777778)));
+  height: min(100cqh, calc(100cqw / var(--stage-ratio, 1.777777778)));
+  aspect-ratio: var(--stage-ratio, 1.777777778);
   background: #050507;
   overflow: hidden;
   border-radius: 2px;
@@ -1586,3 +1586,39 @@ body.stage-fullscreen .selection {
   color: var(--text-primary);
   border-radius: 4px;
 }
+
+/* Integrated draggable chrome with app-owned caption buttons. */
+body { padding-top: 40px; }
+.toolbar > .brand { display: none; }
+.app-titlebar { position: fixed; inset: 0 0 auto; height: 40px; z-index: 20000;
+  background: var(--bg-panel); border-bottom: 1px solid var(--border-subtle); -webkit-app-region: drag; }
+.app-titlebar-content { display: flex; align-items: center; gap: 10px; height: 40px;
+  width: 100%; padding: 0 0 0 12px; }
+.app-titlebar strong { font-size: 12px; font-weight: 600; }
+#window-project-title { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.window-controls { display: flex; height: 40px; margin-left: auto; flex-shrink: 0; -webkit-app-region: no-drag; }
+.window-control { display: grid; place-items: center; width: 46px; height: 40px; padding: 0;
+  border: 0; border-radius: 0; color: var(--text-secondary); background: transparent;
+  transition: background-color 120ms ease, color 120ms ease; }
+.window-control svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1; }
+.window-control:hover:not(:disabled) { background: #2c2c33; color: #ffffff; }
+.window-control:active:not(:disabled) { background: #393941; }
+#window-close:hover:not(:disabled) { background: #c42b1c; color: #ffffff; }
+#window-close:active:not(:disabled) { background: #a92318; }
+.window-control:focus-visible { box-shadow: inset 0 0 0 2px var(--text-secondary); }
+.window-control .restore-icon, body.window-restorable .window-control .maximize-icon { display: none; }
+body.window-restorable .window-control .restore-icon { display: block; }
+.project-manager-screen, .splash-screen, .modal-backdrop { top: 40px; }
+.editor-screen { height: calc(100vh - 40px); }
+.workspace { flex: 1; height: auto; min-height: 0; }
+body.stage-fullscreen .stage-shell { top: 40px; }
+.exit-fullscreen-btn { top: 56px; }
+.stage-option #canvas-orientation { appearance: none; max-width: none; min-width: 154px; height: 28px;
+  padding: 4px 30px 4px 10px; border: 1px solid var(--border-control); border-radius: 5px;
+  background-color: var(--bg-panel); color: var(--text-primary); font-size: 11px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%23a1a1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-size: 12px; background-position: right 10px center;
+  transition: background-color 120ms ease, border-color 120ms ease; }
+.stage-option #canvas-orientation:hover { background-color: var(--bg-elevated); border-color: var(--border-strong); }
+.stage-option #canvas-orientation:focus-visible { border-color: var(--text-secondary); box-shadow: 0 0 0 1px var(--border-strong); }
+.stage-option #canvas-orientation option { background: var(--bg-panel); color: var(--text-primary); padding: 8px; }

@@ -264,6 +264,20 @@ module.exports = async function startupSmoke(win) {
     'Startup Smoke Layout', 'Named template must appear in the manager')
   await click('template-manager-close')
 
-  console.log(JSON.stringify({ event: 'startup-smoke', status: 'PASS' }))
+  // Custom caption close must take the same dirty-guard path as OS close.
+  await click('pm-new-blank')
+  await waitFor('!document.getElementById("editor-screen").hidden', 'blank editor for caption close')
+  await evaluate(`(() => { const input = document.getElementById('title'); input.value = 'Unsaved caption close';
+    input.dispatchEvent(new Event('input', { bubbles: true })); })()`)
+  assert.equal(await evaluate('document.title.endsWith("*")'), true)
+  await click('window-close')
+  await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'caption close dirty guard')
+  await click('unsaved-changes-cancel')
+  assert.equal(win.isDestroyed(), false)
+  await click('close-project')
+  await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'discard before shutdown')
+  await click('unsaved-changes-discard')
+  await waitFor('!document.getElementById("project-manager-screen").hidden', 'project manager after caption close cancelled')
+  console.log(JSON.stringify({ event: 'startup-smoke', status: 'PASS', captionClose: 'dirty guard and cancel preserved' }))
   app.quit()
 }

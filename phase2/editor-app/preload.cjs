@@ -1,6 +1,16 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('desktop', {
+  toggleWindowFullscreen: () => ipcRenderer.invoke('toggle-window-fullscreen'),
+  minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
+  maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
+  closeWindow: () => ipcRenderer.invoke('close-window'),
+  windowState: () => ipcRenderer.invoke('window-state'),
+  onWindowState: listener => {
+    const handler = (_event, state) => listener(state)
+    ipcRenderer.on('window-state', handler)
+    return () => ipcRenderer.off('window-state', handler)
+  },
   initial: () => ipcRenderer.invoke('initial'),
   chooseAudio: () => ipcRenderer.invoke('choose-audio'),
   chooseImage: () => ipcRenderer.invoke('choose-image'),

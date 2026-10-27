@@ -130,8 +130,11 @@ function background(value) {
 function normalizeProject(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid project document')
   if (raw.version !== 1 && raw.version !== 2) throw new Error(`Unsupported project version: ${raw.version}`)
-  if (raw.width !== WIDTH || raw.height !== HEIGHT || raw.fps !== FPS) {
-    throw new Error('Project must use the 1280×720, 30 FPS composition timebase')
+  const width = raw.width
+  const height = raw.height
+  if (((width !== WIDTH || height !== HEIGHT) && !(raw.version === 2 && width === HEIGHT && height === WIDTH))
+      || raw.fps !== FPS) {
+    throw new Error('Project must use a 1280×720 landscape or 720×1280 portrait canvas at 30 FPS')
   }
   if (typeof raw.title !== 'string' || raw.title.length > 200) throw new Error('Invalid project title')
   if (typeof raw.audioPath !== 'string' || raw.audioPath.length > 4096) throw new Error('Invalid audio path')
@@ -150,12 +153,12 @@ function normalizeProject(raw) {
     if (typeof layer.name !== 'string' || !layer.name.trim() || layer.name.length > 80) {
       throw new Error(`Layer ${index + 1} has an invalid name`)
     }
-    const x = number(layer.x, 'X', 0, WIDTH)
-    const y = number(layer.y, 'Y', 0, HEIGHT)
+    const x = number(layer.x, 'X', 0, width)
+    const y = number(layer.y, 'Y', 0, height)
     const minimum = layer.type === 'text' ? 20 : layer.type === 'image' ? 40 : 80
-    const w = number(layer.w, 'Width', minimum, WIDTH)
-    const h = number(layer.h, 'Height', minimum, HEIGHT)
-    if (x + w > WIDTH || y + h > HEIGHT) throw new Error(`Layer ${index + 1} extends outside the canvas`)
+    const w = number(layer.w, 'Width', minimum, width)
+    const h = number(layer.h, 'Height', minimum, height)
+    if (x + w > width || y + h > height) throw new Error(`Layer ${index + 1} extends outside the canvas`)
     if (typeof layer.visible !== 'boolean' || typeof layer.locked !== 'boolean') {
       throw new Error(`Layer ${index + 1} has invalid visibility or lock state`)
     }
@@ -286,9 +289,39 @@ function normalizeProject(raw) {
     }
     return normalized
   })
-  return { version: raw.version, width: WIDTH, height: HEIGHT, fps: FPS,
+  return { version: raw.version, width, height, fps: FPS,
     title: raw.title, background: raw.version === 1 ? color(raw.background, 'Background') : background(raw.background),
     audioPath: raw.audioPath, previewFrame, layers }
 }
 
-module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, VECTORSCOPE_MODES, defaultProject, compositionProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, validFontFamily, normalizeProject }
+// Fit as one composition rather than stretching artwork and meter geometry.
+function fitLayer(layer, fromWidth, fromHeight, width, height) {
+  const scale = Math.min(width / fromWidth, height / fromHeight)
+  const minimum = layer.type === 'text' ? 20 : layer.type === 'image' ? 40 : 80
+  const w = Math.min(width, Math.max(minimum, Math.round(layer.w * scale)))
+  const h = Math.min(height, Math.max(minimum, Math.round(layer.h * scale)))
+  const fitted = { ...layer, w, h,
+    x: Math.max(0, Math.min(width - w, Math.round(layer.x * scale + (width - fromWidth * scale) / 2))),
+    y: Math.max(0, Math.min(height - h, Math.round(layer.y * scale + (height - fromHeight * scale) / 2))) }
+  if (layer.type === 'text') fitted.fontSize = Math.max(12, Math.min(160, Math.round(layer.fontSize * scale)))
+  if ('shadow' in layer) fitted.shadow = Math.min(40, Math.round(layer.shadow * scale))
+  return fitted
+}
+
+function orientProject(raw, orientation) {
+  if (!['landscape', 'portrait'].includes(orientation)) throw new Error('Unsupported canvas orientation')
+  const project = normalizeProject(raw)
+  const [width, height] = orientation === 'portrait' ? [HEIGHT, WIDTH] : [WIDTH, HEIGHT]
+  if (project.width === width && project.height === height) return project
+  if (project.version !== 2) throw new Error('Upgrade legacy composition before changing orientation')
+  return normalizeProject({ ...project, width, height,
+    layers: project.layers.map(layer => fitLayer(layer, project.width, project.height, width, height)) })
+}
+
+function exportDimensions(project, preset) {
+  if (!['720p', '1080p'].includes(preset)) throw new Error('Unsupported export preset')
+  const scale = preset === '1080p' ? 1.5 : 1
+  return { width: Math.round(project.width * scale), height: Math.round(project.height * scale) }
+}
+
+module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, VECTORSCOPE_MODES, defaultProject, compositionProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, validFontFamily, normalizeProject, fitLayer, orientProject, exportDimensions }
