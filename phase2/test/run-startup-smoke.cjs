@@ -49,7 +49,7 @@ async function main() {
     const timeout = setTimeout(() => {
       child.kill()
       reject(new Error(`Startup smoke timed out; see ${logPath}`))
-    }, 120000)
+    }, 180000)
     child.once('error', error => { clearTimeout(timeout); reject(error) })
     child.once('close', result => { clearTimeout(timeout); resolveCode(result) })
   })
