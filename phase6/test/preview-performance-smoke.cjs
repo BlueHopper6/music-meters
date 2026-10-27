@@ -20,6 +20,8 @@ module.exports = async function previewPerformanceSmoke(win) {
   async function setTime(seconds) {
     await evaluate(`(() => { const input = document.getElementById('time-input');
       input.value = ${JSON.stringify(String(seconds))}; input.dispatchEvent(new Event('change', { bubbles: true })); return true })()`)
+    await waitFor(`document.getElementById('stage').dataset.previewFrame === '${Math.round(seconds * 30)}' && document.getElementById('playback-cancel').hidden`, 'fast seek')
+    await evaluate('document.getElementById("refresh-still").click()')
   }
   function digest(value) { return createHash('sha256').update(value).digest('hex') }
   async function still(name) {

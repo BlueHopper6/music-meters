@@ -4,6 +4,9 @@ import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type Vec
 import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject, fitLayer, orientProject, exportDimensions } from './project.cjs'
 import { move as moveOnStage, resize as resizeOnStage } from './stage-geometry.cjs'
 import { installCommandMenus } from './command-menus'
+import { installVideoPreview, type LiveFrame } from './video-preview'
+import type { PlaybackStart } from './video-preview'
+import { formatTimecode, parseTimecode, frameAtTime } from './timecode.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number; codecName: string }
 type TemplateEntry = { id: string; name: string; builtIn: boolean }
@@ -35,6 +38,9 @@ type Desktop = {
       sampleRate: number; frameIndex: number; superseded?: false }
     | { superseded: true }>
   cancelPreview(): Promise<void>
+  preparePlayback(project: Project, frame: number): Promise<PlaybackStart>
+  playbackFrames(session: string, count: number): Promise<LiveFrame[]>
+  cancelPlayback(): Promise<void>
   saveProject(project: Project, asNew?: boolean): Promise<{ path: string; project: Project; missingMedia: MissingMedia[] } | null>
   openProject(): Promise<Initial | null>
   openProjectPath(path: string): Promise<Initial | null>
@@ -85,6 +91,7 @@ let isAutomatedTestSession = false
 let exportDestination = ''
 let exportSubmitting = false
 let templateManagerReturnFocus: HTMLElement | null = null
+let playback: ReturnType<typeof installVideoPreview> | null = null
 
 function selected() { return project.layers.find(layer => layer.id === selectedId) }
 function selectLayer(id: string | null) {
@@ -119,7 +126,7 @@ let savedProjectSnapshot = ''
 let pendingUnsavedAction: (() => void | Promise<void>) | null = null
 
 function snapshotProject(p: Project): string {
-  return JSON.stringify(p)
+  return JSON.stringify({ ...p, previewFrame: 0 })
 }
 
 function markProjectSaved() {
@@ -165,6 +172,7 @@ function closeUnsavedChangesModal() {
 }
 
 function render() {
+  playback?.sync()
   if (canvas.width !== project.width || canvas.height !== project.height) {
     canvas.width = project.width; canvas.height = project.height
     composition.dispose()
@@ -611,6 +619,8 @@ function refreshAudio() {
     : project.audioPath ? 'Audio missing. Import a replacement file.' : 'Choose a WAV, MP3, or FLAC file'
   const slider = $<HTMLInputElement>('time-slider')
   slider.max = String(Math.max(0, (metadata?.totalFrames ?? 1) - 1))
+  slider.disabled = !metadata
+  ;($<HTMLButtonElement>('time-display')).disabled = !metadata
   frameIndex = Math.min(frameIndex, Number(slider.max))
   updateTimeControls()
 }
@@ -660,6 +670,7 @@ function refreshTemplates(entries: TemplateEntry[], preferred = '') {
   if (!$('template-manager-modal').hidden) renderTemplateManager()
 }
 function resetSongPreview() {
+  playback?.reset()
   exportDestination = ''
   ;($<HTMLInputElement>('export-destination')).value = ''
   if (previewTimer) clearTimeout(previewTimer)
@@ -683,9 +694,18 @@ function suggestSongTitle(input: string, previousAudio: string) {
 }
 function updateTimeControls() {
   project.previewFrame = frameIndex
-  ;($<HTMLInputElement>('time-slider')).value = String(frameIndex)
-  ;($<HTMLInputElement>('time-input')).value = (frameIndex / 30).toFixed(2)
+  syncTimeReadout()
   updateTitleDirtyIndicator()
+}
+function syncTimeReadout() {
+  const slider = $<HTMLInputElement>('time-slider'), input = $<HTMLInputElement>('time-input')
+  slider.value = String(frameIndex)
+  slider.style.setProperty('--seek-progress', `${Number(slider.max) ? frameIndex / Number(slider.max) * 100 : 0}%`)
+  const display = formatTimecode(frameIndex / 30)
+  $('time-display').textContent = display
+  $('time-display').setAttribute('aria-label', `Current time ${display}. Edit timecode`)
+  $('time-duration').textContent = formatTimecode(metadata?.duration || 0)
+  if (document.activeElement !== input) input.value = (frameIndex / 30).toFixed(3)
 }
 function repaint() { project = normalizeProject(project) as Project; render(); refreshInspector(); refreshLayers() }
 function nextId(prefix = 'scope') {
@@ -727,16 +747,6 @@ function markPreviewStale() {
     setStatus('Audio still is out of date. Press Refresh still to update meter data.')
   }
 }
-function scheduleTimePreview() {
-  if (previewTimer) clearTimeout(previewTimer)
-  previewRequest++
-  void window.desktop.cancelPreview().catch(() => {})
-  $('preview-stale').hidden = false
-  $('preview-busy').textContent = `Analyzing preview at ${(frameIndex / 30).toFixed(2)} s…`
-  $('preview-busy').hidden = false
-  previewTimer = setTimeout(refreshPreview, 180)
-}
-
 for (const [id, property] of [['layer-x', 'x'], ['layer-y', 'y'], ['layer-w', 'w'], ['layer-h', 'h']] as const) {
   $<HTMLInputElement>(id).addEventListener('change', event => {
     const layer = selected()
@@ -1327,15 +1337,39 @@ layersList.addEventListener('lostpointercapture', finishLayerDrag)
 
 $<HTMLInputElement>('time-slider').addEventListener('input', event => {
   frameIndex = Number((event.target as HTMLInputElement).value)
-  updateTimeControls(); scheduleTimePreview()
+  updateTimeControls(); playback?.seek(frameIndex / 30)
 })
-$<HTMLInputElement>('time-input').addEventListener('change', event => {
-  const seconds = Number((event.target as HTMLInputElement).value)
-  if (!Number.isFinite(seconds)) { updateTimeControls(); return }
-  frameIndex = Math.max(0, Math.min((metadata?.totalFrames ?? 1) - 1, Math.round(seconds * 30)))
-  updateTimeControls(); scheduleTimePreview()
+const timeInput = $<HTMLInputElement>('time-input')
+let cancelTimeEdit = false
+function closeTimeEditor() {
+  timeInput.hidden = true; $('time-display').hidden = false
+  timeInput.setCustomValidity(''); syncTimeReadout()
+}
+function commitTimecode() {
+  const seconds = parseTimecode(timeInput.value)
+  if (seconds === null) { timeInput.setCustomValidity('Enter seconds or a timecode such as 01:30.500'); timeInput.reportValidity(); return }
+  const nextFrame = Math.max(0, Math.min((metadata?.totalFrames ?? 1) - 1, Math.round(seconds * 30)))
+  const changed = nextFrame !== frameIndex
+  frameIndex = nextFrame; updateTimeControls(); closeTimeEditor()
+  if (changed) playback?.seek(frameIndex / 30)
+}
+$('time-display').addEventListener('click', () => {
+  playback?.pause()
+  $('time-display').hidden = true; timeInput.hidden = false
+  timeInput.value = formatTimecode(frameIndex / 30); timeInput.focus(); timeInput.select()
 })
-$('refresh-still').addEventListener('click', refreshPreview)
+timeInput.addEventListener('change', () => { if (!cancelTimeEdit) commitTimecode() })
+timeInput.addEventListener('blur', () => { if (!timeInput.hidden) commitTimecode() })
+timeInput.addEventListener('input', () => timeInput.setCustomValidity(''))
+timeInput.addEventListener('keydown', event => {
+  if (event.key === 'Enter') { event.preventDefault(); commitTimecode(); $('time-display').focus() }
+  if (event.key === 'Escape') {
+    event.preventDefault(); cancelTimeEdit = true
+    closeTimeEditor(); $('time-display').focus()
+    queueMicrotask(() => { cancelTimeEdit = false })
+  }
+})
+$('refresh-still').addEventListener('click', () => { playback?.reset(); void refreshPreview() })
 function setStageFullscreen(active: boolean) {
   document.body.classList.toggle('stage-fullscreen', active)
   $('exit-fullscreen-preview').hidden = !active
@@ -1906,6 +1940,7 @@ async function applyLoadedProject(loaded: Initial) {
 }
 
 function showProjectManager() {
+  playback?.reset()
   const managerStatus = $('project-manager-status')
   managerStatus.textContent = ''
   managerStatus.hidden = true
@@ -2085,6 +2120,7 @@ $('unsaved-changes-save').addEventListener('click', async () => {
   }
 })
 window.desktop.onAppCloseRequested(() => {
+  playback?.pause()
   $('export-modal').hidden = true
   $('about-modal').hidden = true
   $('editor-screen').inert = false
@@ -2134,6 +2170,7 @@ $('render-mp4').addEventListener('click', async () => {
       ($<HTMLSelectElement>('audio-mode')).value, exportDestination)
     if (!output) return
     exportRunning = true
+    playback?.sync()
     exportDestination = ''
     ;($<HTMLInputElement>('export-destination')).value = ''
     closeExportDialog()
@@ -2179,6 +2216,7 @@ window.desktop.onExport(event => {
   }
   if (event.event === 'finished' || event.event === 'failed' || event.event === 'cancelled') {
     exportRunning = false;
+    playback?.sync()
     ;($<HTMLButtonElement>('open-export')).disabled = false
     ;($<HTMLButtonElement>('render-mp4')).disabled = false
     ;($<HTMLSelectElement>('audio-mode')).disabled = false
@@ -2313,6 +2351,22 @@ window.addEventListener('keydown', event => {
 })
 
 installCommandMenus()
+playback = installVideoPreview(window.desktop, () => project,
+  () => Boolean(metadata && project.audioPath && !exportRunning), () => frameIndex / 30,
+  seconds => {
+    frameIndex = Math.max(0, Math.min((metadata?.totalFrames ?? 1) - 1, frameAtTime(seconds)))
+    // Transport motion is transient UI state, not an edit to the saved project.
+    syncTimeReadout()
+  }, (data, frame, rate) => {
+    analysis = data; frameIndex = frame; sampleRate = rate
+    composition.render(project, analysis, frameIndex, sampleRate)
+    canvas.dataset.previewFrame = String(frameIndex)
+  }, () => composition.dispose(), () => {
+    if (previewTimer) clearTimeout(previewTimer)
+    previewTimer = null; ++previewRequest
+    void window.desktop.cancelPreview().catch(() => {})
+    $('preview-busy').hidden = true
+  })
 $('new-project').addEventListener('click', () => {
   confirmDiscardIfDirty(async () => {
     try { await applyLoadedProject(await window.desktop.newBlankProject()) }
@@ -2334,6 +2388,7 @@ function updateExportDialog() {
   ;($<HTMLSelectElement>('audio-mode')).disabled = exportRunning || exportSubmitting
 }
 function openExportDialog() {
+  playback?.pause()
   if (exportRunning) return
   refreshExportResolution(); updateExportDialog()
   $('export-dialog-status').textContent = metadata ? 'Existing videos are never overwritten.' : 'Import audio before exporting.'

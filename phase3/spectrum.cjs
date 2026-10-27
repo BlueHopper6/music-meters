@@ -118,4 +118,4 @@ async function precomputeSpectra(input, metadata, project, native, directory, is
   }
 }
 
-module.exports = { keyFor, configurations, previewSpectra, precomputeSpectra }
+module.exports = { keyFor, configurations, setup, capture, encoded, previewSpectra, precomputeSpectra }

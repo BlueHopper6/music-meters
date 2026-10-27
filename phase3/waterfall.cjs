@@ -137,4 +137,4 @@ async function precomputeWaterfalls(input, metadata, project, native, directory,
   }
 }
 
-module.exports = { configuration, configurations, previewWaterfalls, precomputeWaterfalls }
+module.exports = { configuration, configurations, pack, unpack, previewWaterfalls, precomputeWaterfalls }

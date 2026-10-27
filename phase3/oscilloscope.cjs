@@ -123,4 +123,4 @@ async function precomputeOscilloscopes(input, metadata, project, native, directo
   }
 }
 
-module.exports = { displaySamples, configurations, previewOscilloscopes, precomputeOscilloscopes }
+module.exports = { displaySamples, configurations, setup, capture, encoded, previewOscilloscopes, precomputeOscilloscopes }

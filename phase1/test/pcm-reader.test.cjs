@@ -51,3 +51,18 @@ test('closing a partly consumed long decoder does not wait for buffered stdout',
   await reader.close()
   assert.ok(performance.now() - started < 5000)
 })
+
+test('decoder seeks directly to the requested stereo sample', async () => {
+  const seconds = 7.123
+  const reader = new PcmReader(path.join(fixtures, 'stereo-10s-48k.wav'), 48000, 'ffmpeg', seconds)
+  try {
+    const pcm = await reader.readFrames(100)
+    assert.equal(pcm.frames, 100)
+    for (let i = 0; i < pcm.frames; i++) {
+      const sample = Math.round(seconds * 48000) + i
+      const expected = Math.trunc(0.72 * 32767 * Math.sin(2 * Math.PI * 440 * sample / 48000)) / 32768
+      assert.ok(Math.abs(pcm.left[i] - expected) < 1e-5)
+      assert.ok(Math.abs(pcm.right[i] + expected) < 1e-5)
+    }
+  } finally { await reader.close() }
+})
