@@ -454,6 +454,17 @@ function refreshInspector() {
   $('text-options').hidden = layer?.type !== 'text'
   $('layer-rotation-row').hidden = layer?.type === 'image' || layer?.type === 'text'
   $('layer-color-row').hidden = layer?.type === 'image'
+  const supportsBackground = !!layer && layer.type !== 'image'
+  $('layer-background-options').hidden = !supportsBackground
+  const backgroundEnabled = $<HTMLInputElement>('layer-background-enabled')
+  backgroundEnabled.checked = supportsBackground && !!layer.backgroundEnabled
+  backgroundEnabled.disabled = !supportsBackground || !!layer?.locked
+  const backgroundColor = $<HTMLInputElement>('layer-background-color')
+  backgroundColor.value = layer?.backgroundColor ?? '#000000'
+  backgroundColor.disabled = backgroundEnabled.disabled || !backgroundEnabled.checked
+  const backgroundOpacity = $<HTMLInputElement>('layer-background-opacity')
+  backgroundOpacity.value = String(Math.round((layer?.backgroundOpacity ?? 1) * 100))
+  backgroundOpacity.disabled = backgroundColor.disabled
   if (layer?.type === 'image') {
     ;($<HTMLSelectElement>('image-fit')).value = layer.fit
     ;($<HTMLInputElement>('image-rotation')).value = String(layer.rotation)
@@ -846,6 +857,21 @@ $<HTMLInputElement>('layer-color').addEventListener('input', event => {
   layer.color = (event.target as HTMLInputElement).value
   render()
 })
+for (const id of ['layer-background-enabled', 'layer-background-color', 'layer-background-opacity'] as const) {
+  $<HTMLInputElement>(id).addEventListener(id === 'layer-background-color' ? 'input' : 'change', event => {
+    const layer = selected()
+    if (!layer || layer.type === 'image' || layer.locked) return
+    const input = event.target as HTMLInputElement
+    const previous = { ...layer }
+    if (id === 'layer-background-enabled') layer.backgroundEnabled = input.checked
+    else if (id === 'layer-background-color') layer.backgroundColor = input.value
+    else {
+      if (!input.value.trim() || !Number.isFinite(Number(input.value))) { refreshInspector(); return }
+      layer.backgroundOpacity = Math.max(0, Math.min(1, Number(input.value) / 100))
+    }
+    try { repaint() } catch (error) { Object.assign(layer, previous); refreshInspector(); setStatus(String(error)) }
+  })
+}
 for (const [id, property] of [
   ['vectorscope-mode', 'mode'], ['vectorscope-zoom', 'zoomDb'],
   ['vectorscope-low-color', 'bandLowColor'], ['vectorscope-mid-color', 'bandMidColor'],

@@ -40,6 +40,25 @@ test('templates clear saved song position while applying a layout preserves the 
   assert.equal(applyTemplate(layout, song).previewFrame, 120)
 })
 
+test('custom templates preserve independent layer backgrounds while clearing song data', () => {
+  const dir = fs.mkdtempSync(path.join(root, 'layer-background-template-'))
+  const project = compositionProject()
+  project.layers = [
+    { ...spectrumLayer(), backgroundEnabled: true, backgroundColor: '#123456', backgroundOpacity: 0.4 },
+    { ...textLayer(), backgroundEnabled: true, backgroundColor: '#654321', backgroundOpacity: 0.75 },
+  ]
+  const entry = saveTemplate(dir, 'Layer background fixture', project)
+  const saved = readTemplate(dir, entry.id).layout
+  assert.equal(saved.layers[1].text, '')
+  for (const key of ['backgroundEnabled', 'backgroundColor', 'backgroundOpacity']) {
+    assert.deepEqual(saved.layers.map(layer => layer[key]), project.layers.map(layer => layer[key]))
+  }
+  const copy = readTemplate(dir, duplicateTemplate(dir, entry.id).id).layout
+  const applied = applyTemplate(copy, { ...project, audioPath: 'other-song.wav' })
+  assert.equal(applied.layers[0].backgroundColor, '#123456')
+  assert.equal(applied.layers[1].backgroundOpacity, 0.75)
+})
+
 test('retired factories are not listed or loadable; existing saved layouts still validate', () => {
   for (const name of ['Minimal Spectrum', 'Studio Dashboard', 'Stereo Showcase']) {
     assert.ok(!BUILTINS.includes(name))

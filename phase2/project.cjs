@@ -170,6 +170,16 @@ function normalizeProject(raw) {
       x, y, w, h, visible: layer.visible, locked: layer.locked,
       aspectLocked: layer.aspectLocked === true, rotation,
       opacity: number(layer.opacity, 'Opacity', 0, 1), color: color(layer.color, 'Meter color') }
+    if (layer.type !== 'image' && ['backgroundEnabled', 'backgroundColor', 'backgroundOpacity']
+      .some(key => layer[key] !== undefined)) {
+      const enabled = layer.backgroundEnabled === undefined ? false : layer.backgroundEnabled
+      if (typeof enabled !== 'boolean') throw new Error('Invalid layer background enabled state')
+      Object.assign(normalized, {
+        backgroundEnabled: enabled,
+        backgroundColor: color(layer.backgroundColor === undefined ? '#000000' : layer.backgroundColor, 'Layer background color'),
+        backgroundOpacity: number(layer.backgroundOpacity === undefined ? 1 : layer.backgroundOpacity, 'Layer background opacity', 0, 1),
+      })
+    }
     if (layer.type === 'image' || layer.type === 'text') {
       const shadow = number(layer.shadow, 'Shadow', 0, 40)
       if (layer.type === 'image') {

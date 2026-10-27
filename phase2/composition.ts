@@ -15,6 +15,7 @@ import { vectorscopeCorrelations } from '../phase3/vectorscope-correlation.cjs'
 type BaseLayer = {
   id: string; name: string; x: number; y: number; w: number; h: number
   visible: boolean; locked: boolean; aspectLocked: boolean; rotation: number; opacity: number; color: string
+  backgroundEnabled?: boolean; backgroundColor?: string; backgroundOpacity?: number
 }
 export type VectorscopeLayer = BaseLayer & { type: 'vectorscope'; mode: VectorscopeMode;
   zoomDb: number; multiband: boolean; showGrid: boolean; showCorrelation: boolean;
@@ -350,12 +351,23 @@ export class Composition {
     ctx.restore()
   }
 
+  private drawLayerBackground(layer: BaseLayer, width: number, height: number): void {
+    if (!layer.backgroundEnabled) return
+    const ctx = this.context
+    ctx.save()
+    ctx.globalAlpha *= layer.backgroundOpacity ?? 1
+    ctx.fillStyle = layer.backgroundColor ?? '#000000'
+    ctx.fillRect(-width / 2, -height / 2, width, height)
+    ctx.restore()
+  }
+
   private drawGraphic(layer: ImageLayer | TextLayer): void {
     const ctx = this.context
     ctx.save()
     ctx.globalAlpha = layer.opacity
     ctx.translate(layer.x + layer.w / 2, layer.y + layer.h / 2)
     ctx.rotate(layer.rotation * Math.PI / 180)
+    if (layer.type === 'text') this.drawLayerBackground(layer, layer.w, layer.h)
     if (layer.shadow) {
       ctx.shadowColor = 'rgba(0,0,0,0.85)'
       ctx.shadowBlur = layer.shadow
@@ -612,6 +624,7 @@ export class Composition {
       context.globalAlpha = layer.opacity
       context.translate((layer.x + layer.w / 2) * sx, (layer.y + layer.h / 2) * sy)
       context.rotate(layer.rotation * Math.PI / 180)
+      this.drawLayerBackground(layer, layer.w * sx, layer.h * sy)
       context.drawImage(meter.canvas, -layer.w * sx / 2, -layer.h * sy / 2, layer.w * sx, layer.h * sy)
       context.restore()
     }
