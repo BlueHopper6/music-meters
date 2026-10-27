@@ -41,14 +41,51 @@ test('templates clear saved song position while applying a layout preserves the 
 })
 
 test('three original starter layouts are valid, song-independent, and differently arranged', () => {
-  const layouts = BUILTINS.map(starter)
-  assert.deepEqual(BUILTINS, ['Minimal Spectrum', 'Studio Dashboard', 'Stereo Showcase'])
+  const originals = ['Minimal Spectrum', 'Studio Dashboard', 'Stereo Showcase']
+  const layouts = originals.map(starter)
+  assert.deepEqual(BUILTINS.slice(0, 3), originals)
   for (const layout of layouts) {
     assert.deepEqual(normalizeProject(layout), layout)
     assert.equal(layout.audioPath, '')
     assert.ok(layout.layers.some(layer => layer.type === 'text' && layer.name === 'Song title' && layer.text === ''))
   }
   assert.equal(new Set(layouts.map(layout => layout.layers.map(layer => layer.type).join(','))).size, 3)
+})
+
+test('new factory designs preserve agreed placeholders, empty artwork, and safe footer spacing', () => {
+  const names = ['Afterglow', 'Contour', 'Night Radio', 'Observatory']
+  assert.deepEqual(BUILTINS.slice(3), names)
+  const current = { ...compositionProject(), title: 'Private song', audioPath: 'private.wav', previewFrame: 90 }
+  for (const name of names) {
+    const layout = readTemplate(root, `starter:${name}`).layout
+    assert.deepEqual(normalizeProject(layout), layout)
+    assert.equal(layout.audioPath, '')
+    assert.equal(layout.title, '')
+    assert.equal(layout.previewFrame, 0)
+    assert.equal(layout.background.imagePath, '')
+    const artwork = layout.layers.filter(layer => layer.type === 'image')
+    assert.equal(artwork.length, 1)
+    assert.equal(artwork[0].imagePath, '')
+    assert.equal(artwork[0].visible, false)
+    assert.ok(layout.layers.every(layer => layer.name === layer.name.toLowerCase()))
+    const applied = applyTemplate(layout, current)
+    for (const field of ['song name', 'artist name', 'album name']) {
+      assert.equal(applied.layers.find(layer => layer.name === field).text, field)
+    }
+    assert.equal(applied.layers.find(layer => layer.name === 'musicmeters').text, 'MUSICMETERS')
+    assert.equal(applied.layers.find(layer => layer.name === 'genre').text, 'genre / slowed + reverb')
+    assert.equal(applied.audioPath, current.audioPath)
+    assert.equal(applied.previewFrame, current.previewFrame)
+    const footerTop = Math.min(...layout.layers.filter(layer => ['musicmeters', 'genre'].includes(layer.name)).map(layer => layer.y))
+    for (const meter of layout.layers.filter(layer => !['text', 'image'].includes(layer.type))) {
+      assert.ok(meter.y + meter.h <= footerTop - 20, `${name}: ${meter.name} needs space above footer`)
+    }
+    layout.layers[0].x = 0
+    assert.notEqual(starter(name).layers[0].x, 0)
+  }
+  assert.deepEqual(new Set(starter('Observatory').layers.filter(layer => !['text', 'image'].includes(layer.type)).map(layer => layer.type)),
+    new Set(['waterfall', 'spectrogram', 'spectrum', 'oscilloscope', 'waveform', 'vectorscope', 'vu', 'loudness']))
+  assert.equal(starter('Night Radio').layers.find(layer => layer.type === 'vu').mode, 'needle')
 })
 
 test('template lifecycle keeps layout and background asset while clearing song fields', () => {
@@ -90,7 +127,7 @@ test('template lifecycle keeps layout and background asset while clearing song f
   assert.notEqual(copy.id, saved.id)
   renameTemplate(dir, copy.id, 'Renamed dashboard')
   assert.equal(readTemplate(dir, copy.id).name, 'Renamed dashboard')
-  assert.equal(listTemplates(dir).length, 5)
+  assert.equal(listTemplates(dir).length, BUILTINS.length + 2)
   assert.throws(() => renameTemplate(dir, 'starter:Minimal Spectrum', 'Changed'), /Duplicate/)
   raw.layout.audioPath = '../song-A.wav'
   fs.writeFileSync(file, JSON.stringify(raw))
@@ -114,7 +151,7 @@ test('template saving rejects duplicate or starter names unless replacing, auto-
   const first = saveTemplate(dir, 'Template 1', projectA)
   const assetDir = path.join(dir, 'templates', `${first.id}.assets`)
   assert.equal(fs.existsSync(assetDir), true)
-  assert.equal(listTemplates(dir).length, 4)
+  assert.equal(listTemplates(dir).length, BUILTINS.length + 1)
 
   assert.throws(() => saveTemplate(dir, 'Template 1', projectA), /already exists/)
   assert.throws(() => saveTemplate(dir, 'template 1', projectA), /already exists/)
@@ -140,7 +177,7 @@ test('template saving rejects duplicate or starter names unless replacing, auto-
   assert.equal(fs.existsSync(path.join(dir, 'templates', `${autoCopy1.id}.assets`)), false)
   deleteTemplate(dir, autoCopy2.id)
   deleteTemplate(dir, starterCopy.id)
-  assert.equal(listTemplates(dir).length, 4)
+  assert.equal(listTemplates(dir).length, BUILTINS.length + 1)
 
   const updated = compositionProject()
   updated.background = { type: 'gradient', color: '#101828', color2: '#1f2937', imagePath: '', fit: 'cover' }
@@ -149,7 +186,7 @@ test('template saving rejects duplicate or starter names unless replacing, auto-
   ]
   const replaced = saveTemplate(dir, 'Template 1', updated, first.id)
   assert.equal(replaced.id, first.id)
-  assert.equal(listTemplates(dir).length, 4)
+  assert.equal(listTemplates(dir).length, BUILTINS.length + 1)
   const reopened = readTemplate(dir, first.id)
   assert.equal(reopened.name, 'Template 1')
   assert.equal(reopened.layout.layers[0].x, 240)

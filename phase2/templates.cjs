@@ -4,9 +4,10 @@ const { randomUUID } = require('node:crypto')
 const { compositionProject, normalizeProject, imageLayer, textLayer, spectrumLayer,
   oscilloscopeLayer, vectorscopeLayer, vuLayer, loudnessLayer, waveformLayer } = require('./project.cjs')
 const { saveArtwork, resolveArtwork } = require('./assets.cjs')
+const { DESIGN_NAMES, designStarter } = require('./factory-designs.cjs')
 
 const KIND = 'music-visualizer-template'
-const BUILTINS = ['Minimal Spectrum', 'Studio Dashboard', 'Stereo Showcase']
+const BUILTINS = ['Minimal Spectrum', 'Studio Dashboard', 'Stereo Showcase', ...DESIGN_NAMES]
 const validName = name => typeof name === 'string' && name.trim() === name && name.length > 0
   && name.length <= 80 && !/[\u0000-\u001f]/.test(name)
 const validId = id => typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
@@ -62,6 +63,7 @@ function layoutFromProject(raw) {
 
 function starter(name) {
   if (!BUILTINS.includes(name)) throw new Error('Unknown starter template')
+  if (DESIGN_NAMES.includes(name)) return designStarter(name)
   const layout = compositionProject()
   layout.title = ''
   layout.background = { type: 'gradient', color: '#0e1424', color2: '#273857', imagePath: '', fit: 'cover' }

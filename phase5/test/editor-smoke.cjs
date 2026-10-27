@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const { createHash } = require('node:crypto')
 const { app } = require('electron')
 const { readPreferences } = require('../../phase2/preferences.cjs')
+const { BUILTINS } = require('../../phase2/templates.cjs')
 
 const dir = process.env.PHASE5_GATE_DIR
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -31,7 +32,7 @@ module.exports = async function phase5Smoke(win) {
   }
   await waitFor('document.querySelector("#status").textContent.includes("Real Prism")', 'song A preview')
   assert.equal(await evaluate('document.querySelector("#export-preset").value'), '1080p')
-  assert.equal(await evaluate('document.querySelectorAll("#template-list option").length'), 3)
+  assert.equal(await evaluate('document.querySelectorAll("#template-list option").length'), BUILTINS.length)
   await set('template-list', 'starter:Studio Dashboard')
   await click('load-template')
   await waitFor('document.querySelectorAll(".layer-item").length === 7 && document.querySelector("#status").textContent.includes("Real Prism")', 'starter layout')
@@ -53,14 +54,14 @@ module.exports = async function phase5Smoke(win) {
   await click('template-conflict-rename')
   await waitFor('document.querySelector("#template-conflict-modal").hidden && document.querySelector("#status").textContent.includes("Choose a different template name")', 'template conflict rename')
   assert.equal(await evaluate('document.activeElement.id'), 'template-name')
-  assert.equal(await evaluate('document.querySelectorAll("#template-list option").length'), 4)
+  assert.equal(await evaluate('document.querySelectorAll("#template-list option").length'), BUILTINS.length + 1)
   await click('save-template')
   await waitFor('!document.querySelector("#template-conflict-modal").hidden', 'template conflict modal (replace)')
   await click('template-conflict-replace')
   await waitFor('document.querySelector("#template-conflict-modal").hidden && document.querySelector("#status").textContent.includes("Replaced layout template: My Studio Layout")', 'template conflict replace')
   assert.equal(await evaluate('document.activeElement.id'), 'template-name')
   assert.equal(await evaluate('document.querySelector("#template-list").value'), templateId)
-  assert.equal(await evaluate('document.querySelectorAll("#template-list option").length'), 4)
+  assert.equal(await evaluate('document.querySelectorAll("#template-list option").length'), BUILTINS.length + 1)
   const templateFile = path.join(process.env.PHASE5_TEST_USER_DATA, 'templates', `${templateId}.json`)
   const storedTemplate = JSON.parse(fs.readFileSync(templateFile, 'utf8'))
   assert.equal(storedTemplate.layout.audioPath, '')
@@ -84,7 +85,7 @@ module.exports = async function phase5Smoke(win) {
   assert.equal(await evaluate(`(() => { const first = document.getElementById('template-manager-close');
     first.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
     return document.activeElement.dataset.action })()`), 'delete')
-  assert.equal(await evaluate('document.querySelectorAll("#template-manager-builtins .template-manager-row").length'), 3)
+  assert.equal(await evaluate('document.querySelectorAll("#template-manager-builtins .template-manager-row").length'), BUILTINS.length)
   assert.equal(await evaluate('document.querySelectorAll("#template-manager-builtins [data-action=rename], #template-manager-builtins [data-action=delete]").length'), 0)
   assert.equal(await evaluate('document.querySelectorAll("#template-manager-custom .template-manager-row").length'), 2)
   await evaluate('document.querySelector("#template-manager-builtins .template-manager-row [data-action=duplicate]").click()')
