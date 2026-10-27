@@ -179,6 +179,65 @@ module.exports = async function startupSmoke(win) {
     const frame = await evaluate('document.getElementById("stage").toDataURL("image/png").split(",")[1]')
     fs.writeFileSync(path.join(process.env.PHASE2_STARTUP_SMOKE_DIR, `${name.toLowerCase().replaceAll(' ', '-')}.png`), Buffer.from(frame, 'base64'))
     await capture(`${name.toLowerCase().replaceAll(' ', '-')}-editor.png`)
+    if (name === 'Observatory') {
+      const change = (id, value, type = 'change') => evaluate(`(() => {
+        const el = document.getElementById(${JSON.stringify(id)});
+        if (el.type === 'checkbox') el.checked = ${JSON.stringify(value)};
+        else el.value = ${JSON.stringify(String(value))};
+        el.dispatchEvent(new Event(${JSON.stringify(type)}, { bubbles: true })); })()`)
+      const styled = expected.layers.filter(layer => !['text', 'image'].includes(layer.type)
+        || layer.name === 'song name')
+      for (const layer of styled) {
+        await evaluate(`document.querySelector('[data-id="${layer.id}"]').click()`)
+        assert.equal(await evaluate('document.getElementById("layer-background-options").hidden'), false)
+        await change('layer-background-enabled', true)
+        await change('layer-background-color', '#ffffff', 'input')
+        const pixel = await evaluate(`Array.from(document.getElementById('stage').getContext('2d')
+          .getImageData(${layer.x + 1}, ${layer.y + 1}, 1, 1).data).slice(0, 3)`)
+        assert.ok(pixel.every(value => value >= 250), `${layer.type} background must fill its box: ${pixel}`)
+      }
+      const spectrum = expected.layers.find(layer => layer.type === 'spectrum')
+      await evaluate(`document.querySelector('[data-id="${spectrum.id}"]').click()`)
+      await change('layer-background-color', '#80c040', 'input')
+      await change('layer-background-opacity', 50)
+      const blended = await evaluate(`Array.from(document.getElementById('stage').getContext('2d')
+        .getImageData(${spectrum.x + 1}, ${spectrum.y + 1}, 1, 1).data).slice(0, 3)`)
+      const expectedBlend = [69, 103, 44]
+      assert.ok(blended.every((value, index) => Math.abs(value - expectedBlend[index]) <= 2), `Independent background alpha: ${blended}`)
+      await change('layer-locked', true)
+      assert.equal(await evaluate('document.getElementById("layer-background-enabled").disabled'), true)
+      assert.equal(await evaluate('document.getElementById("layer-background-color").disabled'), true)
+      await change('layer-locked', false)
+      const originalSave = process.env.PHASE2_TEST_SAVE_PATH
+      process.env.PHASE2_TEST_SAVE_PATH = path.join(process.env.PHASE2_STARTUP_SMOKE_DIR, 'layer-background-project.json')
+      try {
+        await click('save-project')
+        await waitFor('document.getElementById("status").textContent.includes("Saved project:")', 'save layer backgrounds')
+        const savedFile = path.join(process.env.PHASE2_STARTUP_SMOKE_DIR, 'layer-background-project', 'layer-background-project.json')
+        const saved = JSON.parse(fs.readFileSync(savedFile, 'utf8'))
+        assert.equal(saved.layers.find(layer => layer.id === spectrum.id).backgroundOpacity, 0.5)
+        assert.ok(saved.layers.filter(layer => layer.backgroundEnabled).length === 9)
+        fs.writeFileSync(path.join(process.env.PHASE2_STARTUP_SMOKE_DIR, 'layer-backgrounds.png'),
+          Buffer.from(await evaluate('document.getElementById("stage").toDataURL("image/png").split(",")[1]'), 'base64'))
+        await capture('layer-background-controls.png')
+        // Reopen the actual saved project through the recent-project API.
+        await click('close-project')
+        await waitFor('!document.getElementById("project-manager-screen").hidden', 'close saved background project')
+        await evaluate(`Array.from(document.querySelectorAll('#recent-projects-grid .project-card'))
+          .find(card => card.textContent.includes('layer-background-project')).click()`)
+        await waitFor('!document.getElementById("editor-screen").hidden', 'reopen saved layer backgrounds')
+        await evaluate(`document.querySelector('[data-id="${spectrum.id}"]').click()`)
+        assert.equal(await evaluate('document.getElementById("layer-background-color").value'), '#80c040')
+        assert.equal(await evaluate('document.getElementById("layer-background-opacity").value'), '50')
+      } finally { process.env.PHASE2_TEST_SAVE_PATH = originalSave }
+      await change('layer-background-enabled', false)
+      assert.equal(await evaluate('document.getElementById("layer-background-color").disabled'), true)
+      const transparent = await evaluate(`Array.from(document.getElementById('stage').getContext('2d')
+        .getImageData(${spectrum.x + 1}, ${spectrum.y + 1}, 1, 1).data).slice(0, 3)`)
+      assert.deepEqual(transparent, [9, 14, 23], 'Disabling the background restores transparency')
+      await evaluate('document.querySelector("[data-id=observatory-artwork]").click()')
+      assert.equal(await evaluate('document.getElementById("layer-background-options").hidden'), true)
+    }
     await click('close-project')
     await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'discard factory fixture changes')
     await click('unsaved-changes-discard')

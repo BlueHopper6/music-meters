@@ -24,6 +24,29 @@ test('portrait projects fit without cropping, retain media and marker, and expor
   assert.throws(() => normalizeProject({ ...defaultProject(), width: 720, height: 1280 }), /canvas/)
 })
 
+test('layer backgrounds round-trip for text and all meters, with transparent legacy defaults', () => {
+  const constructors = [vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer,
+    waveformLayer, vuLayer, loudnessLayer, waterfallLayer, textLayer]
+  for (const create of constructors) {
+    const layer = create()
+    const raw = { ...compositionProject(), layers: [layer] }
+    assert.deepEqual(normalizeProject(raw).layers[0], layer, 'legacy layer must not acquire visible styling')
+    const styled = { ...layer, backgroundEnabled: true, backgroundColor: '#a13467', backgroundOpacity: 0.4 }
+    const project = { ...raw, layers: [styled] }
+    assert.deepEqual(normalizeProject(JSON.parse(JSON.stringify(project))).layers[0], styled)
+    assert.deepEqual(orientProject(project, 'portrait').layers[0].backgroundColor, '#a13467')
+    const disabled = { ...styled, backgroundEnabled: false }
+    assert.deepEqual(normalizeProject({ ...raw, layers: [disabled] }).layers[0], disabled)
+    const partial = normalizeProject({ ...raw, layers: [{ ...layer, backgroundEnabled: true }] }).layers[0]
+    assert.deepEqual([partial.backgroundColor, partial.backgroundOpacity], ['#000000', 1])
+    for (const [key, value] of [['backgroundEnabled', 'yes'], ['backgroundEnabled', null],
+      ['backgroundColor', 'red'], ['backgroundColor', '#abcdef80'], ['backgroundOpacity', -0.1],
+      ['backgroundOpacity', 1.1], ['backgroundOpacity', NaN], ['backgroundOpacity', '0.5']]) {
+      assert.throws(() => normalizeProject({ ...raw, layers: [{ ...styled, [key]: value }] }), /background/i)
+    }
+  }
+})
+
 test('saved preview frames survive normalization and older projects default to zero', () => {
   const legacy = defaultProject()
   delete legacy.previewFrame

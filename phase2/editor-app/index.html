@@ -204,6 +204,13 @@
           <div class="checks"><label><input id="layer-visible" type="checkbox"> Visible</label><label><input id="layer-locked" type="checkbox"> Locked</label></div>
         </div>
       </section>
+      <section class="property-group" id="layer-background-options" hidden><h3>Layer background</h3>
+        <div class="checks"><label><input id="layer-background-enabled" type="checkbox"> Enable background</label></div>
+        <div class="number-grid">
+          <label>Background color<input id="layer-background-color" type="color" value="#000000"></label>
+          <label>Background opacity %<input id="layer-background-opacity" type="number" min="0" max="100" step="1" value="100"></label>
+        </div>
+      </section>
       <section class="property-group" id="image-options" hidden><h3>Artwork / logo</h3>
         <button id="image-choose" type="button">Choose local image</button><span id="image-name" class="asset-name"></span>
         <label>Image fit<select id="image-fit"><option value="cover">Crop to fill</option><option value="contain">Fit inside</option></select></label>
