@@ -137,4 +137,4 @@ async function precomputeSpectrograms(input, metadata, project, native, director
   }
 }
 
-module.exports = { configuration, configurations, previewSpectrograms, precomputeSpectrograms }
+module.exports = { configuration, configurations, encode, previewSpectrograms, precomputeSpectrograms }

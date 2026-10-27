@@ -1497,4 +1497,8 @@ body.stage-fullscreen .stage-shell { top: 40px; }
 }
 
 .timeline-top > div:first-child { min-width: 0; flex: 1; }
+.playback-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.playback-controls button { height: 28px; font-size: 11px; }
+.playback-controls label { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+#playback-status { flex: 1; min-width: 140px; font-size: 11px; color: var(--text-muted); }
 .timeline-top strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

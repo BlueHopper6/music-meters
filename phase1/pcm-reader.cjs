@@ -3,9 +3,10 @@ const { spawn } = require('node:child_process')
 // FFmpeg's stdout is consumed only when the analyzer needs more samples. Node's
 // stream backpressure keeps the decoder from filling application memory.
 class PcmReader {
-  constructor(input, sampleRate, ffmpeg = 'ffmpeg') {
+  constructor(input, sampleRate, ffmpeg = 'ffmpeg', startSeconds = 0) {
+    if (!Number.isFinite(startSeconds) || startSeconds < 0) throw new Error('Invalid decoder seek position')
     this.child = spawn(ffmpeg, [
-      '-nostdin', '-v', 'error', '-i', input, '-map', '0:a:0',
+      '-nostdin', '-v', 'error', ...(startSeconds ? ['-ss', String(startSeconds)] : []), '-i', input, '-map', '0:a:0',
       '-f', 'f32le', '-acodec', 'pcm_f32le', '-ac', '2',
       '-ar', String(sampleRate), 'pipe:1',
     ], { stdio: ['ignore', 'pipe', 'pipe'], shell: false })

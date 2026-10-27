@@ -4,6 +4,7 @@ import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type Vec
 import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject, fitLayer, orientProject, exportDimensions } from './project.cjs'
 import { move as moveOnStage, resize as resizeOnStage } from './stage-geometry.cjs'
 import { installCommandMenus } from './command-menus'
+import { installVideoPreview, type LiveFrame } from './video-preview'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number; codecName: string }
 type TemplateEntry = { id: string; name: string; builtIn: boolean }
@@ -35,6 +36,9 @@ type Desktop = {
       sampleRate: number; frameIndex: number; superseded?: false }
     | { superseded: true }>
   cancelPreview(): Promise<void>
+  preparePlayback(project: Project, frame: number): Promise<{ url: string; session: string; frames: LiveFrame[] }>
+  playbackFrames(session: string, count: number): Promise<LiveFrame[]>
+  cancelPlayback(): Promise<void>
   saveProject(project: Project, asNew?: boolean): Promise<{ path: string; project: Project; missingMedia: MissingMedia[] } | null>
   openProject(): Promise<Initial | null>
   openProjectPath(path: string): Promise<Initial | null>
@@ -85,6 +89,7 @@ let isAutomatedTestSession = false
 let exportDestination = ''
 let exportSubmitting = false
 let templateManagerReturnFocus: HTMLElement | null = null
+let playback: ReturnType<typeof installVideoPreview> | null = null
 
 function selected() { return project.layers.find(layer => layer.id === selectedId) }
 function selectLayer(id: string | null) {
@@ -165,6 +170,7 @@ function closeUnsavedChangesModal() {
 }
 
 function render() {
+  playback?.sync()
   if (canvas.width !== project.width || canvas.height !== project.height) {
     canvas.width = project.width; canvas.height = project.height
     composition.dispose()
@@ -660,6 +666,7 @@ function refreshTemplates(entries: TemplateEntry[], preferred = '') {
   if (!$('template-manager-modal').hidden) renderTemplateManager()
 }
 function resetSongPreview() {
+  playback?.reset()
   exportDestination = ''
   ;($<HTMLInputElement>('export-destination')).value = ''
   if (previewTimer) clearTimeout(previewTimer)
@@ -1327,12 +1334,14 @@ layersList.addEventListener('lostpointercapture', finishLayerDrag)
 
 $<HTMLInputElement>('time-slider').addEventListener('input', event => {
   frameIndex = Number((event.target as HTMLInputElement).value)
+  if (playback?.seek(frameIndex / 30)) return
   updateTimeControls(); scheduleTimePreview()
 })
 $<HTMLInputElement>('time-input').addEventListener('change', event => {
   const seconds = Number((event.target as HTMLInputElement).value)
   if (!Number.isFinite(seconds)) { updateTimeControls(); return }
   frameIndex = Math.max(0, Math.min((metadata?.totalFrames ?? 1) - 1, Math.round(seconds * 30)))
+  if (playback?.seek(frameIndex / 30)) return
   updateTimeControls(); scheduleTimePreview()
 })
 $('refresh-still').addEventListener('click', refreshPreview)
@@ -1906,6 +1915,7 @@ async function applyLoadedProject(loaded: Initial) {
 }
 
 function showProjectManager() {
+  playback?.reset()
   const managerStatus = $('project-manager-status')
   managerStatus.textContent = ''
   managerStatus.hidden = true
@@ -2085,6 +2095,7 @@ $('unsaved-changes-save').addEventListener('click', async () => {
   }
 })
 window.desktop.onAppCloseRequested(() => {
+  playback?.pause()
   $('export-modal').hidden = true
   $('about-modal').hidden = true
   $('editor-screen').inert = false
@@ -2134,6 +2145,7 @@ $('render-mp4').addEventListener('click', async () => {
       ($<HTMLSelectElement>('audio-mode')).value, exportDestination)
     if (!output) return
     exportRunning = true
+    playback?.sync()
     exportDestination = ''
     ;($<HTMLInputElement>('export-destination')).value = ''
     closeExportDialog()
@@ -2179,6 +2191,7 @@ window.desktop.onExport(event => {
   }
   if (event.event === 'finished' || event.event === 'failed' || event.event === 'cancelled') {
     exportRunning = false;
+    playback?.sync()
     ;($<HTMLButtonElement>('open-export')).disabled = false
     ;($<HTMLButtonElement>('render-mp4')).disabled = false
     ;($<HTMLSelectElement>('audio-mode')).disabled = false
@@ -2313,6 +2326,18 @@ window.addEventListener('keydown', event => {
 })
 
 installCommandMenus()
+playback = installVideoPreview(window.desktop, () => project,
+  () => Boolean(metadata && project.audioPath && !exportRunning), () => frameIndex / 30,
+  seconds => {
+    frameIndex = Math.max(0, Math.min((metadata?.totalFrames ?? 1) - 1, Math.floor(seconds * 30)))
+    // Transport motion is transient UI state, not an edit to the saved project.
+    $<HTMLInputElement>('time-slider').value = String(frameIndex)
+    $<HTMLInputElement>('time-input').value = (frameIndex / 30).toFixed(2)
+  }, (data, frame, rate) => {
+    analysis = data; frameIndex = frame; sampleRate = rate
+    composition.render(project, analysis, frameIndex, sampleRate)
+    canvas.dataset.previewFrame = String(frameIndex)
+  }, () => composition.dispose())
 $('new-project').addEventListener('click', () => {
   confirmDiscardIfDirty(async () => {
     try { await applyLoadedProject(await window.desktop.newBlankProject()) }
@@ -2334,6 +2359,7 @@ function updateExportDialog() {
   ;($<HTMLSelectElement>('audio-mode')).disabled = exportRunning || exportSubmitting
 }
 function openExportDialog() {
+  playback?.pause()
   if (exportRunning) return
   refreshExportResolution(); updateExportDialog()
   $('export-dialog-status').textContent = metadata ? 'Existing videos are never overwritten.' : 'Import audio before exporting.'

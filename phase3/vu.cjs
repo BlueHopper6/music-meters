@@ -105,4 +105,4 @@ async function precomputeVus(input, metadata, project, native, directory, isCurr
   }
 }
 
-module.exports = { FIELDS, PREVIEW_PREROLL_FRAMES, activeIds, analyze, previewVus, precomputeVus }
+module.exports = { FIELDS, values, encode, PREVIEW_PREROLL_FRAMES, activeIds, analyze, previewVus, precomputeVus }

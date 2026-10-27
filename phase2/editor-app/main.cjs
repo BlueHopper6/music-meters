@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, protocol } = require('electron')
 const { join, resolve, dirname, extname, relative, isAbsolute } = require('node:path')
 const { spawn } = require('node:child_process')
 const { Worker } = require('node:worker_threads')
@@ -14,6 +14,9 @@ const { readPreferences, writePreferences, recordRecentProject } = require('../p
 const { probeAudio } = require('../audio.cjs')
 const { outputFormat, validateOutputPath, validateAudioCopy } = require('../audio-output.cjs')
 const { lockWindowNavigation, assertTrustedSender } = require('../window-security.cjs')
+const { mediaResponse } = require('../playback-video.cjs')
+const { LivePlayback } = require('../live-playback.cjs')
+protocol.registerSchemesAsPrivileged([{ scheme: 'musicmeters-preview', privileges: { standard: true, secure: true, stream: true } }])
 
 const ROOT = resolve(__dirname, '..', '..')
 const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.flac'])
@@ -34,6 +37,9 @@ let previewWorker = null
 const pendingPreviews = new Map()
 let exportJob = null
 let closingAfterExport = false
+let playbackVideo
+let playbackCleaned = false
+let cleaningPlayback = false
 const userData = () => app.getPath('userData')
 const editorDocument = join(__dirname, 'index.html')
 
@@ -276,6 +282,17 @@ handle('preview-at', async (_event, frame, raw) => {
   })
 })
 handle('cancel-preview', () => cancelPreview())
+handle('prepare-playback', async (_event, raw, frame) => {
+  if (exportJob) throw new Error('Wait for the export to finish')
+  if (!metadata || !activeAudio) throw new Error('Import audio before playing a preview')
+  if (!Number.isSafeInteger(frame) || frame < 0 || frame >= metadata.totalFrames) throw new Error('Playback position is outside the song')
+  const value = validateActiveProject(raw)
+  assetData(value)
+  cancelPreview()
+  return playbackVideo.open(value, metadata, frame)
+})
+handle('playback-frames', (_event, session, count) => playbackVideo.pull(session, count))
+handle('cancel-playback', () => playbackVideo.cancel())
 handle('save-project', async (_event, raw, asNew = false) => {
   const value = validateActiveProject(raw)
   if (typeof asNew !== 'boolean') throw new Error('Invalid Save As setting')
@@ -479,6 +496,8 @@ handle('cancel-render', () => {
 
 app.disableHardwareAcceleration()
 app.whenReady().then(() => {
+  playbackVideo = new LivePlayback()
+  protocol.handle('musicmeters-preview', request => mediaResponse(request, playbackVideo.media))
   if (process.env.PHASE2_TEST_INPUT) {
     const info = audioInfo(process.env.PHASE2_TEST_INPUT)
     activeAudio = info.path
@@ -507,9 +526,10 @@ app.whenReady().then(() => {
     win.webContents.send('app-close-requested')
   })
   return win.loadFile(editorDocument).then(async () => {
-    if (process.env.PHASE2_PORTRAIT_SMOKE === '1' || process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
+    if (process.env.PHASE2_PLAYBACK_SMOKE === '1' || process.env.PHASE2_PORTRAIT_SMOKE === '1' || process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
-        if (process.env.PHASE2_PORTRAIT_SMOKE === '1') await require('../test/portrait-smoke.cjs')(win)
+        if (process.env.PHASE2_PLAYBACK_SMOKE === '1') await require('../test/playback-smoke.cjs')(win, playbackVideo)
+        else if (process.env.PHASE2_PORTRAIT_SMOKE === '1') await require('../test/portrait-smoke.cjs')(win)
         else if (process.env.PHASE2_STARTUP_SMOKE === '1') await require('../test/startup-smoke.cjs')(win)
         else if (process.env.PHASE6_SECURITY_SMOKE === '1') await require('../../phase6/test/security-smoke.cjs')(win)
         else if (process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1') await require('../../phase6/test/audio-copy-editor-smoke.cjs')(win)
@@ -543,5 +563,14 @@ app.on('before-quit', event => {
     event.preventDefault()
     closingAfterExport = true
     fs.writeFileSync(exportJob.cancelFile, 'cancel')
+    return
+  }
+  if (!playbackCleaned) {
+    event.preventDefault()
+    if (!cleaningPlayback) {
+      cleaningPlayback = true
+      Promise.resolve(playbackVideo?.cancel()).catch(error => console.error(`Preview cleanup: ${error.message}`))
+        .finally(() => { playbackCleaned = true; app.quit() })
+    }
   }
 })
