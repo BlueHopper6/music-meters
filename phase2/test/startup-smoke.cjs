@@ -86,9 +86,9 @@ module.exports = async function startupSmoke(win) {
   await click('pm-new-template')
   await waitFor('!document.getElementById("template-picker-modal").hidden', 'open template picker modal')
   const templateOptions = await evaluate('Array.from(document.querySelectorAll("#template-picker-select option"), o => o.value)')
-  assert.ok(templateOptions.includes('starter:Studio Dashboard'))
+  assert.ok(templateOptions.includes('starter:Observatory'))
 
-  await evaluate('(() => { const sel = document.getElementById("template-picker-select"); sel.value = "starter:Studio Dashboard"; return true })()')
+  await evaluate('(() => { const sel = document.getElementById("template-picker-select"); sel.value = "starter:Observatory"; return true })()')
   await click('template-picker-create')
   await waitFor('document.getElementById("template-picker-modal").hidden', 'template picker closed')
   await waitFor('!document.getElementById("editor-screen").hidden', 'editor visible after template selection')
@@ -156,8 +156,8 @@ module.exports = async function startupSmoke(win) {
   const templateLayers = await evaluate('document.querySelectorAll(".layer-item").length')
   assert.ok(templateLayers > 0, 'Starter template should have layers')
 
-  console.log('Checking the four designed factories with empty artwork and real audio')
-  for (const name of ['Afterglow', 'Contour', 'Night Radio', 'Observatory']) {
+  console.log('Checking all designed factories with empty artwork and real audio')
+  for (const name of require('../templates.cjs').BUILTINS) {
     await click('close-project')
     await waitFor('!document.getElementById("project-manager-screen").hidden', 'factory picker project manager')
     await click('pm-new-template')
@@ -186,7 +186,7 @@ module.exports = async function startupSmoke(win) {
     // Leave a clean template open for the remaining startup workflow checks.
     await click('pm-new-template')
     await waitFor('!document.getElementById("template-picker-modal").hidden', 'return factory picker')
-    await evaluate('document.getElementById("template-picker-select").value = "starter:Studio Dashboard"')
+    await evaluate('document.getElementById("template-picker-select").value = "starter:Observatory"')
     await click('template-picker-create')
     await waitFor('!document.getElementById("editor-screen").hidden', 'clean template restored')
   }

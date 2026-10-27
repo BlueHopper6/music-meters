@@ -14,18 +14,18 @@ async function main() {
   const pack = path.resolve(process.argv[2]), dir = path.resolve(process.argv[3])
   if (fs.existsSync(dir)) throw new Error(`Output already exists: ${dir}`)
   fs.mkdirSync(dir, { recursive: true })
-  const { starter } = require(path.join(pack, 'resources', 'app', 'phase2', 'templates.cjs'))
+  const { starter, BUILTINS } = require(path.join(pack, 'resources', 'app', 'phase2', 'templates.cjs'))
   const audioPath = path.join(dir, 'synthetic-stereo.wav')
   // Loud, unlike stereo channels exercise the full waveform box and stereo meters.
   run('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i',
     'aevalsrc=0.65*sin(2*PI*110*t)+0.25*sin(2*PI*440*t)|0.65*sin(2*PI*110*t+0.4)+0.25*sin(2*PI*880*t):s=48000:d=2.5',
     '-c:a', 'pcm_s16le', audioPath])
   const summary = []
-  for (const name of ['Afterglow', 'Contour', 'Night Radio', 'Observatory']) {
+  for (const name of BUILTINS) {
     const slug = name.toLowerCase().replaceAll(' ', '-')
     const project = { ...starter(name), audioPath, title: 'Synthetic fixture' }
     assert.equal(project.layers.find(layer => layer.type === 'image').imagePath, '')
-    const preset = name === 'Observatory' ? '1080p' : '720p'
+    const preset = ['Observatory', 'Social'].includes(name) ? '1080p' : '720p'
     const output = path.join(dir, `${slug}.mp4`)
     const logPath = path.join(dir, `${slug}.log`)
     const log = fs.openSync(logPath, 'wx')
@@ -47,7 +47,8 @@ async function main() {
     const video = probe.streams.find(stream => stream.codec_type === 'video')
     assert.equal(video.codec_name, 'h264')
     assert.equal(Number(video.nb_frames), 75)
-    assert.deepEqual([video.width, video.height], preset === '1080p' ? [1920, 1080] : [1280, 720])
+    const scale = preset === '1080p' ? 1.5 : 1
+    assert.deepEqual([video.width, video.height], [project.width * scale, project.height * scale])
     assert.equal(probe.streams.find(stream => stream.codec_type === 'audio').codec_name, 'aac')
     run('ffmpeg', ['-v', 'error', '-xerror', '-i', output, '-f', 'null', '-'])
     const frame = path.join(dir, `${slug}.png`)

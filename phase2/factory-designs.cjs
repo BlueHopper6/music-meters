@@ -2,7 +2,8 @@ const { compositionProject, normalizeProject, imageLayer, textLayer, waterfallLa
   waveformLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, vectorscopeLayer,
   vuLayer, loudnessLayer } = require('./project.cjs')
 
-const DESIGN_NAMES = ['Afterglow', 'Contour', 'Night Radio', 'Observatory']
+const DESIGN_NAMES = ['Afterglow', 'Contour', 'Night Radio', 'Observatory',
+  'Synthwave', 'Minimalist Ambient', 'Social', 'Hyper Chase']
 
 function designStarter(name) {
   if (!DESIGN_NAMES.includes(name)) throw new Error('Unknown factory design')
@@ -74,7 +75,7 @@ function designStarter(name) {
       text('musicmeters', 'MUSICMETERS', 55, 686, 350, 13, '#d2bea1'),
       text('genre', 'genre / slowed + reverb', 888, 686, 340, 13, '#d2bea1'),
     ]
-  } else {
+  } else if (name === 'Observatory') {
     layout.layers = [
       art(42, 36, 102, 83),
       text('song name', 'song name', 169, 76, 700, 37, '#e5eced', 'Georgia'),
@@ -97,6 +98,80 @@ function designStarter(name) {
       text('musicmeters', 'MUSICMETERS', 42, 690, 350, 12, '#8194a3'),
       text('genre', 'genre / slowed + reverb', 875, 690, 363, 12, '#8194a3', 'Consolas', 'right'),
     ]
+  } else {
+    const backgrounds = {
+      'Synthwave': ['#080512', '#190e29'],
+      'Minimalist Ambient': ['#090f10', '#131b1a'],
+      Social: ['#0a101c', '#19273d'],
+      'Hyper Chase': ['#030609', '#080e14'],
+    }
+    const [color, color2] = backgrounds[name]
+    layout.background = { type: 'gradient', color, color2, imagePath: '', fit: 'cover' }
+    const footer = (color, portrait = false) => portrait ? [
+      text('genre', 'genre / slowed + reverb', 72, 1184, 546, 16, color),
+      text('musicmeters', 'MUSICMETERS', 72, 1216, 546, 17, color),
+    ] : [
+      text('musicmeters', 'MUSICMETERS', 56, 688, 350, 13, color),
+      text('genre', 'genre / slowed + reverb', 875, 688, 349, 13, color, 'Consolas', 'right'),
+    ]
+    if (name === 'Synthwave') {
+      layout.layers = [
+        art(56, 64, 260, 260),
+        text('album name', 'album name', 56, 362, 260, 14, '#d699c9'),
+        text('song name', 'song name', 53, 411, 285, 40, '#f4ecff', 'Arial'),
+        text('artist name', 'artist name', 56, 445, 260, 19, '#a2b7d0'),
+        { ...vuLayer(id('vu'), 'vu meter'), x: 76, y: 497, w: 200, h: 124,
+          color: '#48d9e8', orientation: 'vertical' },
+        { ...waterfall(365, 75, 560, 216), color: '#e873b6', density: 'dense' },
+        { ...waveform(365, 335, 560, 112, '#72d9e4'), scrollSpeed: 2 },
+        { ...spectrumLayer(id('spectrum'), 'spectrum'), x: 365, y: 489, w: 560, h: 128, color: '#b899ea' },
+        { ...vectorscopeLayer(id('vectorscope'), 'vectorscope'), x: 991, y: 76, w: 220, h: 216,
+          color: '#72d9e4', mode: 'polar-bipolar', showGrid: true },
+        { ...loudnessLayer(id('loudness'), 'loudness'), x: 1010, y: 349, w: 200, h: 266, color: '#df78b3' },
+        divider('footer', 56, 650, 1168, '#3d304b'),
+        ...footer('#b59cbe'),
+      ]
+    } else if (name === 'Minimalist Ambient') {
+      layout.layers = [
+        text('album name', 'album name', 340, 66, 600, 14, '#91a69c', 'Consolas', 'center'),
+        art(470, 106, 340, 340),
+        { ...vectorscopeLayer(id('vectorscope'), 'vectorscope'), x: 118, y: 229, w: 188, h: 188,
+          color: '#a3bcaa', showGrid: false },
+        { ...vuLayer(id('vu'), 'vu meter'), x: 979, y: 282, w: 220, h: 84, color: '#a3bcaa' },
+        text('song name', 'song name', 340, 507, 600, 42, '#ece7d7', 'Georgia', 'center'),
+        text('artist name', 'artist name', 340, 545, 600, 20, '#a0b2a9', 'Consolas', 'center'),
+        { ...oscilloscope(260, 575, 760, 80), color: '#aac8b8' },
+        ...footer('#8b9b95'),
+      ]
+    } else if (name === 'Social') {
+      layout.width = 720
+      layout.height = 1280
+      layout.layers = [
+        text('album name', 'album name', 72, 123, 546, 20, '#b5c5d7'),
+        { ...art(130, 166, 460, 460), aspectLocked: true },
+        text('song name', 'song name', 72, 686, 546, 51, '#f4f4ed', 'Arial'),
+        text('artist name', 'artist name', 74, 732, 544, 26, '#9ddce4'),
+        { ...vectorscopeLayer(id('vectorscope'), 'vectorscope'), x: 75, y: 768, w: 156, h: 156,
+          color: '#88d5d3', showGrid: true },
+        { ...loudnessLayer(id('loudness'), 'loudness'), x: 300, y: 785, w: 158, h: 125, color: '#88b6d1' },
+        { ...oscilloscope(72, 945, 546, 80), color: '#91d5df' },
+        { ...spectrumLayer(id('spectrum'), 'spectrum'), x: 72, y: 1045, w: 546, h: 80, color: '#d1b996' },
+        ...footer('#9fafc4', true),
+      ]
+    } else {
+      layout.layers = [
+        text('album name', 'album name', 340, 76, 600, 14, '#92b5c4', 'Consolas', 'center'),
+        { ...spectrumLayer(id('spectrum'), 'spectrum'), x: 174, y: 257, w: 380, h: 126,
+          rotation: -90, color: '#8ce4ec', smoothing: 0.8 },
+        art(442, 130, 380, 380),
+        { ...waterfall(442, 430, 380, 80), color: '#62c9dd', opacity: 0.6,
+          frequencyRangeMode: 'audible', smoothing: 0.8 },
+        { ...loudnessLayer(id('loudness'), 'loudness'), x: 844, y: 130, w: 134, h: 380, color: '#38bdf8' },
+        text('song name', 'song name', 340, 572, 600, 34, '#e7f9ff', 'Arial', 'center'),
+        text('artist name', 'artist name', 340, 610, 600, 25, '#b5cbd3', 'Georgia', 'center'),
+        ...footer('#809ba8'),
+      ]
+    }
   }
   return normalizeProject(layout)
 }
