@@ -2052,6 +2052,10 @@ $('close-project').addEventListener('click', () => {
     } catch (error) { setStatus(String(error)) }
   })
 })
+// Quit shares the caption/OS-close path and its unsaved-change guard.
+for (const id of ['pm-quit', 'quit-app']) {
+  $(id).addEventListener('click', () => $('window-close').click())
+}
 $('unsaved-changes-cancel').addEventListener('click', () => {
   closeUnsavedChangesModal()
 })
