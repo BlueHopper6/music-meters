@@ -1,16 +1,17 @@
 import { type Project, type AnalysisFrame, decodeAnalysis } from './composition'
+import { frameAtTime } from './timecode.cjs'
 export type LiveFrame = Parameters<typeof decodeAnalysis>[0] & { frameIndex: number; sampleRate: number }
+export type PlaybackStart = { url: string; session: string; frames: LiveFrame[]; superseded?: false } | { superseded: true }
 type API = {
-  preparePlayback(project: Project, frame: number): Promise<{ url: string; session: string; frames: LiveFrame[] }>
+  preparePlayback(project: Project, frame: number): Promise<PlaybackStart>
   playbackFrames(session: string, count: number): Promise<LiveFrame[]>
   cancelPlayback(): Promise<void>
 }
 export function installVideoPreview(api: API, project: () => Project, available: () => boolean,
   position: () => number, setPosition: (seconds: number) => void,
-  paint: (data: AnalysisFrame, frame: number, rate: number) => void, resetPainters: () => void) {
+  paint: (data: AnalysisFrame, frame: number, rate: number) => void, resetPainters: () => void, cancelStill: () => void) {
   const audio = document.getElementById('playback-audio') as HTMLAudioElement
   const play = document.getElementById('playback-play') as HTMLButtonElement
-  const stop = document.getElementById('playback-stop') as HTMLButtonElement
   const cancel = document.getElementById('playback-cancel') as HTMLButtonElement
   const status = document.getElementById('playback-status')!
   let generation = 0, starting = false, active = false, key = '', clock = 0, session = ''
@@ -20,13 +21,16 @@ export function installVideoPreview(api: API, project: () => Project, available:
   const currentKey = () => JSON.stringify({ ...project(), previewFrame: 0 })
   function controls() {
     play.disabled = !available() || starting
-    play.textContent = active && !audio.paused ? 'Pause' : 'Play'
-    play.setAttribute('aria-pressed', String(active && !audio.paused))
-    stop.disabled = !active && !starting; cancel.hidden = !starting
-    ;(document.getElementById('refresh-still') as HTMLButtonElement).disabled = active
+    const playing = active && !audio.paused
+    play.classList.toggle('is-playing', playing)
+    play.setAttribute('aria-label', playing ? 'Pause preview' : 'Play preview')
+    play.title = `${playing ? 'Pause' : 'Play'} preview (Space)`
+    play.setAttribute('aria-pressed', String(playing))
+    cancel.hidden = !starting
+    ;(document.getElementById('refresh-still') as HTMLButtonElement).disabled = starting || playing
   }
   function showFrames() {
-    const target = Math.floor(audio.currentTime * 30)
+    const target = frameAtTime(audio.currentTime)
     while (queue.length && queue[0].frameIndex <= target) {
       const frame = queue.shift()!
       paint(decodeAnalysis(frame), frame.frameIndex, frame.sampleRate)
@@ -61,6 +65,7 @@ export function installVideoPreview(api: API, project: () => Project, available:
   }
   async function begin(seconds: number, resume: boolean) {
     const request = ++generation
+    cancelStill()
     pause(); active = false; starting = true; fetching = false; exhausted = false; queue = []
     key = currentKey(); controls(); status.textContent = 'Starting preview…'
     document.getElementById('preview-busy')!.hidden = true
@@ -68,9 +73,10 @@ export function installVideoPreview(api: API, project: () => Project, available:
     try {
       await cancelTask
       if (request !== generation) return
-      const frame = Math.max(0, Math.floor(seconds * 30))
+      const frame = frameAtTime(seconds)
       const result = await api.preparePlayback(project(), frame)
       if (request !== generation) return
+      if (result.superseded) { reset('Preview cancelled.'); return }
       session = result.session; queue = result.frames; lastFrame = frame - 1
       await new Promise<void>((resolve, reject) => {
         const cleanup = () => { clearTimeout(timer); audio.removeEventListener('loadedmetadata', loaded); audio.removeEventListener('error', failed) }
@@ -103,7 +109,6 @@ export function installVideoPreview(api: API, project: () => Project, available:
     controls()
   }
   play.addEventListener('click', () => { void toggle() })
-  stop.addEventListener('click', () => reset('Playback stopped. The canvas remains editable.'))
   cancel.addEventListener('click', () => reset('Preview cancelled.'))
   document.getElementById('playback-muted')!.addEventListener('change', event => { audio.muted = (event.target as HTMLInputElement).checked })
   audio.addEventListener('play', () => { controls(); tick() })
@@ -123,7 +128,7 @@ export function installVideoPreview(api: API, project: () => Project, available:
     reset, pause,
     sync() { if (key && key !== currentKey()) reset('Composition changed. Press Play to continue.'); controls() },
     seek(seconds: number) {
-      if (!active && !starting) return false
+      if (!available()) return false
       const resume = !audio.paused
       // A seek can interrupt an unresolved audio.play() promise. Its AbortError
       // belongs to the old position and must not cancel this new seek.

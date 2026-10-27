@@ -1,0 +1,18 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const { formatTimecode, parseTimecode, frameAtTime } = require('../timecode.cjs')
+test('timecode formats millisecond precision and hour rollovers', () => {
+  assert.equal(formatTimecode(0), '00:00.000')
+  assert.equal(formatTimecode(30.5), '00:30.500')
+  assert.equal(formatTimecode(1 / 30), '00:00.033')
+  assert.equal(formatTimecode(59.9999), '01:00.000')
+  assert.equal(formatTimecode(3661.234), '01:01:01.234')
+  assert.equal(frameAtTime(30.033333), 901)
+  assert.equal(frameAtTime(30.02), 900)
+})
+test('timecode accepts seconds and structured time while rejecting malformed input', () => {
+  assert.equal(parseTimecode('30.5'), 30.5)
+  assert.equal(parseTimecode(' 01:30.500 '), 90.5)
+  assert.equal(parseTimecode('01:01:01.234'), 3661.234)
+  for (const value of ['', '-1', 'abc', '1:60', '1:99:00', '1::2', '1:2:3:4', 'Infinity']) assert.equal(parseTimecode(value), null)
+})

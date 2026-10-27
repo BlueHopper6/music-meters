@@ -19,6 +19,8 @@ module.exports = async function repeatSmoke(win) {
   }
   await evaluate(`(() => { const input = document.getElementById('time-input'); input.value = '1';
     input.dispatchEvent(new Event('change', { bubbles: true })); return true })()`)
+  await waitFor('document.getElementById("stage").dataset.previewFrame === "30" && document.getElementById("playback-cancel").hidden', 'fast seek')
+  await evaluate('document.getElementById("refresh-still").click()')
   await waitFor('document.querySelector("#status").textContent.includes("Real Prism meter still at 1.00 s") && document.querySelector("#preview-busy").hidden', 'real preview')
   await delay(500)
   async function stageClick(stageX, stageY) {

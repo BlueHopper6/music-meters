@@ -20,6 +20,8 @@ module.exports = async function longPreview(win) {
   }
   async function selectTime(seconds, name) {
     await evaluate(`(() => { const input=document.querySelector('#time-input'); input.value=${JSON.stringify(String(seconds))}; input.dispatchEvent(new Event('change',{bubbles:true})); return true })()`)
+    await waitFor(`document.getElementById('stage').dataset.previewFrame === '${Math.round(seconds * 30)}' && document.getElementById('playback-cancel').hidden`, 'fast seek')
+    await evaluate('document.getElementById("refresh-still").click()')
     await waitFor(`document.querySelector('#status').textContent.includes('Real Prism') && document.querySelector('#status').textContent.includes('${Number(seconds).toFixed(2)} s')`, name)
     const image = await evaluate('document.querySelector("#stage").toDataURL("image/png").split(",")[1]')
     const target = path.join(DEST, name)

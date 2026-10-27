@@ -91,6 +91,8 @@ module.exports = async function portraitSmoke(win) {
   await delay(100)
   assert.equal(await evaluate('document.querySelector("#layer-y").value'), '950')
   await change('time-input', 1)
+  await wait('document.getElementById("stage").dataset.previewFrame === "30" && document.getElementById("playback-cancel").hidden', 'fast seek')
+  await click('refresh-still')
   await wait('document.querySelector("#status").textContent.includes("Real Prism meter still at 1.00 s") && document.querySelector("#preview-busy").hidden', 'portrait analysis')
   await click('save-project')
   await wait('document.querySelector("#status").textContent.includes("Saved project")', 'portrait save')

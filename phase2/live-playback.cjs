@@ -71,30 +71,37 @@ class LivePlayback {
   async open(project, metadata, frame) {
     const generation = ++this.generation
     await this.stopWorkers()
-    if (generation !== this.generation) throw new Error('Playback superseded')
+    if (generation !== this.generation) return { superseded: true }
     const groups = analysisLanes(project, metadata.sampleRate)
     const lanes = groups.map(() => new Lane(this.script)); this.lanes = lanes
     try {
       const frames = mergeFrames(await Promise.all(lanes.map((lane, index) => lane.request({
         type: 'open', input: project.audioPath, metadata, layers: groups[index], frame, count: 4,
       }))))
-      if (generation !== this.generation) throw new Error('Playback superseded')
+      if (generation !== this.generation) return { superseded: true }
       this.session = randomUUID()
       const type = { '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.flac': 'audio/flac' }[path.extname(project.audioPath).toLowerCase()]
       this.media = { path: project.audioPath, url: `musicmeters-preview://audio/${this.session}`, type }
       return { session: this.session, url: this.media.url, frames }
-    } catch (error) { if (generation === this.generation) await this.cancel(); throw error }
+    } catch (error) {
+      if (generation !== this.generation) return { superseded: true }
+      await this.cancel(); throw error
+    }
   }
   async pull(session, count) {
-    if (!this.session || session !== this.session) throw new Error('Playback session is no longer active')
     if (!Number.isSafeInteger(count) || count < 1 || count > 6) throw new Error('Invalid playback buffer size')
+    if (typeof session !== 'string') throw new Error('Invalid playback session')
+    if (!this.session || session !== this.session) return []
     if (this.pulling) throw new Error('Playback request already pending')
     const lanes = this.lanes, generation = this.generation
     this.pulling = true
     try {
       const result = mergeFrames(await Promise.all(lanes.map(lane => lane.request({ type: 'pull', count }))))
-      if (generation !== this.generation) throw new Error('Playback superseded')
+      if (generation !== this.generation) return []
       return result
+    } catch (error) {
+      if (generation !== this.generation) return []
+      throw error
     } finally { this.pulling = false }
   }
 }

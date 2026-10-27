@@ -21,6 +21,10 @@ module.exports = async function editorSmoke(win) {
   }
   async function setInput(id, value) {
     await evaluate(`(() => { const input = document.getElementById(${JSON.stringify(id)}); input.value = ${JSON.stringify(String(value))}; input.dispatchEvent(new Event('change', { bubbles: true })); return true })()`)
+    if (id === 'time-input') {
+      await waitFor(`document.getElementById('stage').dataset.previewFrame === '${Math.round(Number(value) * 30)}' && document.getElementById('playback-cancel').hidden`, 'fast seek before full-history check')
+      await click('refresh-still')
+    }
   }
   async function click(id) {
     await evaluate(`document.getElementById(${JSON.stringify(id)}).click()`)

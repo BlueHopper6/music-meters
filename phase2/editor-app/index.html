@@ -162,16 +162,17 @@
         <div id="preview-busy" class="preview-busy" role="status" hidden>Analyzing preview…</div>
       </div><button id="exit-fullscreen-preview" type="button" class="exit-fullscreen-btn" title="Exit full screen (Esc)" hidden>Exit full screen · Esc</button></div>
       <div class="timeline">
+        <div class="timeline-top"><div><span class="eyebrow">AUDIO PREVIEW</span><strong id="audio-name">No audio imported</strong></div><div class="audio-source-actions"><span id="audio-details">Choose a WAV, MP3, or FLAC file</span><button id="import-audio" type="button">Import audio</button></div></div>
+        <div id="missing-media" class="missing-media" hidden></div>
         <div class="playback-controls" role="group" aria-label="Preview playback">
-          <button id="playback-play" type="button" disabled title="Play/pause preview (Space)">Play preview</button>
-          <button id="playback-stop" type="button" disabled>Back to editing</button>
+          <button id="playback-play" type="button" class="transport-button" disabled aria-label="Play preview" aria-pressed="false" title="Play preview (Space)"><svg class="play-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m6 3 11 7-11 7Z"/></svg><svg class="pause-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h4v14H5zm7 0h4v14h-4z"/></svg></button>
+          <div class="timecode-group"><button id="time-display" type="button" title="Jump to time">00:00.000</button><input id="time-input" type="text" aria-label="Jump to timecode" autocomplete="off" spellcheck="false" value="0" hidden><span class="timecode-divider" aria-hidden="true">/</span><span id="time-duration" aria-label="Total duration">00:00.000</span></div>
           <button id="playback-cancel" type="button" hidden>Cancel</button>
           <label><input id="playback-muted" type="checkbox"> Mute</label>
-          <span id="playback-status" role="status">Play from the current position.</span>
+          <div class="time-readout-group"><button id="refresh-still" title="Analyze the entire audio history up to the current position">Full-history still</button></div>
         </div>
-        <div class="timeline-top"><div><span class="eyebrow">AUDIO STILL</span><strong id="audio-name">No audio imported</strong></div><div class="audio-source-actions"><span id="audio-details">Choose a WAV, MP3, or FLAC file</span><button id="import-audio" type="button">Import audio</button></div></div>
-        <div id="missing-media" class="missing-media" hidden></div>
-        <div class="time-controls"><input id="time-slider" type="range" min="0" max="0" step="1" value="0" aria-label="Preview timestamp"><div class="time-readout-group"><label>Time <input id="time-input" type="number" min="0" step="0.033333" value="0"> s</label><span id="preview-stale" class="preview-stale" role="status" hidden>Still out of date</span><button id="refresh-still">Refresh still</button></div></div>
+        <div class="time-controls"><input id="time-slider" type="range" min="0" max="0" step="1" value="0" aria-label="Preview timestamp"></div>
+        <div class="preview-notes"><span id="playback-status" role="status">Play from the current position.</span><span id="preview-stale" class="preview-stale" role="status" hidden>Still out of date</span></div>
         <div class="timeline-footer">
           <div id="status" class="status" role="status">Ready. Import audio to see a real vectorscope still.</div>
           <div class="progress-track"><div id="progress-bar"></div></div>

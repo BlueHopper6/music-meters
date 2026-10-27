@@ -182,7 +182,9 @@ module.exports = async function startupSmoke(win) {
     const time = document.getElementById('time-input'); time.value = '4';
     time.dispatchEvent(new Event('change', { bubbles: true })); return true;
   })()`)
-  await waitFor('document.getElementById("status").textContent.includes("Real Prism meter still at 4.00 s.")', 'preview at saved marker')
+  await waitFor('document.getElementById("stage").dataset.previewFrame === "120" && document.getElementById("playback-cancel").hidden', 'fast preview at saved marker')
+  await click('refresh-still')
+  await waitFor('document.getElementById("status").textContent.includes("Real Prism meter still at 4.00 s.")', 'full-history preview at saved marker')
   await click('save-project')
   await waitFor('document.querySelector("#status").textContent.includes("Saved project:")', 'project save completed')
   const statusText = await evaluate('document.querySelector("#status").textContent')

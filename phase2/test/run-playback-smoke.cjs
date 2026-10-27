@@ -31,6 +31,7 @@ async function main() {
   const result = fs.readFileSync(logPath, 'utf8')
   assert.equal(code, 0, result)
   assert.ok(result.includes('"event":"playback-smoke","status":"PASS"'), result)
+  assert.ok(!result.includes('Playback superseded') && !result.includes('Premature close'), 'Expected cancellation must not log errors')
   console.log(JSON.stringify({ dir, playbackSmoke: 'PASS' }))
 }
 main().catch(error => { console.error(error.stack || error); process.exitCode = 1 })
