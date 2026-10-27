@@ -343,10 +343,34 @@ module.exports = async function startupSmoke(win) {
   assert.equal(await evaluate('document.getElementById("export-modal").hidden && !document.getElementById("editor-screen").inert'), true)
   await click('unsaved-changes-cancel')
   assert.equal(win.isDestroyed(), false)
+  await click('toolbar-file')
+  await click('quit-app')
+  await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'File Quit dirty guard')
+  await click('unsaved-changes-cancel')
+  assert.equal(win.isDestroyed(), false)
+  assert.equal(await evaluate('document.title.endsWith("*")'), true)
+
+  // Canceling the native Save dialog during Quit must preserve the dirty project.
+  const originalSaveDialog = dialog.showSaveDialog
+  dialog.showSaveDialog = async () => ({ canceled: true, filePath: undefined })
+  const originalSavePath = process.env.PHASE2_TEST_SAVE_PATH
+  delete process.env.PHASE2_TEST_SAVE_PATH
+  try {
+    await click('toolbar-file'); await click('quit-app')
+    await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'Quit save prompt')
+    await click('unsaved-changes-save')
+    await delay(150)
+    assert.equal(win.isDestroyed(), false)
+    assert.equal(await evaluate('document.title.endsWith("*")'), true)
+  } finally {
+    dialog.showSaveDialog = originalSaveDialog
+    if (originalSavePath !== undefined) process.env.PHASE2_TEST_SAVE_PATH = originalSavePath
+  }
   await shortcut('W')
   await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'Ctrl+W project-close guard before shutdown')
   await click('unsaved-changes-discard')
   await waitFor('!document.getElementById("project-manager-screen").hidden', 'project manager after caption close cancelled')
-  console.log(JSON.stringify({ event: 'startup-smoke', status: 'PASS', captionClose: 'dirty guard and cancel preserved' }))
-  app.quit()
+  win.once('closed', () => console.log(JSON.stringify({ event: 'startup-smoke', status: 'PASS',
+    captionClose: 'dirty guard and cancel preserved', quit: 'File guard, cancelled save, Project Manager shutdown' })))
+  await click('pm-quit')
 }
