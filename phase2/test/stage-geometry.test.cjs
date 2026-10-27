@@ -1,5 +1,14 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+
+test('portrait dragging, edge snapping and aspect resize use portrait bounds', () => {
+  const { move, resize } = require('../stage-geometry.cjs')
+  const box = { x: 30, y: 950, w: 200, h: 200 }
+  assert.deepEqual(move(box, 1000, 1000, true, 0, 720, 1280), { x: 520, y: 1080, guideX: 720, guideY: 1280 })
+  const sized = resize(box, 300, 300, 80, true, false, 0, 720, 1280)
+  assert.equal(sized.w, 330)
+  assert.equal(sized.h, 330)
+})
 const { move, resize } = require('../stage-geometry.cjs')
 
 test('stage movement snaps edges and center with guide positions', () => {

@@ -60,6 +60,9 @@ async function main() {
   if (code !== 0) {
     throw new Error(`Startup smoke test failed with exit code ${code}`)
   }
+  if (!logContent.includes('"event":"startup-smoke","status":"PASS"')) {
+    throw new Error('Startup smoke exited before reporting completion')
+  }
   console.log('PASS: Startup splash and Project Manager smoke test passed cleanly!')
 }
 

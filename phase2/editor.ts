@@ -1,8 +1,9 @@
 import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type VectorscopeLayer, type SpectrumLayer,
   type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer, type LoudnessLayer, type WaterfallLayer,
   type ImageLayer, type TextLayer, type Background } from './composition'
-import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject } from './project.cjs'
+import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject, fitLayer, orientProject, exportDimensions } from './project.cjs'
 import { move as moveOnStage, resize as resizeOnStage } from './stage-geometry.cjs'
+import { installCommandMenus } from './command-menus'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number; codecName: string }
 type TemplateEntry = { id: string; name: string; builtIn: boolean }
@@ -12,6 +13,12 @@ type Initial = { project: Project; metadata: Metadata | null; projectPath: strin
   templates: TemplateEntry[]; preferences: { exportPreset: string; lastTemplateId: string; recentProjects?: RecentProject[] };
   missingMedia: MissingMedia[]; isStartupSession?: boolean; isAutomatedTest?: boolean }
 type Desktop = {
+  toggleWindowFullscreen(): Promise<void>
+  minimizeWindow(): Promise<void>
+  maximizeWindow(): Promise<void>
+  closeWindow(): Promise<void>
+  windowState(): Promise<{ fullscreen: boolean; maximized: boolean }>
+  onWindowState(listener: (state: { fullscreen: boolean; maximized: boolean }) => void): () => void
   initial(): Promise<Initial>
   chooseAudio(): Promise<{ path: string; metadata: Metadata } | null>
   chooseImage(): Promise<string | null>
@@ -42,7 +49,8 @@ type Desktop = {
   renameTemplate(id: string, name: string): Promise<TemplateEntry>
   deleteTemplate(id: string): Promise<{ id: string; name: string }>
   setExportPreset(preset: string): Promise<void>
-  renderVideo(project: Project, preset: string, audioMode: string): Promise<string | null>
+  chooseExportDestination(project: Project, audioMode: string): Promise<string | null>
+  renderVideo(project: Project, preset: string, audioMode: string, destination?: string): Promise<string | null>
   cancelRender(): Promise<void>
   confirmAppClose(): Promise<void>
   onAppCloseRequested(listener: () => void): () => void
@@ -74,6 +82,9 @@ let resolveTemplateConflict: ((choice: 'replace' | 'rename') => void) | null = n
 let managerEditingId: string | null = null
 let managerDeletingId: string | null = null
 let isAutomatedTestSession = false
+let exportDestination = ''
+let exportSubmitting = false
+let templateManagerReturnFocus: HTMLElement | null = null
 
 function selected() { return project.layers.find(layer => layer.id === selectedId) }
 function selectLayer(id: string | null) {
@@ -122,8 +133,16 @@ function isProjectDirty(): boolean {
 }
 
 function updateTitleDirtyIndicator() {
+  const inProject = $('project-manager-screen').hidden && $('splash-screen').hidden
+  $('window-project-title').hidden = !inProject
+  if (!inProject) {
+    $('window-project-title').textContent = ''
+    document.title = 'MusicMeters'
+    return
+  }
   const dirty = isProjectDirty()
   const baseTitle = project.title || 'Untitled track'
+  $('window-project-title').textContent = `${baseTitle}${dirty ? ' •' : ''}`
   document.title = dirty ? `MusicMeters — ${baseTitle} *` : `MusicMeters — ${baseTitle}`
 }
 
@@ -146,6 +165,17 @@ function closeUnsavedChangesModal() {
 }
 
 function render() {
+  if (canvas.width !== project.width || canvas.height !== project.height) {
+    canvas.width = project.width; canvas.height = project.height
+    composition.dispose()
+  }
+  stageWrap.style.setProperty('--stage-ratio', String(project.width / project.height))
+  ;($<HTMLSelectElement>('canvas-orientation')).value = project.width < project.height ? 'portrait' : 'landscape'
+  ;($<HTMLInputElement>('layer-x')).max = String(project.width)
+  ;($<HTMLInputElement>('layer-w')).max = String(project.width)
+  ;($<HTMLInputElement>('layer-y')).max = String(project.height)
+  ;($<HTMLInputElement>('layer-h')).max = String(project.height)
+  refreshExportResolution()
   composition.render(project, analysis, frameIndex, sampleRate)
   updateSelection()
   updateTitleDirtyIndicator()
@@ -157,10 +187,10 @@ function updateSelection() {
   ;($<HTMLInputElement>('layer-h')).min = String(minimum)
   selection.hidden = !layer || !layer.visible
   if (!layer) return
-  selection.style.left = `${layer.x / 1280 * 100}%`
-  selection.style.top = `${layer.y / 720 * 100}%`
-  selection.style.width = `${layer.w / 1280 * 100}%`
-  selection.style.height = `${layer.h / 720 * 100}%`
+  selection.style.left = `${layer.x / project.width * 100}%`
+  selection.style.top = `${layer.y / project.height * 100}%`
+  selection.style.width = `${layer.w / project.width * 100}%`
+  selection.style.height = `${layer.h / project.height * 100}%`
   selection.style.transform = `rotate(${layer.rotation}deg)`
   selection.classList.toggle('locked', layer.locked)
   selection.querySelector('.selection-label')!.textContent = layer.name
@@ -574,6 +604,7 @@ function refreshInspector() {
   }
 }
 function refreshAudio() {
+  $('import-audio').textContent = project.audioPath ? 'Replace audio' : 'Import audio'
   $('audio-name').textContent = project.audioPath ? project.audioPath.split(/[\\/]/).pop() || project.audioPath : 'No audio imported'
   $('audio-details').textContent = metadata
     ? `${metadata.channels === 1 ? 'Mono' : 'Stereo'} · ${(metadata.sampleRate / 1000).toFixed(1)} kHz · ${metadata.duration.toFixed(2)} s`
@@ -629,6 +660,8 @@ function refreshTemplates(entries: TemplateEntry[], preferred = '') {
   if (!$('template-manager-modal').hidden) renderTemplateManager()
 }
 function resetSongPreview() {
+  exportDestination = ''
+  ;($<HTMLInputElement>('export-destination')).value = ''
   if (previewTimer) clearTimeout(previewTimer)
   previewRequest++
   void window.desktop.cancelPreview().catch(() => {})
@@ -711,16 +744,16 @@ for (const [id, property] of [['layer-x', 'x'], ['layer-y', 'y'], ['layer-w', 'w
     const value = Math.round(Number((event.target as HTMLInputElement).value))
     if (!Number.isFinite(value)) return refreshInspector()
     const original = { ...layer }
-    if (property === 'x') layer.x = Math.max(0, Math.min(1280 - layer.w, value))
-    if (property === 'y') layer.y = Math.max(0, Math.min(720 - layer.h, value))
+    if (property === 'x') layer.x = Math.max(0, Math.min(project.width - layer.w, value))
+    if (property === 'y') layer.y = Math.max(0, Math.min(project.height - layer.h, value))
     const minimum = layer.type === 'text' ? 20 : layer.type === 'image' ? 40 : 80
     if (layer.aspectLocked && (property === 'w' || property === 'h')) {
       const proportional = resizeOnStage(original, property === 'w' ? value - original.w : 0,
-        property === 'h' ? value - original.h : 0, minimum, true)
+        property === 'h' ? value - original.h : 0, minimum, true, false, 0, project.width, project.height)
       layer.w = proportional.w; layer.h = proportional.h
     } else {
-      if (property === 'w') layer.w = Math.max(minimum, Math.min(1280 - layer.x, value))
-      if (property === 'h') layer.h = Math.max(minimum, Math.min(720 - layer.y, value))
+      if (property === 'w') layer.w = Math.max(minimum, Math.min(project.width - layer.x, value))
+      if (property === 'h') layer.h = Math.max(minimum, Math.min(project.height - layer.y, value))
     }
     repaint()
     if ((layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'waterfall') && (property === 'w' || property === 'h')) markPreviewStale()
@@ -1007,8 +1040,8 @@ function showSnapGuides(x: number | null, y: number | null) {
   const horizontal = $<HTMLDivElement>('snap-guide-y')
   vertical.hidden = x === null
   horizontal.hidden = y === null
-  if (x !== null) vertical.style.left = `${x / 1280 * 100}%`
-  if (y !== null) horizontal.style.top = `${y / 720 * 100}%`
+  if (x !== null) vertical.style.left = `${x / project.width * 100}%`
+  if (y !== null) horizontal.style.top = `${y / project.height * 100}%`
 }
 $<HTMLInputElement>('snap-enabled').addEventListener('change', () => showSnapGuides(null, null))
 selection.addEventListener('pointerdown', event => {
@@ -1023,13 +1056,13 @@ selection.addEventListener('pointermove', event => {
   const layer = selected()
   if (!drag || !layer) return
   const rect = stageWrap.getBoundingClientRect()
-  const dx = Math.round((event.clientX - drag.x) * 1280 / rect.width)
-  const dy = Math.round((event.clientY - drag.y) * 720 / rect.height)
+  const dx = Math.round((event.clientX - drag.x) * project.width / rect.width)
+  const dy = Math.round((event.clientY - drag.y) * project.height / rect.height)
   const snapping = $<HTMLInputElement>('snap-enabled').checked
   const grid = Number($<HTMLSelectElement>('snap-grid').value)
   const start = { x: drag.startX, y: drag.startY, w: drag.startW, h: drag.startH }
   if (drag.mode === 'move') {
-    const moved = moveOnStage(start, dx, dy, snapping, grid)
+    const moved = moveOnStage(start, dx, dy, snapping, grid, project.width, project.height)
     layer.x = moved.x; layer.y = moved.y
     showSnapGuides(moved.guideX, moved.guideY)
   } else {
@@ -1037,7 +1070,7 @@ selection.addEventListener('pointermove', event => {
     const angle = -layer.rotation * Math.PI / 180
     const localDx = dx * Math.cos(angle) - dy * Math.sin(angle)
     const localDy = dx * Math.sin(angle) + dy * Math.cos(angle)
-    const resized = resizeOnStage(start, localDx, localDy, minimum, layer.aspectLocked, snapping, grid)
+    const resized = resizeOnStage(start, localDx, localDy, minimum, layer.aspectLocked, snapping, grid, project.width, project.height)
     layer.w = resized.w; layer.h = resized.h
     showSnapGuides(resized.guideX, resized.guideY)
   }
@@ -1053,8 +1086,8 @@ selection.addEventListener('lostpointercapture', finishDrag)
 canvas.addEventListener('pointerdown', event => {
   if (event.button !== 0 || document.body.classList.contains('stage-fullscreen')) return
   const bounds = canvas.getBoundingClientRect()
-  const x = (event.clientX - bounds.left) * 1280 / bounds.width
-  const y = (event.clientY - bounds.top) * 720 / bounds.height
+  const x = (event.clientX - bounds.left) * project.width / bounds.width
+  const y = (event.clientY - bounds.top) * project.height / bounds.height
   const hit = [...project.layers].reverse().find(layer => {
     if (!layer.visible) return false
     const centerX = layer.x + layer.w / 2
@@ -1109,6 +1142,10 @@ function addLayer(type = ($<HTMLSelectElement>('add-type')).value) {
   } else {
     project.layers.push(vectorscopeLayer(id, `Vectorscope ${project.layers.length + 1}`) as VectorscopeLayer)
     if (metadata) markPreviewStale()
+  }
+  const added = project.layers.findIndex(layer => layer.id === id)
+  if (project.width !== 1280 || project.height !== 720) {
+    project.layers[added] = fitLayer(project.layers[added], 1280, 720, project.width, project.height) as Project['layers'][number]
   }
   selectedId = id; repaint()
 }
@@ -1194,7 +1231,7 @@ $('duplicate-layer').addEventListener('click', () => {
   const layer = selected(); if (!layer) return
   if (project.layers.length >= 32) return setStatus('The project supports at most 32 layers.')
   const copy = { ...layer, id: nextId(), name: `${layer.name} copy`.slice(0, 80), locked: false,
-    x: Math.min(layer.x + 20, 1280 - layer.w), y: Math.min(layer.y + 20, 720 - layer.h) }
+    x: Math.min(layer.x + 20, project.width - layer.w), y: Math.min(layer.y + 20, project.height - layer.h) }
   project.layers.splice(project.layers.indexOf(layer) + 1, 0, copy)
   if ((copy.type === 'spectrum' || copy.type === 'oscilloscope' || copy.type === 'spectrogram' || copy.type === 'waveform' || copy.type === 'vu' || copy.type === 'loudness' || copy.type === 'waterfall' || (copy.type === 'vectorscope' && copy.multiband)) && metadata) markPreviewStale()
   selectedId = copy.id; repaint()
@@ -1344,8 +1381,12 @@ $<HTMLSelectElement>('template-list').addEventListener('change', () => {
 })
 function refreshExportResolution() {
   const preset = ($<HTMLSelectElement>('export-preset')).value
-  const exportSize = preset === '720p' ? '1280 × 720' : '1920 × 1080'
-  $('stage-resolution').textContent = `Layout 1280 × 720 · Export ${exportSize} · 16:9`
+  const size = exportDimensions(project, preset)
+  const ratio = project.width < project.height ? '9:16' : '16:9'
+  $('stage-resolution').textContent = `Layout ${project.width} × ${project.height} · Export ${size.width} × ${size.height} · ${ratio}`
+  $('stage-resolution').title = 'Layer coordinates use the saved canvas dimensions; export scales the composition uniformly.'
+  ;($<HTMLSelectElement>('export-preset')).options[0].text = `1080p · ${project.width < project.height ? '1080 × 1920' : '1920 × 1080'}`
+  ;($<HTMLSelectElement>('export-preset')).options[1].text = `720p · ${project.width} × ${project.height}`
 }
 $<HTMLSelectElement>('export-preset').addEventListener('change', async event => {
   refreshExportResolution()
@@ -1354,7 +1395,10 @@ $<HTMLSelectElement>('export-preset').addEventListener('change', async event => 
 })
 $<HTMLSelectElement>('audio-mode').addEventListener('change', event => {
   const copy = (event.target as HTMLSelectElement).value === 'copy'
-  $('render-mp4').textContent = copy ? 'Render MKV' : 'Render MP4'
+  $('render-mp4').textContent = copy ? 'Export MKV' : 'Export MP4'
+  exportDestination = ''
+  ;($<HTMLInputElement>('export-destination')).value = ''
+  updateExportDialog()
 })
 function closeTemplateConflict(choice: 'replace' | 'rename') {
   if (!resolveTemplateConflict) return
@@ -1451,13 +1495,16 @@ $('save-template-confirm').addEventListener('click', async () => {
   try {
     const input = $<HTMLInputElement>('template-name')
     await executeSaveTemplate(input.value.trim())
+    if ($('save-template-modal').hidden) $('toolbar-templates').focus()
   } catch (error) { setStatus(String(error)) }
 })
 $('save-template-cancel').addEventListener('click', () => {
   $('save-template-modal').hidden = true
+  $('toolbar-templates').focus()
 })
 $('save-template-close').addEventListener('click', () => {
   $('save-template-modal').hidden = true
+  $('toolbar-templates').focus()
 })
 $<HTMLInputElement>('template-name').addEventListener('keydown', event => {
   if (event.key === 'Enter') {
@@ -1476,7 +1523,7 @@ function closeTemplateManager() {
   managerEditingId = null
   managerDeletingId = null
   $('template-manager-modal').hidden = true
-  $('open-template-manager').focus()
+  ;(templateManagerReturnFocus || $('open-template-manager')).focus()
 }
 function focusManagerAction(id: string, action: string) {
   const row = Array.from($('template-manager-custom').querySelectorAll<HTMLElement>('.template-manager-row'))
@@ -1713,6 +1760,7 @@ function renderTemplateManager() {
   }
 }
 $('open-template-manager').addEventListener('click', async () => {
+  templateManagerReturnFocus = $('project-manager-screen').hidden ? $('toolbar-templates') : $('open-template-manager')
   try {
     managerEditingId = null
     managerDeletingId = null
@@ -1863,6 +1911,7 @@ function showProjectManager() {
   managerStatus.hidden = true
   $<HTMLDivElement>('project-manager-screen').hidden = false
   $<HTMLDivElement>('editor-screen').hidden = true
+  updateTitleDirtyIndicator()
 }
 
 function showEditor() {
@@ -2032,6 +2081,9 @@ $('unsaved-changes-save').addEventListener('click', async () => {
   }
 })
 window.desktop.onAppCloseRequested(() => {
+  $('export-modal').hidden = true
+  $('about-modal').hidden = true
+  $('editor-screen').inert = false
   if ($('editor-screen').hidden || !isProjectDirty()) {
     window.desktop.confirmAppClose()
     return
@@ -2067,19 +2119,28 @@ $('template-picker-create').addEventListener('click', async () => {
 })
 
 $('render-mp4').addEventListener('click', async () => {
-  if (exportRunning) return
+  if (exportRunning || exportSubmitting) return
   if (!metadata || !project.audioPath) return setStatus('Import audio before rendering.')
+  exportSubmitting = true
+  ;($<HTMLButtonElement>('render-mp4')).disabled = true
+  ;($<HTMLButtonElement>('choose-export-destination')).disabled = true
   try {
     refreshExportResolution()
     const output = await window.desktop.renderVideo(project, ($<HTMLSelectElement>('export-preset')).value,
-      ($<HTMLSelectElement>('audio-mode')).value)
+      ($<HTMLSelectElement>('audio-mode')).value, exportDestination)
     if (!output) return
     exportRunning = true
+    exportDestination = ''
+    ;($<HTMLInputElement>('export-destination')).value = ''
+    closeExportDialog()
+    ;($<HTMLButtonElement>('open-export')).disabled = true
     ;($<HTMLButtonElement>('render-mp4')).disabled = true
     ;($<HTMLSelectElement>('audio-mode')).disabled = true
     $('cancel-render').hidden = false
+    $('export-running-label').hidden = false
     setStatus(`Rendering to ${output}`)
-  } catch (error) { setStatus(String(error)) }
+  } catch (error) { setStatus(String(error)); $('export-dialog-status').textContent = String(error) }
+  finally { exportSubmitting = false; updateExportDialog() }
 })
 $('cancel-render').addEventListener('click', async () => {
   await window.desktop.cancelRender()
@@ -2114,9 +2175,11 @@ window.desktop.onExport(event => {
   }
   if (event.event === 'finished' || event.event === 'failed' || event.event === 'cancelled') {
     exportRunning = false;
+    ;($<HTMLButtonElement>('open-export')).disabled = false
     ;($<HTMLButtonElement>('render-mp4')).disabled = false
     ;($<HTMLSelectElement>('audio-mode')).disabled = false
     $('cancel-render').hidden = true
+    $('export-running-label').hidden = true
     const container = String(event.output).toLowerCase().endsWith('.mkv') ? 'MKV' : 'MP4'
     setStatus(event.event === 'finished' ? `${container} ready: ${event.output}`
       : event.event === 'cancelled' ? 'Export cancelled. No video was saved.'
@@ -2210,3 +2273,114 @@ async function start() {
   }
 }
 start().catch(error => setStatus(String(error)))
+
+$<HTMLSelectElement>('canvas-orientation').addEventListener('change', event => {
+  try {
+    upgradeProject()
+    project = orientProject(project, (event.target as HTMLSelectElement).value) as Project
+    analysis = emptyAnalysis()
+    showSnapGuides(null, null)
+    markPreviewStale()
+    repaint()
+    setStatus('Canvas orientation changed. Layout fitted without cropping; adjust layers as needed and refresh the still.')
+  } catch (error) { setStatus(String(error)); render() }
+})
+function updateWindowState(state: { fullscreen: boolean; maximized: boolean }) {
+  document.body.classList.toggle('window-fullscreen', state.fullscreen)
+  document.body.classList.toggle('window-restorable', state.maximized || state.fullscreen)
+  const button = $('window-maximize')
+  const label = state.fullscreen ? 'Exit fullscreen' : state.maximized ? 'Restore' : 'Maximize'
+  button.setAttribute('aria-label', label)
+  button.title = label
+}
+window.desktop.onWindowState(updateWindowState)
+void window.desktop.windowState().then(updateWindowState).catch(error => setStatus(String(error)))
+for (const [id, action] of [['window-minimize', window.desktop.minimizeWindow],
+  ['window-maximize', window.desktop.maximizeWindow], ['window-close', window.desktop.closeWindow]] as const) {
+  $(id).addEventListener('click', () => { void action().catch(error => setStatus(String(error))) })
+}
+window.addEventListener('keydown', event => {
+  if (event.key === 'F11') {
+    event.preventDefault()
+    void window.desktop.toggleWindowFullscreen().catch(error => setStatus(String(error)))
+  } else if (event.key === 'Escape' && document.body.classList.contains('window-fullscreen')) {
+    void window.desktop.toggleWindowFullscreen().catch(error => setStatus(String(error)))
+  }
+})
+
+installCommandMenus()
+$('new-project').addEventListener('click', () => {
+  confirmDiscardIfDirty(async () => {
+    try { await applyLoadedProject(await window.desktop.newBlankProject()) }
+    catch (error) { setStatus(String(error)) }
+  })
+})
+$('manage-templates').addEventListener('click', () => $('open-template-manager').click())
+
+function updateExportDialog() {
+  $('export-project-name').textContent = project.title || 'Untitled project'
+  const size = exportDimensions(project, ($<HTMLSelectElement>('export-preset')).value)
+  $('export-canvas-summary').textContent = `${project.width < project.height ? 'Portrait · 9:16' : 'Landscape · 16:9'} · ${size.width} × ${size.height} · 30 FPS`
+  $('export-audio-note').textContent = ($<HTMLSelectElement>('audio-mode')).value === 'copy'
+    ? 'Copies supported source audio without re-encoding. MP3 stays lossy; container metadata and edge padding can differ.'
+    : 'H.264 video with lossy AAC audio, targeting up to 320 kb/s. Mono and low-sample-rate sources use lower targets.'
+  ;($<HTMLButtonElement>('render-mp4')).disabled = !metadata || exportRunning || exportSubmitting
+  ;($<HTMLButtonElement>('choose-export-destination')).disabled = !metadata || exportRunning || exportSubmitting
+  ;($<HTMLSelectElement>('export-preset')).disabled = exportRunning || exportSubmitting
+  ;($<HTMLSelectElement>('audio-mode')).disabled = exportRunning || exportSubmitting
+}
+function openExportDialog() {
+  if (exportRunning) return
+  refreshExportResolution(); updateExportDialog()
+  $('export-dialog-status').textContent = metadata ? 'Existing videos are never overwritten.' : 'Import audio before exporting.'
+  $('export-modal').hidden = false
+  $('editor-screen').inert = true
+  $('export-preset').focus()
+}
+function closeExportDialog() {
+  if (exportSubmitting && !exportRunning) return
+  $('export-modal').hidden = true
+  $('editor-screen').inert = false
+  $('open-export').focus()
+}
+$('open-export').addEventListener('click', openExportDialog)
+$('export-close').addEventListener('click', closeExportDialog)
+$('export-cancel').addEventListener('click', closeExportDialog)
+$('export-preset').addEventListener('change', updateExportDialog)
+$('choose-export-destination').addEventListener('click', async () => {
+  if (exportSubmitting || exportRunning) return
+  try {
+    const path = await window.desktop.chooseExportDestination(project, ($<HTMLSelectElement>('audio-mode')).value)
+    if (path) { exportDestination = path; ($<HTMLInputElement>('export-destination')).value = path }
+  } catch (error) { $('export-dialog-status').textContent = String(error) }
+})
+function openAbout() {
+  $('about-modal').hidden = false; $('editor-screen').inert = true; $('about-close').focus()
+}
+function closeAbout() {
+  $('about-modal').hidden = true; $('editor-screen').inert = false; $('toolbar-help').focus()
+}
+$('about-app').addEventListener('click', openAbout)
+$('show-license').addEventListener('click', openAbout)
+$('about-close').addEventListener('click', closeAbout)
+for (const [id, close] of [['export-modal', closeExportDialog], ['about-modal', closeAbout]] as const) {
+  const modal = $(id)
+  modal.addEventListener('click', event => { if (event.target === modal) close() })
+  modal.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close() }
+    else if (event.key === 'Tab') {
+      const items = Array.from(modal.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled)'))
+      const first = items[0], last = items.at(-1)
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+    }
+  })
+}
+window.addEventListener('keydown', event => {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || document.querySelector('.modal-backdrop:not([hidden])') || $('editor-screen').hidden) return
+  const command = event.key.toLowerCase()
+  const id = command === 'n' ? 'new-project' : command === 'o' ? 'open-project'
+    : command === 's' ? event.shiftKey ? 'save-project-as' : 'save-project'
+    : command === 'w' ? 'close-project' : command === 'e' ? 'open-export' : ''
+  if (id) { event.preventDefault(); $(id).click() }
+})

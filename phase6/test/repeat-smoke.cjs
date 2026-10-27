@@ -111,20 +111,20 @@ module.exports = async function repeatSmoke(win) {
   fs.writeFileSync(path.join(dir, 'editor-still.png'), Buffer.from(still, 'base64'))
   fs.writeFileSync(path.join(dir, 'editor.png'), (await win.capturePage()).toPNG())
   await evaluate('document.getElementById("export-preset").value = "720p"')
-  await evaluate('document.getElementById("render-mp4").click()')
+  await evaluate('document.getElementById("open-export").click(); document.getElementById("render-mp4").click()')
   await waitFor('document.querySelector("#status").textContent.includes("MP4 ready:")', 'first export')
   const first = process.env.PHASE2_TEST_OUTPUT_PATH
   assert.ok(fs.existsSync(first))
   const second = path.join(dir, 'second-export.mp4')
   process.env.PHASE2_TEST_OUTPUT_PATH = second
-  await evaluate('document.getElementById("render-mp4").click()')
+  await evaluate('document.getElementById("open-export").click(); document.getElementById("render-mp4").click()')
   const deadline = Date.now() + 120000
   while (!fs.existsSync(second) && Date.now() < deadline) await delay(100)
   assert.ok(fs.existsSync(second))
   await waitFor('document.querySelector("#status").textContent.includes("MP4 ready:")', 'second export')
   const cancelled = path.join(dir, 'cancelled-export.mp4')
   process.env.PHASE2_TEST_OUTPUT_PATH = cancelled
-  await evaluate('document.getElementById("render-mp4").click()')
+  await evaluate('document.getElementById("open-export").click(); document.getElementById("render-mp4").click()')
   await waitFor('/^Rendering \\d+\\//.test(document.getElementById("status").textContent)', 'frames rendering before cancellation')
   await evaluate('document.getElementById("cancel-render").click()')
   await waitFor('document.getElementById("status").textContent === "Export cancelled. No video was saved."', 'clean cancellation status')
@@ -134,7 +134,7 @@ module.exports = async function repeatSmoke(win) {
   assert.equal(await evaluate('document.getElementById("render-mp4").disabled'), false)
   const recovered = path.join(dir, 'after-cancel-export.mp4')
   process.env.PHASE2_TEST_OUTPUT_PATH = recovered
-  await evaluate('document.getElementById("render-mp4").click()')
+  await evaluate('document.getElementById("open-export").click(); document.getElementById("render-mp4").click()')
   await waitFor('document.getElementById("status").textContent.includes("MP4 ready:")', 'successful export after cancellation')
   assert.ok(fs.existsSync(recovered))
   await evaluate('document.getElementById("save-project").click()')

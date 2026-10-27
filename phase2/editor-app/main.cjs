@@ -360,15 +360,9 @@ handle('open-project-path', async (_event, targetPath) => {
   if (!fs.existsSync(resolved)) throw new Error('Project file not found: ' + resolved)
   return loadProjectFromDisk(resolved)
 })
-handle('render-video', async (_event, raw, preset, audioMode) => {
-  if (exportJob) throw new Error('An export is already running')
-  if (!metadata || !activeAudio) throw new Error('Import audio before rendering')
-  if (!['720p', '1080p'].includes(preset)) throw new Error('Unsupported export preset')
+let chosenExportDestination = null
+async function chooseExportDestination(value, audioMode) {
   const format = outputFormat(audioMode)
-  if (audioMode === 'copy') validateAudioCopy(activeAudio, metadata)
-  const value = validateActiveProject(raw)
-  assetData(value)
-  writePreferences(userData(), { exportPreset: preset })
   let output = process.env.PHASE2_TEST_OUTPUT_PATH || ''
   if (!output) {
     let suggestion = suggestedOutput(value, audioMode)
@@ -389,6 +383,36 @@ handle('render-video', async (_event, raw, preset, audioMode) => {
       suggestion = output
     }
   }
+  output = resolve(output)
+  validateOutputPath(output, audioMode)
+  if (fs.existsSync(output)) throw new Error(`Output already exists: ${output}`)
+  chosenExportDestination = { output, audioMode }
+  return output
+}
+handle('choose-export-destination', async (_event, raw, audioMode) => {
+  if (exportJob) throw new Error('An export is already running')
+  if (!metadata || !activeAudio) throw new Error('Import audio before exporting')
+  if (audioMode === 'copy') validateAudioCopy(activeAudio, metadata)
+  return chooseExportDestination(validateActiveProject(raw), audioMode)
+})
+handle('render-video', async (_event, raw, preset, audioMode, destination = '') => {
+  if (exportJob) throw new Error('An export is already running')
+  if (!metadata || !activeAudio) throw new Error('Import audio before rendering')
+  if (!['720p', '1080p'].includes(preset)) throw new Error('Unsupported export preset')
+  outputFormat(audioMode)
+  if (audioMode === 'copy') validateAudioCopy(activeAudio, metadata)
+  const value = validateActiveProject(raw)
+  assetData(value)
+  writePreferences(userData(), { exportPreset: preset })
+  let output
+  if (destination) {
+    if (typeof destination !== 'string' || destination !== chosenExportDestination?.output || audioMode !== chosenExportDestination.audioMode) {
+      throw new Error('Choose an export destination through the save dialog')
+    }
+    output = destination
+  } else output = await chooseExportDestination(value, audioMode)
+  if (!output) return null
+  if (exportJob) throw new Error('An export is already running')
   output = resolve(output)
   validateOutputPath(output, audioMode)
   if (fs.existsSync(output)) throw new Error(`Output already exists: ${output}`)
@@ -437,6 +461,18 @@ handle('confirm-app-close', () => {
   forceQuit = true
   if (win && !win.isDestroyed()) win.close()
 })
+handle('toggle-window-fullscreen', () => {
+  win.setFullScreen(!win.isFullScreen())
+})
+const windowState = () => ({ fullscreen: win.isFullScreen(), maximized: win.isMaximized() })
+handle('window-state', windowState)
+handle('minimize-window', () => win.minimize())
+handle('maximize-window', () => {
+  if (win.isFullScreen()) win.setFullScreen(false)
+  else if (win.isMaximized()) win.unmaximize()
+  else win.maximize()
+})
+handle('close-window', () => win.close())
 handle('cancel-render', () => {
   if (exportJob) fs.writeFileSync(exportJob.cancelFile, 'cancel')
 })
@@ -451,12 +487,19 @@ app.whenReady().then(() => {
     previewAudioRevision++
   }
   win = new BrowserWindow({
+    titleBarStyle: 'hidden',
+    backgroundColor: '#09090b',
     width: 1480, height: 900, minWidth: 1000, minHeight: 700,
     icon: join(__dirname, 'assets', 'brand', 'music-meters.ico'),
     show: process.env.PHASE2_HEADLESS !== '1',
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true,
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   })
+  win.setMenuBarVisibility(false)
+  win.setMenu(null)
+  for (const event of ['enter-full-screen', 'leave-full-screen', 'maximize', 'unmaximize']) {
+    win.on(event, () => win.webContents.send('window-state', windowState()))
+  }
   lockWindowNavigation(win.webContents)
   win.on('close', event => {
     if (forceQuit || isAutomatedTest) return
@@ -464,9 +507,10 @@ app.whenReady().then(() => {
     win.webContents.send('app-close-requested')
   })
   return win.loadFile(editorDocument).then(async () => {
-    if (process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
+    if (process.env.PHASE2_PORTRAIT_SMOKE === '1' || process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
-        if (process.env.PHASE2_STARTUP_SMOKE === '1') await require('../test/startup-smoke.cjs')(win)
+        if (process.env.PHASE2_PORTRAIT_SMOKE === '1') await require('../test/portrait-smoke.cjs')(win)
+        else if (process.env.PHASE2_STARTUP_SMOKE === '1') await require('../test/startup-smoke.cjs')(win)
         else if (process.env.PHASE6_SECURITY_SMOKE === '1') await require('../../phase6/test/security-smoke.cjs')(win)
         else if (process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1') await require('../../phase6/test/audio-copy-editor-smoke.cjs')(win)
         else if (process.env.PHASE6_PREVIEW_PERF_SMOKE === '1') await require('../../phase6/test/preview-performance-smoke.cjs')(win)

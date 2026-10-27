@@ -17,38 +17,32 @@ module.exports = async function audioCopyEditorSmoke(win) {
     throw new Error(`Timed out waiting for ${label}: ${await evaluate('document.getElementById("status").textContent')}`)
   }
   await waitFor('document.getElementById("status").textContent.includes("Real Prism")', 'initial still')
+  win.showInactive()
   assert.equal(await evaluate('document.getElementById("audio-mode").value'), 'aac')
   assert.equal(await evaluate('document.querySelector("#audio-mode option[value=\\"aac\\"]").textContent'), 'MP4 · AAC up to 320 kb/s')
   assert.equal(await evaluate('document.querySelector("#audio-mode option[value=\\"copy\\"]").textContent'), 'MKV · Source audio copy (no re-encode)')
   assert.equal(await evaluate('document.getElementById("stage-resolution").textContent'), 'Layout 1280 × 720 · Export 1920 × 1080 · 16:9')
   await evaluate(`(() => { const mode = document.getElementById('audio-mode');
     mode.value = 'copy'; mode.dispatchEvent(new Event('change', { bubbles: true })); return true })()`)
-  assert.equal(await evaluate('document.getElementById("render-mp4").textContent'), 'Render MKV')
+  assert.equal(await evaluate('document.getElementById("render-mp4").textContent'), 'Export MKV')
   win.setSize(1000, 700)
   await delay(150)
   const toolbar = await evaluate(`(() => ({
-    brandRight: document.querySelector('.brand').getBoundingClientRect().right,
-    brandBottom: document.querySelector('.brand').getBoundingClientRect().bottom,
-    actionsLeft: document.querySelector('.toolbar-actions').getBoundingClientRect().left,
-    actionsTop: document.querySelector('.toolbar-actions').getBoundingClientRect().top,
-    actionsRight: document.querySelector('.toolbar-actions').getBoundingClientRect().right,
-    presetRight: document.getElementById('export-preset').getBoundingClientRect().right,
-    audioModeLeft: document.getElementById('audio-mode').getBoundingClientRect().left,
-    audioModeRight: document.getElementById('audio-mode').getBoundingClientRect().right,
-    renderLeft: document.getElementById('render-mp4').getBoundingClientRect().left,
-    renderRight: document.getElementById('render-mp4').getBoundingClientRect().right,
-    licenseLeft: document.querySelector('.license-disclosure').getBoundingClientRect().left,
-    licenseRight: document.querySelector('.license-disclosure').getBoundingClientRect().right,
-    viewport: innerWidth,
+    menusLeft: document.querySelector('.command-menus').getBoundingClientRect().left,
+    menusRight: document.querySelector('.command-menus').getBoundingClientRect().right,
+    actionsLeft: document.querySelector('.toolbar-primary-actions').getBoundingClientRect().left,
+    actionsRight: document.querySelector('.toolbar-primary-actions').getBoundingClientRect().right,
+    viewport: innerWidth, height: document.querySelector('.toolbar').getBoundingClientRect().height,
+    controlsLeft: document.querySelector('.window-controls').getBoundingClientRect().left,
   }))()`)
-  // Responsive toolbars may place branding above the actions at this width.
-  assert.ok((toolbar.brandRight <= toolbar.actionsLeft || toolbar.brandBottom <= toolbar.actionsTop)
-    && toolbar.actionsLeft >= 0 && toolbar.actionsRight <= toolbar.viewport
-    && toolbar.presetRight < toolbar.audioModeLeft
-    && toolbar.audioModeRight < toolbar.renderLeft
-    && toolbar.renderRight < toolbar.licenseLeft
-    && toolbar.licenseRight <= toolbar.viewport,
-    `Export controls overflow the minimum window: ${JSON.stringify(toolbar)}`)
+  assert.ok(toolbar.menusLeft >= 0 && toolbar.menusRight < toolbar.actionsLeft && toolbar.actionsRight <= toolbar.controlsLeft && toolbar.height === 40)
+  await evaluate('document.getElementById("open-export").click()')
+  const dialogBounds = await evaluate(`(() => { const r = document.querySelector('.export-card').getBoundingClientRect();
+    return { left: r.left, right: r.right, bottom: r.bottom, viewport: innerWidth, height: innerHeight }; })()`)
+  assert.ok(dialogBounds.left >= 0 && dialogBounds.right <= dialogBounds.viewport && dialogBounds.bottom <= dialogBounds.height)
+  win.webContents.invalidate(); await delay(350)
+  fs.writeFileSync(path.join(dir, 'export-dialog.png'), (await win.capturePage()).toPNG())
+  await evaluate('document.getElementById("export-cancel").click()')
   const heading = await evaluate(`(() => ({
     panelRight: document.querySelector('.center-panel').getBoundingClientRect().right,
     resolutionRight: document.getElementById('stage-resolution').getBoundingClientRect().right,
@@ -72,7 +66,7 @@ module.exports = async function audioCopyEditorSmoke(win) {
     saveOptions = options
     return { canceled: false, filePath: path.join(dir, 'Editor copy one') }
   }
-  await evaluate('document.getElementById("render-mp4").click()')
+  await evaluate('document.getElementById("open-export").click(); document.getElementById("render-mp4").click()')
   await waitFor('document.getElementById("status").textContent.includes("MKV ready:")', 'first MKV')
   dialog.showSaveDialog = originalDialog
   assert.equal(saveOptions.title, 'Render MKV video')
@@ -81,7 +75,7 @@ module.exports = async function audioCopyEditorSmoke(win) {
   assert.ok(fs.existsSync(first))
   const second = path.join(dir, 'Editor copy two.mkv')
   process.env.PHASE2_TEST_OUTPUT_PATH = second
-  await evaluate('document.getElementById("render-mp4").click()')
+  await evaluate('document.getElementById("open-export").click(); document.getElementById("render-mp4").click()')
   await waitFor(`document.getElementById('status').textContent.includes(${JSON.stringify(second)}) &&
     document.getElementById('status').textContent.includes('MKV ready:')`, 'second MKV')
   assert.ok(fs.existsSync(second))

@@ -10,6 +10,17 @@ const { readPreferences, writePreferences, recordRecentProject } = require('../.
 const root = path.resolve(__dirname, '..', '..', 'artifacts', 'phase5')
 fs.mkdirSync(root, { recursive: true })
 
+test('portrait orientation survives template save and reuse without song data', () => {
+  const { orientProject } = require('../../phase2/project.cjs')
+  const dir = fs.mkdtempSync(path.join(root, 'portrait-template-'))
+  const song = orientProject({ ...compositionProject(), audioPath: 'song-A.wav', previewFrame: 45 }, 'portrait')
+  const entry = saveTemplate(dir, 'Portrait layout', song)
+  const layout = readTemplate(dir, entry.id).layout
+  assert.deepEqual([layout.width, layout.height, layout.audioPath, layout.previewFrame], [720, 1280, '', 0])
+  const next = applyTemplate(layout, { ...compositionProject(), audioPath: 'song-B.wav', previewFrame: 60 })
+  assert.deepEqual([next.width, next.height, next.audioPath, next.previewFrame], [720, 1280, 'song-B.wav', 60])
+})
+
 test('recent project names replace placeholder titles with the saved filename, including existing preferences', () => {
   const dir = fs.mkdtempSync(path.join(root, 'recent-names-test-'))
   for (const placeholder of ['Untitled project', 'Untitled track', '   ']) {

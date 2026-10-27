@@ -1,6 +1,16 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('desktop', {
+  toggleWindowFullscreen: () => ipcRenderer.invoke('toggle-window-fullscreen'),
+  minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
+  maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
+  closeWindow: () => ipcRenderer.invoke('close-window'),
+  windowState: () => ipcRenderer.invoke('window-state'),
+  onWindowState: listener => {
+    const handler = (_event, state) => listener(state)
+    ipcRenderer.on('window-state', handler)
+    return () => ipcRenderer.off('window-state', handler)
+  },
   initial: () => ipcRenderer.invoke('initial'),
   chooseAudio: () => ipcRenderer.invoke('choose-audio'),
   chooseImage: () => ipcRenderer.invoke('choose-image'),
@@ -20,7 +30,8 @@ contextBridge.exposeInMainWorld('desktop', {
   renameTemplate: (id, name) => ipcRenderer.invoke('rename-template', id, name),
   deleteTemplate: id => ipcRenderer.invoke('delete-template', id),
   setExportPreset: preset => ipcRenderer.invoke('set-export-preset', preset),
-  renderVideo: (project, preset, audioMode) => ipcRenderer.invoke('render-video', project, preset, audioMode),
+  chooseExportDestination: (project, audioMode) => ipcRenderer.invoke('choose-export-destination', project, audioMode),
+  renderVideo: (project, preset, audioMode, destination = '') => ipcRenderer.invoke('render-video', project, preset, audioMode, destination),
   cancelRender: () => ipcRenderer.invoke('cancel-render'),
   closeProject: () => ipcRenderer.invoke('close-project'),
   confirmAppClose: () => ipcRenderer.invoke('confirm-app-close'),

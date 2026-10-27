@@ -17,7 +17,7 @@ app.setPath('userData', exportProfile)
 app.setPath('sessionData', exportProfile)
 const { assertOutputSpace } = require('../space.cjs')
 const { PcmReader } = require('../../phase1/pcm-reader.cjs')
-const { normalizeProject } = require('../project.cjs')
+const { normalizeProject, exportDimensions } = require('../project.cjs')
 const { assertInstalledFonts } = require('../fonts.cjs')
 const { assetData } = require('../assets.cjs')
 const { probeAudio } = require('../audio.cjs')
@@ -119,7 +119,7 @@ async function exportVideo() {
     config.audioMode === 'copy' ? fs.statSync(project.audioPath, { bigint: true }).size : 0)
   const totalFrames = metadata.totalFrames
   const vectorscopeMultiband = project.layers.some(layer => layer.type === 'vectorscope' && layer.visible && layer.multiband)
-  const [width, height] = config.preset === '1080p' ? [1920, 1080] : [1280, 720]
+  const { width, height } = exportDimensions(project, config.preset)
   const temp = `${config.output}.partial-${randomUUID()}${outputFormat(config.audioMode).extension}`
   fs.mkdirSync(dirname(config.output), { recursive: true })
   const spectrumDirectory = jobPath('analysis', randomUUID())

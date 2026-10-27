@@ -15,23 +15,23 @@ function nearest(value, targets, grid) {
   return result
 }
 
-function move(box, dx, dy, snapping = false, grid = 0) {
-  let x = clamp(Math.round(box.x + dx), 0, WIDTH - box.w)
-  let y = clamp(Math.round(box.y + dy), 0, HEIGHT - box.h)
+function move(box, dx, dy, snapping = false, grid = 0, width = WIDTH, height = HEIGHT) {
+  let x = clamp(Math.round(box.x + dx), 0, width - box.w)
+  let y = clamp(Math.round(box.y + dy), 0, height - box.h)
   let guideX = null
   let guideY = null
   if (snapping) {
     const horizontal = [
       { offset: 0, targets: [0] },
-      { offset: box.w / 2, targets: [WIDTH / 2] },
-      { offset: box.w, targets: [WIDTH] },
+      { offset: box.w / 2, targets: [width / 2] },
+      { offset: box.w, targets: [width] },
     ]
     const vertical = [
       { offset: 0, targets: [0] },
-      { offset: box.h / 2, targets: [HEIGHT / 2] },
-      { offset: box.h, targets: [HEIGHT] },
+      { offset: box.h / 2, targets: [height / 2] },
+      { offset: box.h, targets: [height] },
     ]
-    for (const [axis, anchors, extent] of [['x', horizontal, WIDTH], ['y', vertical, HEIGHT]]) {
+    for (const [axis, anchors, extent] of [['x', horizontal, width], ['y', vertical, height]]) {
       const size = axis === 'x' ? box.w : box.h
       const current = axis === 'x' ? x : y
       let best = { distance: THRESHOLD + 1, value: current, guide: null }
@@ -48,9 +48,9 @@ function move(box, dx, dy, snapping = false, grid = 0) {
   return { x, y, guideX, guideY }
 }
 
-function resize(box, dx, dy, minimum, aspectLocked = false, snapping = false, grid = 0) {
-  const maxW = WIDTH - box.x
-  const maxH = HEIGHT - box.y
+function resize(box, dx, dy, minimum, aspectLocked = false, snapping = false, grid = 0, width = WIDTH, height = HEIGHT) {
+  const maxW = width - box.x
+  const maxH = height - box.y
   let w = clamp(Math.round(box.w + dx), minimum, maxW)
   let h = clamp(Math.round(box.h + dy), minimum, maxH)
   let guideX = null
@@ -60,7 +60,7 @@ function resize(box, dx, dy, minimum, aspectLocked = false, snapping = false, gr
     let scale = dominant === 'x' ? w / box.w : h / box.h
     if (snapping) {
       const edge = dominant === 'x' ? box.x + box.w * scale : box.y + box.h * scale
-      const snapped = nearest(edge, dominant === 'x' ? [WIDTH / 2, WIDTH] : [HEIGHT / 2, HEIGHT], grid)
+      const snapped = nearest(edge, dominant === 'x' ? [width / 2, width] : [height / 2, height], grid)
       if (snapped.guide !== null) {
         scale = (snapped.value - (dominant === 'x' ? box.x : box.y)) / (dominant === 'x' ? box.w : box.h)
         if (dominant === 'x') guideX = snapped.guide
@@ -73,12 +73,12 @@ function resize(box, dx, dy, minimum, aspectLocked = false, snapping = false, gr
     if (guideX !== null && Math.abs(box.x + w - guideX) > 1) guideX = null
     if (guideY !== null && Math.abs(box.y + h - guideY) > 1) guideY = null
   } else if (snapping) {
-    const right = nearest(box.x + w, [WIDTH / 2, WIDTH], grid)
-    const bottom = nearest(box.y + h, [HEIGHT / 2, HEIGHT], grid)
-    if (right.guide !== null && right.value - box.x >= minimum && right.value <= WIDTH) {
+    const right = nearest(box.x + w, [width / 2, width], grid)
+    const bottom = nearest(box.y + h, [height / 2, height], grid)
+    if (right.guide !== null && right.value - box.x >= minimum && right.value <= width) {
       w = right.value - box.x; guideX = right.guide
     }
-    if (bottom.guide !== null && bottom.value - box.y >= minimum && bottom.value <= HEIGHT) {
+    if (bottom.guide !== null && bottom.value - box.y >= minimum && bottom.value <= height) {
       h = bottom.value - box.y; guideY = bottom.guide
     }
   }

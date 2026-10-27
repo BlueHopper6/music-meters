@@ -2,6 +2,27 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { defaultProject, compositionProject, imageLayer, textLayer, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } = require('../project.cjs')
 const { encapsulateProjectPath } = require('../project-path.cjs')
+const { orientProject, exportDimensions } = require('../project.cjs')
+
+test('portrait projects fit without cropping, retain media and marker, and export at 1080x1920', () => {
+  const original = { ...compositionProject(), audioPath: 'song.wav', previewFrame: 30 }
+  original.layers.push(imageLayer())
+  const portrait = orientProject(original, 'portrait')
+  assert.equal(original.width, 1280, 'conversion must not mutate its source')
+  assert.deepEqual([portrait.width, portrait.height, portrait.audioPath, portrait.previewFrame], [720, 1280, 'song.wav', 30])
+  assert.deepEqual(normalizeProject(JSON.parse(JSON.stringify(portrait))), portrait)
+  assert.deepEqual(exportDimensions(portrait, '1080p'), { width: 1080, height: 1920 })
+  assert.deepEqual(exportDimensions(portrait, '720p'), { width: 720, height: 1280 })
+  for (const layer of portrait.layers) {
+    assert.ok(layer.x >= 0 && layer.y >= 0 && layer.x + layer.w <= 720 && layer.y + layer.h <= 1280)
+  }
+  assert.equal(portrait.layers[0].w, portrait.layers[0].h, 'square meter must stay square')
+  assert.deepEqual([orientProject(portrait, 'landscape').width, orientProject(portrait, 'landscape').height], [1280, 720])
+  assert.throws(() => normalizeProject({ ...portrait, width: 1080, height: 1920 }), /canvas/)
+  assert.throws(() => normalizeProject({ ...portrait, layers: [{ ...portrait.layers[0], y: 1200 }] }), /outside/)
+  assert.throws(() => orientProject(portrait, 'square'), /orientation/)
+  assert.throws(() => normalizeProject({ ...defaultProject(), width: 720, height: 1280 }), /canvas/)
+})
 
 test('saved preview frames survive normalization and older projects default to zero', () => {
   const legacy = defaultProject()
