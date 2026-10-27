@@ -37,6 +37,11 @@ module.exports = async function startupSmoke(win) {
   await waitFor('!document.getElementById("project-manager-screen").hidden', 'project manager visible')
   assert.equal(await evaluate('document.getElementById("editor-screen").hidden'), true)
   await waitFor('document.getElementById("splash-screen").hidden', 'splash dismissed')
+  assert.equal(await evaluate('document.title'), 'MusicMeters')
+  assert.equal(await evaluate('document.getElementById("window-project-title").hidden'), true)
+  assert.equal(await evaluate('document.getElementById("window-project-title").textContent'), '')
+  assert.equal(await evaluate('document.querySelector(".pm-title").textContent'), 'Project Manager')
+  assert.equal(await evaluate('document.querySelectorAll(".pm-header img, .toolbar img, .splash-logo").length'), 0)
   await capture('project-manager-1000x700.png')
 
   // Verify empty state uses dashed SVG icon (no emoji)
@@ -61,8 +66,11 @@ module.exports = async function startupSmoke(win) {
   await evaluate('document.querySelector("#template-manager-builtins [data-action=use]").click()')
   await waitFor('!document.getElementById("editor-screen").hidden', 'editor visible after using a managed template')
   assert.equal(await evaluate('document.getElementById("project-manager-screen").hidden'), true)
+  assert.equal(await evaluate('document.getElementById("window-project-title").hidden'), false)
   await click('close-project')
   await waitFor('!document.getElementById("project-manager-screen").hidden', 'project manager visible after closing managed template')
+  assert.equal(await evaluate('document.title'), 'MusicMeters')
+  assert.equal(await evaluate('document.getElementById("window-project-title").textContent'), '')
 
   console.log('Step 4: Testing New from Template')
   await click('pm-new-template')

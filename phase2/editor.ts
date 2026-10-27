@@ -128,6 +128,13 @@ function isProjectDirty(): boolean {
 }
 
 function updateTitleDirtyIndicator() {
+  const inProject = $('project-manager-screen').hidden && $('splash-screen').hidden
+  $('window-project-title').hidden = !inProject
+  if (!inProject) {
+    $('window-project-title').textContent = ''
+    document.title = 'MusicMeters'
+    return
+  }
   const dirty = isProjectDirty()
   const baseTitle = project.title || 'Untitled track'
   $('window-project-title').textContent = `${baseTitle}${dirty ? ' •' : ''}`
@@ -1889,6 +1896,7 @@ function showProjectManager() {
   managerStatus.hidden = true
   $<HTMLDivElement>('project-manager-screen').hidden = false
   $<HTMLDivElement>('editor-screen').hidden = true
+  updateTitleDirtyIndicator()
 }
 
 function showEditor() {

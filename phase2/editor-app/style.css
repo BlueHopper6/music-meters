@@ -1376,32 +1376,11 @@ body.stage-fullscreen .selection {
   gap: 16px;
 }
 
-.pm-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.pm-brand img {
-  image-rendering: -webkit-optimize-contrast;
-}
-
-.pm-brand-text {
-  display: flex;
-  flex-direction: column;
-}
-
-.pm-brand-text strong {
+.pm-title {
+  margin: 0;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
-}
-
-.pm-brand-text small {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .pm-actions {

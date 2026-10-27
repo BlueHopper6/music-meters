@@ -13,7 +13,7 @@
   <header class="app-titlebar" aria-label="Application title bar">
     <div class="app-titlebar-content">
       <img src="assets/brand/icon-32.png" width="20" height="20" alt="">
-      <strong>MusicMeters</strong><span id="window-project-title"></span>
+      <strong>MusicMeters</strong><span id="window-project-title" hidden></span>
       <div class="window-controls" role="group" aria-label="Window controls">
         <button id="window-minimize" class="window-control" type="button" aria-label="Minimize" title="Minimize"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1 6h10"/></svg></button>
         <button id="window-maximize" class="window-control" type="button" aria-label="Maximize" title="Maximize"><svg class="maximize-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 1.5h9v9h-9z"/></svg><svg class="restore-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 1.5h6.5V8M1.5 4h6.5v6.5H1.5z"/></svg></button>
@@ -24,8 +24,6 @@
   <div id="splash-screen" class="splash-screen" aria-live="polite">
     <div class="splash-card">
       <div class="splash-brand">
-        <img class="splash-logo" src="assets/brand/icon-64.png" width="64" height="64" alt="MusicMeters">
-        <h1 class="splash-title">MusicMeters</h1>
         <div class="splash-tagline">Offline Canvas &amp; Native Prism Audio Visualizer</div>
       </div>
       <div class="splash-progress-wrap">
@@ -37,13 +35,7 @@
 
   <div id="project-manager-screen" class="project-manager-screen" hidden>
     <header class="pm-header">
-      <div class="pm-brand">
-        <img src="assets/brand/icon-64.png" width="32" height="32" alt="">
-        <div class="pm-brand-text">
-          <strong>MusicMeters</strong>
-          <small>Project Manager</small>
-        </div>
-      </div>
+      <h1 class="pm-title">Project Manager</h1>
       <div class="pm-actions">
         <button id="pm-new-blank" type="button" class="primary">New blank project</button>
         <button id="pm-new-template" type="button">New from template…</button>
@@ -72,10 +64,6 @@
 
   <div id="editor-screen" class="editor-screen">
   <header class="toolbar">
-    <div class="brand">
-      <span class="brand-mark"><img class="brand-logo" src="assets/brand/icon-64.png" width="24" height="24" alt=""></span>
-      <div><strong>MusicMeters</strong><small>Static layout editor</small></div>
-    </div>
     <div class="toolbar-actions">
       <details class="license-disclosure"><summary>License</summary><p>MusicMeters software code and its included Prism code are GPL-3.0-only. You may share and modify the covered software under GPLv3. The separately owned MusicMeters logo and icons may remain in complete, unchanged official releases and in contribution forks and clearly marked review builds under the contribution permission. Independent modified products must rebrand unless separately authorized. The software comes without warranty. Full terms and copyright information are in MUSICMETERS-LICENSE.txt and LICENSE-NOTICES.md in the portable folder.</p></details>
       <div class="toolbar-group">
