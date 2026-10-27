@@ -132,10 +132,7 @@ button.danger-button:hover:not(:disabled) {
   border-color: #882d37;
 }
 
-.toolbar {
-  height: 44px; display: flex; justify-content: space-between; align-items: center;
-  gap: 16px; padding: 0 16px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-panel);
-}
+.toolbar { display: flex; align-items: center; }
 
 .template-controls {
   display: grid;
@@ -1427,8 +1424,9 @@ body { padding-top: 40px; }
   background: var(--bg-panel); border-bottom: 1px solid var(--border-subtle); -webkit-app-region: drag; }
 .app-titlebar-content { display: flex; align-items: center; gap: 10px; height: 40px;
   width: 100%; padding: 0 0 0 12px; }
-.app-titlebar strong { font-size: 12px; font-weight: 600; }
-#window-project-title { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-titlebar strong { font-size: 12px; font-weight: 600; white-space: nowrap; }
+#window-project-title { flex: 1; min-width: 96px; color: var(--text-muted); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; padding: 0 12px; text-align: center; }
 .window-controls { display: flex; height: 40px; margin-left: auto; flex-shrink: 0; -webkit-app-region: no-drag; }
 .window-control { display: grid; place-items: center; width: 46px; height: 40px; padding: 0;
   border: 0; border-radius: 0; color: var(--text-secondary); background: transparent;
@@ -1456,11 +1454,14 @@ body.stage-fullscreen .stage-shell { top: 40px; }
 .stage-option #canvas-orientation:focus-visible { border-color: var(--text-secondary); box-shadow: 0 0 0 1px var(--border-strong); }
 .stage-option #canvas-orientation option { background: var(--bg-panel); color: var(--text-primary); padding: 8px; }
 
-/* File commands stay quiet; export is the only emphasized toolbar action. */
-.toolbar.command-toolbar { flex: 0 0 44px; }
-.command-menus, .toolbar-primary-actions { display: flex; align-items: center; gap: 6px; }
+/* Commands share the caption row; the project title remains a draggable gap.
+   Keep the commands inside editor-screen so its hidden/inert state also applies here. */
+.toolbar.command-toolbar { position: fixed; top: 0; left: 132px; right: 138px; height: 40px;
+  z-index: 20001; gap: 8px; padding: 0 8px 0 0; -webkit-app-region: drag; }
+.command-menus, .toolbar-primary-actions { display: flex; align-items: center; gap: 2px;
+  flex-shrink: 0; -webkit-app-region: no-drag; }
 .command-menu { position: relative; }
-.menu-trigger, .toolbar-save { background: transparent; border-color: transparent; height: 30px; padding: 0 12px; }
+.menu-trigger, .toolbar-save { background: transparent; border-color: transparent; height: 28px; padding: 0 10px; }
 .menu-trigger[aria-expanded="true"] { background: var(--bg-hover); }
 .command-popup { position: absolute; top: calc(100% + 5px); left: 0; min-width: 240px; z-index: 1500;
   padding: 5px; border: 1px solid var(--border-control); border-radius: 7px; background: var(--bg-elevated);
@@ -1470,7 +1471,7 @@ body.stage-fullscreen .stage-shell { top: 40px; }
 .command-popup button:focus { outline: 0; background: var(--bg-hover); box-shadow: none; }
 .command-popup kbd { font: 10px var(--font-mono); color: var(--text-muted); }
 .command-popup hr { margin: 5px; border: 0; border-top: 1px solid var(--border-control); }
-.toolbar-primary-actions .export-action { min-width: 92px; height: 30px; margin-left: 8px; }
+.toolbar-primary-actions .export-action { min-width: 76px; height: 28px; margin-left: 4px; }
 #export-running-label { color: var(--text-secondary); font-size: 11px; }
 .audio-source-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
 .audio-source-actions button { white-space: nowrap; height: 28px; font-size: 11px; }
@@ -1492,7 +1493,6 @@ body.stage-fullscreen .stage-shell { top: 40px; }
 .about-card { width: min(550px,100%); max-height: calc(100vh - 80px); overflow: auto; }
 .about-card p { color: var(--text-secondary); line-height: 1.7; }
 @media (max-width: 1160px) {
-  .toolbar.command-toolbar { padding: 0 12px; }
   .audio-source-actions { gap: 8px; flex-wrap: wrap; }
 }
 

@@ -22,7 +22,7 @@ The startup Project Manager offers **New blank project**, **New from template…
 
 ## Window controls and portrait video
 
-The editor command bar groups project actions under **File**, layout actions under **Templates**, and about/license information under **Help**. **Save** stays directly available; Ctrl+S saves, Ctrl+Shift+S saves as, Ctrl+O opens, Ctrl+N creates a blank project, and Ctrl+W closes the project with the usual unsaved-change guard. Menus support arrow keys and Escape.
+The editor title bar groups project actions under **File**, layout actions under **Templates**, and about/license information under **Help**, with **Save** and **Export…** beside the window controls. Drag the project-title area to move the window. Ctrl+S saves, Ctrl+Shift+S saves as, Ctrl+O opens, Ctrl+N creates a blank project, and Ctrl+W closes the project with the usual unsaved-change guard. Menus support arrow keys and Escape.
 
 Import or replace audio beside the song details below the canvas. **Export…** (Ctrl+E) opens a dialog for resolution, format/audio mode, and destination. **Browse…** chooses the output through the native save dialog; if no destination has been chosen, the Export action opens that dialog before starting. Existing output files are never overwritten. Export progress remains in the editor, with **Cancel export** in the command bar while a job runs.
 

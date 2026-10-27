@@ -13,7 +13,7 @@
   <header class="app-titlebar" aria-label="Application title bar">
     <div class="app-titlebar-content">
       <img src="assets/brand/icon-32.png" width="20" height="20" alt="">
-      <strong>MusicMeters</strong><span id="window-project-title" hidden></span>
+      <strong>MusicMeters</strong>
       <div class="window-controls" role="group" aria-label="Window controls">
         <button id="window-minimize" class="window-control" type="button" aria-label="Minimize" title="Minimize"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1 6h10"/></svg></button>
         <button id="window-maximize" class="window-control" type="button" aria-label="Maximize" title="Maximize"><svg class="maximize-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 1.5h9v9h-9z"/></svg><svg class="restore-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 1.5h6.5V8M1.5 4h6.5v6.5H1.5z"/></svg></button>
@@ -63,7 +63,7 @@
   </div>
 
   <div id="editor-screen" class="editor-screen">
-  <header class="toolbar command-toolbar">
+  <header class="toolbar command-toolbar" aria-label="Title bar commands">
     <nav class="command-menus" aria-label="Application menus">
       <div class="command-menu">
         <button id="toolbar-file" class="menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="file-menu">File</button>
@@ -92,6 +92,7 @@
         </div>
       </div>
     </nav>
+    <span id="window-project-title" hidden></span>
     <div class="toolbar-primary-actions">
       <span id="export-running-label" role="status" hidden>Exporting…</span>
       <button id="cancel-render" class="toolbar-save" hidden>Cancel export</button>

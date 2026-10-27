@@ -49,6 +49,7 @@ module.exports = async function startupSmoke(win) {
   assert.equal(await evaluate('document.title'), 'MusicMeters')
   assert.equal(await evaluate('document.getElementById("window-project-title").hidden'), true)
   assert.equal(await evaluate('document.getElementById("window-project-title").textContent'), '')
+  assert.equal(await evaluate('document.querySelector(".command-toolbar").getClientRects().length'), 0)
   assert.equal(await evaluate('document.querySelector(".pm-title").textContent'), 'Project Manager')
   assert.equal(await evaluate('document.querySelectorAll(".pm-header img, .toolbar img, .splash-logo").length'), 0)
   await capture('project-manager-1000x700.png')
@@ -102,6 +103,33 @@ module.exports = async function startupSmoke(win) {
       }).map(element => element.id || element.textContent.trim())
   })()`)
   assert.deepEqual(clippedControls, [], 'Toolbar controls must fit at 1000 × 700')
+
+  const caption = await evaluate(`(() => {
+    const bar = document.querySelector('.command-toolbar').getBoundingClientRect()
+    const title = document.getElementById('window-project-title')
+    const controls = document.querySelector('.window-controls').getBoundingClientRect()
+    const brand = document.querySelector('.app-titlebar strong').getBoundingClientRect()
+    return { top: bar.top, bottom: bar.bottom, left: bar.left, right: bar.right,
+      brandRight: brand.right, controlsLeft: controls.left,
+      workspaceTop: document.querySelector('.workspace').getBoundingClientRect().top,
+      drag: getComputedStyle(document.querySelector('.command-toolbar')).webkitAppRegion,
+      menusDrag: getComputedStyle(document.querySelector('.command-menus')).webkitAppRegion,
+      actionsDrag: getComputedStyle(document.querySelector('.toolbar-primary-actions')).webkitAppRegion,
+      titleWidth: title.getBoundingClientRect().width }
+  })()`)
+  assert.equal(caption.top, 0); assert.equal(caption.bottom, 40)
+  assert.equal(caption.workspaceTop, 40)
+  assert.ok(caption.left > caption.brandRight && caption.right <= caption.controlsLeft && caption.titleWidth >= 96)
+  assert.equal(caption.drag, 'drag'); assert.equal(caption.menusDrag, 'no-drag'); assert.equal(caption.actionsDrag, 'no-drag')
+
+  // Real pointer input verifies caption commands receive clicks in their no-drag region.
+  const filePoint = await evaluate(`(() => { const r = document.getElementById('toolbar-file').getBoundingClientRect();
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`)
+  win.webContents.sendInputEvent({ type: 'mouseDown', ...filePoint, button: 'left', clickCount: 1 })
+  win.webContents.sendInputEvent({ type: 'mouseUp', ...filePoint, button: 'left', clickCount: 1 })
+  await waitFor('!document.getElementById("file-menu").hidden', 'caption File pointer click')
+  await capture('titlebar-file-menu.png')
+  await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
 
   await click('toolbar-file')
   assert.equal(await evaluate('document.getElementById("file-menu").hidden'), false)
