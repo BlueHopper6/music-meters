@@ -8,7 +8,9 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 module.exports = async function startupSmoke(win) {
   win.setContentSize(1000, 700)
   const capture = async name => {
-    await delay(200)
+    if (!win.isVisible()) win.showInactive()
+    win.webContents.invalidate()
+    await delay(350)
     const image = await win.webContents.capturePage()
     fs.writeFileSync(path.join(process.env.PHASE2_STARTUP_SMOKE_DIR, name), image.toPNG())
   }
@@ -31,6 +33,13 @@ module.exports = async function startupSmoke(win) {
   }
   async function click(id) {
     await evaluate(`document.getElementById(${JSON.stringify(id)}).click()`)
+  }
+  async function shortcut(keyCode, shift = false) {
+    win.focus(); win.webContents.focus()
+    const modifiers = shift ? ['control', 'shift'] : ['control']
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers })
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers })
+    await delay(100)
   }
 
   console.log('Step 1: Checking Project Manager visibility')
@@ -85,7 +94,7 @@ module.exports = async function startupSmoke(win) {
   assert.equal(await evaluate('document.getElementById("project-manager-screen").hidden'), true)
   const clippedControls = await evaluate(`(() => {
     const bar = document.querySelector('.toolbar').getBoundingClientRect()
-    return Array.from(document.querySelectorAll('.toolbar-actions button, .toolbar-actions select, .license-disclosure summary'))
+    return Array.from(document.querySelectorAll('.menu-trigger, .toolbar-primary-actions button'))
       .filter(element => element.getClientRects().length)
       .filter(element => {
         const box = element.getBoundingClientRect()
@@ -94,6 +103,28 @@ module.exports = async function startupSmoke(win) {
   })()`)
   assert.deepEqual(clippedControls, [], 'Toolbar controls must fit at 1000 × 700')
 
+  await click('toolbar-file')
+  assert.equal(await evaluate('document.getElementById("file-menu").hidden'), false)
+  await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))`)
+  assert.equal(await evaluate('document.activeElement.id'), 'open-project')
+  await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
+  assert.equal(await evaluate('document.activeElement.id'), 'toolbar-file')
+  await shortcut('E')
+  assert.equal(await evaluate('document.getElementById("export-modal").hidden'), false)
+  assert.equal(await evaluate('document.activeElement.id'), 'export-preset')
+  assert.equal(await evaluate('document.getElementById("render-mp4").disabled'), true)
+  await capture('export-dialog-empty.png')
+  await evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`)
+  assert.equal(await evaluate('document.activeElement.id'), 'open-export')
+  await click('toolbar-templates'); await click('manage-templates')
+  await waitFor('!document.getElementById("template-manager-modal").hidden', 'editor template menu')
+  await click('template-manager-close')
+  assert.equal(await evaluate('document.activeElement.id'), 'toolbar-templates')
+  await click('toolbar-help'); await click('show-license')
+  assert.equal(await evaluate('document.getElementById("about-modal").hidden'), false)
+  await click('about-close')
+  assert.equal(await evaluate('document.activeElement.id'), 'toolbar-help')
+  await capture('editor-command-toolbar.png')
   const templateLayers = await evaluate('document.querySelectorAll(".layer-item").length')
   assert.ok(templateLayers > 0, 'Starter template should have layers')
 
@@ -196,7 +227,7 @@ module.exports = async function startupSmoke(win) {
 
   await click('add-layer')
   assert.equal(await evaluate('document.title.endsWith(" *")'), true, 'An edited project must be marked dirty')
-  await click('save-project-as')
+  await shortcut('S', true)
   await waitFor('document.querySelector("#status").textContent.includes("Saved new project:")', 'Save As completed')
   assert.equal(await evaluate('document.title.endsWith(" *")'), false, 'Save As must clear the dirty indicator')
 
@@ -248,7 +279,7 @@ module.exports = async function startupSmoke(win) {
   // Verify Projects button was removed and Close Project exists
   assert.equal(await evaluate('Boolean(document.getElementById("return-to-projects"))'), false, 'Projects button should be removed')
   // Verify Close Project and Save as template buttons exist in toolbar
-  assert.equal(await evaluate('document.getElementById("close-project").textContent'), 'Close project')
+  assert.equal(await evaluate('document.getElementById("close-project").childNodes[0].textContent'), 'Close project')
   assert.equal(await evaluate('document.getElementById("save-template").textContent'), 'Save as template…')
 
   // Test Save as Template modal opens with top-right close button
@@ -278,12 +309,14 @@ module.exports = async function startupSmoke(win) {
   await evaluate(`(() => { const input = document.getElementById('title'); input.value = 'Unsaved caption close';
     input.dispatchEvent(new Event('input', { bubbles: true })); })()`)
   assert.equal(await evaluate('document.title.endsWith("*")'), true)
+  await click('open-export')
   await click('window-close')
   await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'caption close dirty guard')
+  assert.equal(await evaluate('document.getElementById("export-modal").hidden && !document.getElementById("editor-screen").inert'), true)
   await click('unsaved-changes-cancel')
   assert.equal(win.isDestroyed(), false)
-  await click('close-project')
-  await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'discard before shutdown')
+  await shortcut('W')
+  await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'Ctrl+W project-close guard before shutdown')
   await click('unsaved-changes-discard')
   await waitFor('!document.getElementById("project-manager-screen").hidden', 'project manager after caption close cancelled')
   console.log(JSON.stringify({ event: 'startup-smoke', status: 'PASS', captionClose: 'dirty guard and cancel preserved' }))

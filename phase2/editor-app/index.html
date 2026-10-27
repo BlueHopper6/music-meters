@@ -63,28 +63,40 @@
   </div>
 
   <div id="editor-screen" class="editor-screen">
-  <header class="toolbar">
-    <div class="toolbar-actions">
-      <details class="license-disclosure"><summary>License</summary><p>MusicMeters software code and its included Prism code are GPL-3.0-only. You may share and modify the covered software under GPLv3. The separately owned MusicMeters logo and icons may remain in complete, unchanged official releases and in contribution forks and clearly marked review builds under the contribution permission. Independent modified products must rebrand unless separately authorized. The software comes without warranty. Full terms and copyright information are in MUSICMETERS-LICENSE.txt and LICENSE-NOTICES.md in the portable folder.</p></details>
-      <div class="toolbar-group">
-        <span class="toolbar-label">Project</span>
-        <button id="open-project">Open project</button>
-        <button id="save-project">Save project</button>
-        <button id="save-project-as">Save as…</button>
-        <button id="save-template">Save as template…</button>
-        <button id="close-project">Close project</button>
+  <header class="toolbar command-toolbar">
+    <nav class="command-menus" aria-label="Application menus">
+      <div class="command-menu">
+        <button id="toolbar-file" class="menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="file-menu">File</button>
+        <div id="file-menu" class="command-popup" role="menu" aria-label="File" hidden>
+          <button id="new-project" role="menuitem" tabindex="-1">New project<kbd>Ctrl+N</kbd></button>
+          <button id="open-project" role="menuitem" tabindex="-1">Open project…<kbd>Ctrl+O</kbd></button>
+          <hr>
+          <button role="menuitem" tabindex="-1" data-command="save-project">Save<kbd>Ctrl+S</kbd></button>
+          <button id="save-project-as" role="menuitem" tabindex="-1">Save as…<kbd>Ctrl+Shift+S</kbd></button>
+          <hr>
+          <button id="close-project" role="menuitem" tabindex="-1">Close project<kbd>Ctrl+W</kbd></button>
+        </div>
       </div>
-      <div class="toolbar-group">
-        <span class="toolbar-label">Audio</span>
-        <button id="import-audio">Import / replace audio</button>
+      <div class="command-menu">
+        <button id="toolbar-templates" class="menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="templates-menu">Templates</button>
+        <div id="templates-menu" class="command-popup" role="menu" aria-label="Templates" hidden>
+          <button id="save-template" role="menuitem" tabindex="-1">Save as template…</button>
+          <button id="manage-templates" role="menuitem" tabindex="-1">Manage templates…</button>
+        </div>
       </div>
-      <div class="toolbar-group export-group">
-        <span class="toolbar-label">Export</span>
-        <select id="export-preset" aria-label="Export size" title="Output video resolution"><option value="1080p">1080p</option><option value="720p">720p</option></select>
-        <select id="audio-mode" aria-label="Video container and audio export" title="MP4 converts audio to lossy AAC (up to 320 kb/s); MKV copies supported source audio without re-encoding"><option value="aac">MP4 · AAC up to 320 kb/s</option><option value="copy">MKV · Source audio copy (no re-encode)</option></select>
-        <button id="render-mp4" class="primary">Render MP4</button>
-        <button id="cancel-render" hidden>Cancel render</button>
+      <div class="command-menu">
+        <button id="toolbar-help" class="menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="help-menu">Help</button>
+        <div id="help-menu" class="command-popup" role="menu" aria-label="Help" hidden>
+          <button id="about-app" role="menuitem" tabindex="-1">About MusicMeters</button>
+          <button id="show-license" role="menuitem" tabindex="-1">License information</button>
+        </div>
       </div>
+    </nav>
+    <div class="toolbar-primary-actions">
+      <span id="export-running-label" role="status" hidden>Exporting…</span>
+      <button id="cancel-render" class="toolbar-save" hidden>Cancel export</button>
+      <button id="save-project" class="toolbar-save" title="Save project (Ctrl+S)">Save</button>
+      <button id="open-export" class="primary export-action" title="Export video (Ctrl+E)">Export…</button>
     </div>
   </header>
   <main class="workspace">
@@ -145,7 +157,7 @@
         <div id="preview-busy" class="preview-busy" role="status" hidden>Analyzing preview…</div>
       </div><button id="exit-fullscreen-preview" type="button" class="exit-fullscreen-btn" title="Exit full screen (Esc)" hidden>Exit full screen · Esc</button></div>
       <div class="timeline">
-        <div class="timeline-top"><div><span class="eyebrow">AUDIO STILL</span><strong id="audio-name">No audio imported</strong></div><span id="audio-details">Choose a WAV, MP3, or FLAC file</span></div>
+        <div class="timeline-top"><div><span class="eyebrow">AUDIO STILL</span><strong id="audio-name">No audio imported</strong></div><div class="audio-source-actions"><span id="audio-details">Choose a WAV, MP3, or FLAC file</span><button id="import-audio" type="button">Import audio</button></div></div>
         <div id="missing-media" class="missing-media" hidden></div>
         <div class="time-controls"><input id="time-slider" type="range" min="0" max="0" step="1" value="0" aria-label="Preview timestamp"><div class="time-readout-group"><label>Time <input id="time-input" type="number" min="0" step="0.033333" value="0"> s</label><span id="preview-stale" class="preview-stale" role="status" hidden>Still out of date</span><button id="refresh-still">Refresh still</button></div></div>
         <div class="timeline-footer">
@@ -389,6 +401,28 @@
         <button id="save-template-cancel" type="button">Cancel</button>
         <button id="save-template-confirm" type="button" class="primary">Save template</button>
       </div>
+    </div>
+  </div>
+  <div id="export-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="export-title" hidden>
+    <div class="modal-card export-card">
+      <div class="modal-header"><div><h2 id="export-title" class="modal-title">Export video</h2><p class="export-subtitle">Render your complete song and composition.</p></div><button id="export-close" class="modal-close-btn" type="button" aria-label="Close export dialog">✕</button></div>
+      <div class="export-project-summary"><strong id="export-project-name"></strong><span id="export-canvas-summary"></span></div>
+      <div class="export-fields">
+        <label>Resolution<select id="export-preset" aria-label="Export size"><option value="1080p">1080p</option><option value="720p">720p</option></select></label>
+        <label>Format &amp; audio<select id="audio-mode" aria-label="Video container and audio export"><option value="aac">MP4 · AAC up to 320 kb/s</option><option value="copy">MKV · Source audio copy (no re-encode)</option></select></label>
+      </div>
+      <p id="export-audio-note" class="export-note"></p>
+      <label class="export-destination-label" for="export-destination">Save to</label>
+      <div class="export-destination-row"><input id="export-destination" type="text" readonly placeholder="Choose a destination…"><button id="choose-export-destination" type="button">Browse…</button></div>
+      <p id="export-dialog-status" class="export-note" role="status"></p>
+      <div class="modal-actions"><button id="export-cancel" type="button">Cancel</button><button id="render-mp4" type="button" class="primary">Export MP4</button></div>
+    </div>
+  </div>
+  <div id="about-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="about-title" hidden>
+    <div class="modal-card about-card">
+      <div class="modal-header"><h2 id="about-title" class="modal-title">About MusicMeters</h2><button id="about-close" class="modal-close-btn" type="button" aria-label="Close information">✕</button></div>
+      <p>Windows portable preview. Compose offline music videos with real audio meters, artwork and text.</p>
+      <h3>License information</h3><p class="license-copy">MusicMeters software code and its included Prism code are GPL-3.0-only. You may share and modify the covered software under GPLv3. The separately owned MusicMeters logo and icons may remain in complete, unchanged official releases and in contribution forks and clearly marked review builds under the contribution permission. Independent modified products must rebrand unless separately authorized. The software comes without warranty. Full terms and copyright information are in MUSICMETERS-LICENSE.txt and LICENSE-NOTICES.md in the portable folder.</p>
     </div>
   </div>
   <div id="legacy-template-controls" hidden aria-hidden="true" style="display:none;">

@@ -22,6 +22,10 @@ The startup Project Manager offers **New blank project**, **New from template…
 
 ## Window controls and portrait video
 
+The editor command bar groups project actions under **File**, layout actions under **Templates**, and about/license information under **Help**. **Save** stays directly available; Ctrl+S saves, Ctrl+Shift+S saves as, Ctrl+O opens, Ctrl+N creates a blank project, and Ctrl+W closes the project with the usual unsaved-change guard. Menus support arrow keys and Escape.
+
+Import or replace audio beside the song details below the canvas. **Export…** (Ctrl+E) opens a dialog for resolution, format/audio mode, and destination. **Browse…** chooses the output through the native save dialog; if no destination has been chosen, the Export action opens that dialog before starting. Existing output files are never overwritten. Export progress remains in the editor, with **Cancel export** in the command bar while a job runs.
+
 The integrated app title bar has minimize, maximize/restore, and close controls at the upper right, with visible hover states and a red close hover. Drag the title bar to move the window or double-click it to maximize/restore. F11 toggles app fullscreen; Escape exits. Closing still prompts for unsaved changes. The custom maximize button does not expose the native Windows snap-layout hover menu. **Full screen** beside the canvas remains a separate composition-preview view.
 
 Choose **Canvas → Portrait · 9:16** above the preview to edit a vertical composition. Portrait uses 720 × 1280 logical coordinates; choose **1080p** for 1080 × 1920 video at 30 FPS, or **720p** for 720 × 1280. Both MP4/AAC and MKV/source-audio-copy follow the canvas orientation. Switching orientation fits and centers the current layout without stretching; adjust the layout afterward and refresh the audio still. Orientation changes mark the project unsaved, and projects and custom templates retain their dimensions. Existing landscape projects keep their original dimensions and exports. Portrait documents require this version or newer; older previews only accept landscape dimensions.

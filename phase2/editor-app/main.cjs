@@ -360,15 +360,9 @@ handle('open-project-path', async (_event, targetPath) => {
   if (!fs.existsSync(resolved)) throw new Error('Project file not found: ' + resolved)
   return loadProjectFromDisk(resolved)
 })
-handle('render-video', async (_event, raw, preset, audioMode) => {
-  if (exportJob) throw new Error('An export is already running')
-  if (!metadata || !activeAudio) throw new Error('Import audio before rendering')
-  if (!['720p', '1080p'].includes(preset)) throw new Error('Unsupported export preset')
+let chosenExportDestination = null
+async function chooseExportDestination(value, audioMode) {
   const format = outputFormat(audioMode)
-  if (audioMode === 'copy') validateAudioCopy(activeAudio, metadata)
-  const value = validateActiveProject(raw)
-  assetData(value)
-  writePreferences(userData(), { exportPreset: preset })
   let output = process.env.PHASE2_TEST_OUTPUT_PATH || ''
   if (!output) {
     let suggestion = suggestedOutput(value, audioMode)
@@ -389,6 +383,36 @@ handle('render-video', async (_event, raw, preset, audioMode) => {
       suggestion = output
     }
   }
+  output = resolve(output)
+  validateOutputPath(output, audioMode)
+  if (fs.existsSync(output)) throw new Error(`Output already exists: ${output}`)
+  chosenExportDestination = { output, audioMode }
+  return output
+}
+handle('choose-export-destination', async (_event, raw, audioMode) => {
+  if (exportJob) throw new Error('An export is already running')
+  if (!metadata || !activeAudio) throw new Error('Import audio before exporting')
+  if (audioMode === 'copy') validateAudioCopy(activeAudio, metadata)
+  return chooseExportDestination(validateActiveProject(raw), audioMode)
+})
+handle('render-video', async (_event, raw, preset, audioMode, destination = '') => {
+  if (exportJob) throw new Error('An export is already running')
+  if (!metadata || !activeAudio) throw new Error('Import audio before rendering')
+  if (!['720p', '1080p'].includes(preset)) throw new Error('Unsupported export preset')
+  outputFormat(audioMode)
+  if (audioMode === 'copy') validateAudioCopy(activeAudio, metadata)
+  const value = validateActiveProject(raw)
+  assetData(value)
+  writePreferences(userData(), { exportPreset: preset })
+  let output
+  if (destination) {
+    if (typeof destination !== 'string' || destination !== chosenExportDestination?.output || audioMode !== chosenExportDestination.audioMode) {
+      throw new Error('Choose an export destination through the save dialog')
+    }
+    output = destination
+  } else output = await chooseExportDestination(value, audioMode)
+  if (!output) return null
+  if (exportJob) throw new Error('An export is already running')
   output = resolve(output)
   validateOutputPath(output, audioMode)
   if (fs.existsSync(output)) throw new Error(`Output already exists: ${output}`)
@@ -472,6 +496,7 @@ app.whenReady().then(() => {
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   })
   win.setMenuBarVisibility(false)
+  win.setMenu(null)
   for (const event of ['enter-full-screen', 'leave-full-screen', 'maximize', 'unmaximize']) {
     win.on(event, () => win.webContents.send('window-state', windowState()))
   }

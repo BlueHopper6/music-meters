@@ -133,126 +133,8 @@ button.danger-button:hover:not(:disabled) {
 }
 
 .toolbar {
-  height: 48px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-panel);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: #000000;
-  border: 1px solid var(--border-control);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.brand-logo {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.brand strong {
-  display: inline;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: var(--text-primary);
-}
-
-.brand small {
-  display: inline;
-  margin-left: 8px;
-  padding-left: 8px;
-  border-left: 1px solid var(--border-control);
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 400;
-  letter-spacing: 0.02em;
-}
-
-.toolbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.license-disclosure {
-  position: relative;
-  order: 1;
-  color: var(--text-secondary);
-}
-
-.license-disclosure summary {
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.license-disclosure p {
-  position: absolute;
-  top: 22px;
-  right: 0;
-  z-index: 20;
-  width: 310px;
-  margin: 0;
-  padding: 12px;
-  border: 1px solid var(--border-control);
-  border-radius: 4px;
-  background: var(--bg-elevated);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  line-height: 1.5;
-}
-
-.toolbar-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding-left: 12px;
-  border-left: 1px solid var(--border-subtle);
-}
-
-.toolbar-group:first-child {
-  padding-left: 0;
-  border-left: none;
-}
-
-.toolbar-label {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  margin-right: 2px;
-}
-
-.toolbar select {
-  color: var(--text-primary);
-  border: 1px solid var(--border-control);
-  border-radius: 4px;
-  background: var(--bg-well);
-  padding: 4px 8px;
-  height: 26px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+  height: 44px; display: flex; justify-content: space-between; align-items: center;
+  gap: 16px; padding: 0 16px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-panel);
 }
 
 .template-controls {
@@ -1223,14 +1105,6 @@ body.stage-fullscreen .selection {
 }
 
 @media (max-width: 1160px) {
-  .toolbar {
-    height: 92px;
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: center;
-    gap: 4px;
-    padding: 6px 12px;
-  }
   .workspace {
     grid-template-columns: 204px minmax(0, 1fr) 236px;
     height: calc(100vh - 92px);
@@ -1240,25 +1114,6 @@ body.stage-fullscreen .selection {
   }
   .sidebar {
     padding: 12px;
-  }
-  .toolbar-label {
-    display: none;
-  }
-  .brand small {
-    display: none;
-  }
-  .toolbar-actions {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .toolbar-group:first-of-type {
-    flex-basis: 100%;
-  }
-  .toolbar-group {
-    padding-left: 8px;
-  }
-  .toolbar-group button {
-    white-space: nowrap;
   }
 }
 
@@ -1568,7 +1423,6 @@ body.stage-fullscreen .selection {
 
 /* Integrated draggable chrome with app-owned caption buttons. */
 body { padding-top: 40px; }
-.toolbar > .brand { display: none; }
 .app-titlebar { position: fixed; inset: 0 0 auto; height: 40px; z-index: 20000;
   background: var(--bg-panel); border-bottom: 1px solid var(--border-subtle); -webkit-app-region: drag; }
 .app-titlebar-content { display: flex; align-items: center; gap: 10px; height: 40px;
@@ -1601,3 +1455,46 @@ body.stage-fullscreen .stage-shell { top: 40px; }
 .stage-option #canvas-orientation:hover { background-color: var(--bg-elevated); border-color: var(--border-strong); }
 .stage-option #canvas-orientation:focus-visible { border-color: var(--text-secondary); box-shadow: 0 0 0 1px var(--border-strong); }
 .stage-option #canvas-orientation option { background: var(--bg-panel); color: var(--text-primary); padding: 8px; }
+
+/* File commands stay quiet; export is the only emphasized toolbar action. */
+.toolbar.command-toolbar { flex: 0 0 44px; }
+.command-menus, .toolbar-primary-actions { display: flex; align-items: center; gap: 6px; }
+.command-menu { position: relative; }
+.menu-trigger, .toolbar-save { background: transparent; border-color: transparent; height: 30px; padding: 0 12px; }
+.menu-trigger[aria-expanded="true"] { background: var(--bg-hover); }
+.command-popup { position: absolute; top: calc(100% + 5px); left: 0; min-width: 240px; z-index: 1500;
+  padding: 5px; border: 1px solid var(--border-control); border-radius: 7px; background: var(--bg-elevated);
+  box-shadow: 0 12px 30px rgba(0,0,0,.5); }
+.command-popup button { display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  width: 100%; min-height: 32px; padding: 7px 10px; border: 0; background: transparent; text-align: left; font-weight: 400; white-space: nowrap; }
+.command-popup button:focus { outline: 0; background: var(--bg-hover); box-shadow: none; }
+.command-popup kbd { font: 10px var(--font-mono); color: var(--text-muted); }
+.command-popup hr { margin: 5px; border: 0; border-top: 1px solid var(--border-control); }
+.toolbar-primary-actions .export-action { min-width: 92px; height: 30px; margin-left: 8px; }
+#export-running-label { color: var(--text-secondary); font-size: 11px; }
+.audio-source-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
+.audio-source-actions button { white-space: nowrap; height: 28px; font-size: 11px; }
+.export-card { width: min(580px, 100%); max-height: calc(100vh - 80px); overflow: auto; padding: 24px; }
+.export-subtitle { color: var(--text-muted); margin: 6px 0 0; font-size: 12px; }
+.export-project-summary { display: flex; flex-direction: column; gap: 6px; margin: 22px 0; padding: 14px;
+  border: 1px solid var(--border-subtle); border-radius: 5px; background: var(--bg-well); }
+.export-project-summary span { color: var(--text-secondary); font-size: 11px; }
+.export-fields { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; }
+.export-fields label { display: flex; flex-direction: column; gap: 8px; color: var(--text-secondary); font-size: 11px; }
+.export-fields select, #export-destination { width: 100%; min-width: 0; padding: 8px 10px; height: 36px;
+  background: var(--bg-well); color: var(--text-primary); border: 1px solid var(--border-control); border-radius: 5px; }
+.export-note { color: var(--text-muted); font-size: 11px; line-height: 1.6; margin: 10px 0 20px; }
+.export-destination-label { color: var(--text-secondary); font-size: 11px; }
+.export-destination-row { display: flex; gap: 8px; margin-top: 8px; }
+.export-destination-row input { flex: 1; text-overflow: ellipsis; }
+.export-card .modal-actions { margin-top: 24px; }
+.export-card .modal-actions button { min-width: 90px; height: 34px; }
+.about-card { width: min(550px,100%); max-height: calc(100vh - 80px); overflow: auto; }
+.about-card p { color: var(--text-secondary); line-height: 1.7; }
+@media (max-width: 1160px) {
+  .toolbar.command-toolbar { padding: 0 12px; }
+  .audio-source-actions { gap: 8px; flex-wrap: wrap; }
+}
+
+.timeline-top > div:first-child { min-width: 0; flex: 1; }
+.timeline-top strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

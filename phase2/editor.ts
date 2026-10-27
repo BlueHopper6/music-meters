@@ -3,6 +3,7 @@ import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type Vec
   type ImageLayer, type TextLayer, type Background } from './composition'
 import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject, fitLayer, orientProject, exportDimensions } from './project.cjs'
 import { move as moveOnStage, resize as resizeOnStage } from './stage-geometry.cjs'
+import { installCommandMenus } from './command-menus'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number; codecName: string }
 type TemplateEntry = { id: string; name: string; builtIn: boolean }
@@ -48,7 +49,8 @@ type Desktop = {
   renameTemplate(id: string, name: string): Promise<TemplateEntry>
   deleteTemplate(id: string): Promise<{ id: string; name: string }>
   setExportPreset(preset: string): Promise<void>
-  renderVideo(project: Project, preset: string, audioMode: string): Promise<string | null>
+  chooseExportDestination(project: Project, audioMode: string): Promise<string | null>
+  renderVideo(project: Project, preset: string, audioMode: string, destination?: string): Promise<string | null>
   cancelRender(): Promise<void>
   confirmAppClose(): Promise<void>
   onAppCloseRequested(listener: () => void): () => void
@@ -80,6 +82,9 @@ let resolveTemplateConflict: ((choice: 'replace' | 'rename') => void) | null = n
 let managerEditingId: string | null = null
 let managerDeletingId: string | null = null
 let isAutomatedTestSession = false
+let exportDestination = ''
+let exportSubmitting = false
+let templateManagerReturnFocus: HTMLElement | null = null
 
 function selected() { return project.layers.find(layer => layer.id === selectedId) }
 function selectLayer(id: string | null) {
@@ -599,6 +604,7 @@ function refreshInspector() {
   }
 }
 function refreshAudio() {
+  $('import-audio').textContent = project.audioPath ? 'Replace audio' : 'Import audio'
   $('audio-name').textContent = project.audioPath ? project.audioPath.split(/[\\/]/).pop() || project.audioPath : 'No audio imported'
   $('audio-details').textContent = metadata
     ? `${metadata.channels === 1 ? 'Mono' : 'Stereo'} · ${(metadata.sampleRate / 1000).toFixed(1)} kHz · ${metadata.duration.toFixed(2)} s`
@@ -654,6 +660,8 @@ function refreshTemplates(entries: TemplateEntry[], preferred = '') {
   if (!$('template-manager-modal').hidden) renderTemplateManager()
 }
 function resetSongPreview() {
+  exportDestination = ''
+  ;($<HTMLInputElement>('export-destination')).value = ''
   if (previewTimer) clearTimeout(previewTimer)
   previewRequest++
   void window.desktop.cancelPreview().catch(() => {})
@@ -1387,7 +1395,10 @@ $<HTMLSelectElement>('export-preset').addEventListener('change', async event => 
 })
 $<HTMLSelectElement>('audio-mode').addEventListener('change', event => {
   const copy = (event.target as HTMLSelectElement).value === 'copy'
-  $('render-mp4').textContent = copy ? 'Render MKV' : 'Render MP4'
+  $('render-mp4').textContent = copy ? 'Export MKV' : 'Export MP4'
+  exportDestination = ''
+  ;($<HTMLInputElement>('export-destination')).value = ''
+  updateExportDialog()
 })
 function closeTemplateConflict(choice: 'replace' | 'rename') {
   if (!resolveTemplateConflict) return
@@ -1484,13 +1495,16 @@ $('save-template-confirm').addEventListener('click', async () => {
   try {
     const input = $<HTMLInputElement>('template-name')
     await executeSaveTemplate(input.value.trim())
+    if ($('save-template-modal').hidden) $('toolbar-templates').focus()
   } catch (error) { setStatus(String(error)) }
 })
 $('save-template-cancel').addEventListener('click', () => {
   $('save-template-modal').hidden = true
+  $('toolbar-templates').focus()
 })
 $('save-template-close').addEventListener('click', () => {
   $('save-template-modal').hidden = true
+  $('toolbar-templates').focus()
 })
 $<HTMLInputElement>('template-name').addEventListener('keydown', event => {
   if (event.key === 'Enter') {
@@ -1509,7 +1523,7 @@ function closeTemplateManager() {
   managerEditingId = null
   managerDeletingId = null
   $('template-manager-modal').hidden = true
-  $('open-template-manager').focus()
+  ;(templateManagerReturnFocus || $('open-template-manager')).focus()
 }
 function focusManagerAction(id: string, action: string) {
   const row = Array.from($('template-manager-custom').querySelectorAll<HTMLElement>('.template-manager-row'))
@@ -1746,6 +1760,7 @@ function renderTemplateManager() {
   }
 }
 $('open-template-manager').addEventListener('click', async () => {
+  templateManagerReturnFocus = $('project-manager-screen').hidden ? $('toolbar-templates') : $('open-template-manager')
   try {
     managerEditingId = null
     managerDeletingId = null
@@ -2066,6 +2081,9 @@ $('unsaved-changes-save').addEventListener('click', async () => {
   }
 })
 window.desktop.onAppCloseRequested(() => {
+  $('export-modal').hidden = true
+  $('about-modal').hidden = true
+  $('editor-screen').inert = false
   if ($('editor-screen').hidden || !isProjectDirty()) {
     window.desktop.confirmAppClose()
     return
@@ -2101,19 +2119,28 @@ $('template-picker-create').addEventListener('click', async () => {
 })
 
 $('render-mp4').addEventListener('click', async () => {
-  if (exportRunning) return
+  if (exportRunning || exportSubmitting) return
   if (!metadata || !project.audioPath) return setStatus('Import audio before rendering.')
+  exportSubmitting = true
+  ;($<HTMLButtonElement>('render-mp4')).disabled = true
+  ;($<HTMLButtonElement>('choose-export-destination')).disabled = true
   try {
     refreshExportResolution()
     const output = await window.desktop.renderVideo(project, ($<HTMLSelectElement>('export-preset')).value,
-      ($<HTMLSelectElement>('audio-mode')).value)
+      ($<HTMLSelectElement>('audio-mode')).value, exportDestination)
     if (!output) return
     exportRunning = true
+    exportDestination = ''
+    ;($<HTMLInputElement>('export-destination')).value = ''
+    closeExportDialog()
+    ;($<HTMLButtonElement>('open-export')).disabled = true
     ;($<HTMLButtonElement>('render-mp4')).disabled = true
     ;($<HTMLSelectElement>('audio-mode')).disabled = true
     $('cancel-render').hidden = false
+    $('export-running-label').hidden = false
     setStatus(`Rendering to ${output}`)
-  } catch (error) { setStatus(String(error)) }
+  } catch (error) { setStatus(String(error)); $('export-dialog-status').textContent = String(error) }
+  finally { exportSubmitting = false; updateExportDialog() }
 })
 $('cancel-render').addEventListener('click', async () => {
   await window.desktop.cancelRender()
@@ -2148,9 +2175,11 @@ window.desktop.onExport(event => {
   }
   if (event.event === 'finished' || event.event === 'failed' || event.event === 'cancelled') {
     exportRunning = false;
+    ;($<HTMLButtonElement>('open-export')).disabled = false
     ;($<HTMLButtonElement>('render-mp4')).disabled = false
     ;($<HTMLSelectElement>('audio-mode')).disabled = false
     $('cancel-render').hidden = true
+    $('export-running-label').hidden = true
     const container = String(event.output).toLowerCase().endsWith('.mkv') ? 'MKV' : 'MP4'
     setStatus(event.event === 'finished' ? `${container} ready: ${event.output}`
       : event.event === 'cancelled' ? 'Export cancelled. No video was saved.'
@@ -2277,4 +2306,81 @@ window.addEventListener('keydown', event => {
   } else if (event.key === 'Escape' && document.body.classList.contains('window-fullscreen')) {
     void window.desktop.toggleWindowFullscreen().catch(error => setStatus(String(error)))
   }
+})
+
+installCommandMenus()
+$('new-project').addEventListener('click', () => {
+  confirmDiscardIfDirty(async () => {
+    try { await applyLoadedProject(await window.desktop.newBlankProject()) }
+    catch (error) { setStatus(String(error)) }
+  })
+})
+$('manage-templates').addEventListener('click', () => $('open-template-manager').click())
+
+function updateExportDialog() {
+  $('export-project-name').textContent = project.title || 'Untitled project'
+  const size = exportDimensions(project, ($<HTMLSelectElement>('export-preset')).value)
+  $('export-canvas-summary').textContent = `${project.width < project.height ? 'Portrait · 9:16' : 'Landscape · 16:9'} · ${size.width} × ${size.height} · 30 FPS`
+  $('export-audio-note').textContent = ($<HTMLSelectElement>('audio-mode')).value === 'copy'
+    ? 'Copies supported source audio without re-encoding. MP3 stays lossy; container metadata and edge padding can differ.'
+    : 'H.264 video with lossy AAC audio, targeting up to 320 kb/s. Mono and low-sample-rate sources use lower targets.'
+  ;($<HTMLButtonElement>('render-mp4')).disabled = !metadata || exportRunning || exportSubmitting
+  ;($<HTMLButtonElement>('choose-export-destination')).disabled = !metadata || exportRunning || exportSubmitting
+  ;($<HTMLSelectElement>('export-preset')).disabled = exportRunning || exportSubmitting
+  ;($<HTMLSelectElement>('audio-mode')).disabled = exportRunning || exportSubmitting
+}
+function openExportDialog() {
+  if (exportRunning) return
+  refreshExportResolution(); updateExportDialog()
+  $('export-dialog-status').textContent = metadata ? 'Existing videos are never overwritten.' : 'Import audio before exporting.'
+  $('export-modal').hidden = false
+  $('editor-screen').inert = true
+  $('export-preset').focus()
+}
+function closeExportDialog() {
+  if (exportSubmitting && !exportRunning) return
+  $('export-modal').hidden = true
+  $('editor-screen').inert = false
+  $('open-export').focus()
+}
+$('open-export').addEventListener('click', openExportDialog)
+$('export-close').addEventListener('click', closeExportDialog)
+$('export-cancel').addEventListener('click', closeExportDialog)
+$('export-preset').addEventListener('change', updateExportDialog)
+$('choose-export-destination').addEventListener('click', async () => {
+  if (exportSubmitting || exportRunning) return
+  try {
+    const path = await window.desktop.chooseExportDestination(project, ($<HTMLSelectElement>('audio-mode')).value)
+    if (path) { exportDestination = path; ($<HTMLInputElement>('export-destination')).value = path }
+  } catch (error) { $('export-dialog-status').textContent = String(error) }
+})
+function openAbout() {
+  $('about-modal').hidden = false; $('editor-screen').inert = true; $('about-close').focus()
+}
+function closeAbout() {
+  $('about-modal').hidden = true; $('editor-screen').inert = false; $('toolbar-help').focus()
+}
+$('about-app').addEventListener('click', openAbout)
+$('show-license').addEventListener('click', openAbout)
+$('about-close').addEventListener('click', closeAbout)
+for (const [id, close] of [['export-modal', closeExportDialog], ['about-modal', closeAbout]] as const) {
+  const modal = $(id)
+  modal.addEventListener('click', event => { if (event.target === modal) close() })
+  modal.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close() }
+    else if (event.key === 'Tab') {
+      const items = Array.from(modal.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled)'))
+      const first = items[0], last = items.at(-1)
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+    }
+  })
+}
+window.addEventListener('keydown', event => {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || document.querySelector('.modal-backdrop:not([hidden])') || $('editor-screen').hidden) return
+  const command = event.key.toLowerCase()
+  const id = command === 'n' ? 'new-project' : command === 'o' ? 'open-project'
+    : command === 's' ? event.shiftKey ? 'save-project-as' : 'save-project'
+    : command === 'w' ? 'close-project' : command === 'e' ? 'open-export' : ''
+  if (id) { event.preventDefault(); $(id).click() }
 })
