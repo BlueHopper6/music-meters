@@ -20,6 +20,12 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'musicmeters-preview', privilege
 
 const ROOT = resolve(__dirname, '..', '..')
 const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.flac'])
+const identity = require('../../phase6/application.cjs')
+// productName changes the default Electron profile name. Explicitly retain
+// the old packaged profile so portable users keep templates and preferences.
+app.setPath('userData', join(app.getPath('appData'), app.isPackaged ? identity.name : app.getName()))
+if (process.platform === 'win32') app.setAppUserModelId(identity.appId)
+app.setName(identity.productName)
 if (process.env.PHASE5_TEST_USER_DATA) {
   app.setPath('userData', process.env.PHASE5_TEST_USER_DATA)
   app.setPath('sessionData', process.env.PHASE5_TEST_USER_DATA)

@@ -1,3 +1,4 @@
+const { packagedExecutable } = require('../packaged-executable.cjs')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -6,7 +7,7 @@ const { defaultProject, spectrumLayer } = require('../../phase2/project.cjs')
 
 async function main() {
   if (process.argv.length !== 4) throw new Error('Usage: node phase6/test/encoder-failure.cjs <package-dir> <new-output-dir>')
-  const executable = path.join(path.resolve(process.argv[2]), 'electron.exe')
+  const executable = packagedExecutable(path.resolve(process.argv[2]))
   const dir = path.resolve(process.argv[3])
   if (fs.existsSync(dir)) throw new Error(`Output already exists: ${dir}`)
   fs.mkdirSync(dir, { recursive: true })

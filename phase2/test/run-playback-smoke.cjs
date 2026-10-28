@@ -1,3 +1,4 @@
+const { packagedExecutable } = require('../../phase6/packaged-executable.cjs')
 const fs = require('node:fs')
 const path = require('node:path')
 const assert = require('node:assert/strict')
@@ -18,7 +19,7 @@ async function main() {
     assert.equal(encoded.status, 0, encoded.stderr)
   }
   const logPath = path.join(dir, 'editor.log'), log = fs.openSync(logPath, 'w')
-  const child = spawn(path.join(pack, 'electron.exe'), [], { env: { ...process.env,
+  const child = spawn(packagedExecutable(pack), [], { env: { ...process.env,
     PHASE2_HEADLESS: '1', PHASE2_PLAYBACK_SMOKE: '1', PHASE2_PLAYBACK_DIR: dir,
     PHASE2_TEST_INPUT: input, PHASE2_TEST_SAVE_PATH: path.join(dir, 'saved.json'),
     PHASE5_TEST_USER_DATA: path.join(dir, 'profile') }, stdio: ['ignore', log, log], windowsHide: true, shell: false })

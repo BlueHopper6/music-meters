@@ -6,6 +6,8 @@ const { app, dialog } = require('electron')
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 module.exports = async function startupSmoke(win) {
+  assert.equal(app.getName(), 'MusicMeters')
+  assert.equal(app.getPath('userData'), process.env.PHASE5_TEST_USER_DATA)
   win.setContentSize(1000, 700)
   const capture = async name => {
     if (!win.isVisible()) win.showInactive()

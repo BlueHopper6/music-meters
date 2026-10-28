@@ -1,3 +1,4 @@
+const { packagedExecutable } = require('../../phase6/packaged-executable.cjs')
 const fs = require('node:fs')
 const path = require('node:path')
 const { spawn, spawnSync } = require('node:child_process')
@@ -10,7 +11,7 @@ async function main() {
   if (process.argv.length !== 2 && !packaged) {
     throw new Error('Usage: node phase2/test/run-startup-smoke.cjs [--package <portable-directory>]')
   }
-  const electron = packaged ? path.join(path.resolve(process.argv[3]), 'electron.exe') : await build()
+  const electron = packaged ? packagedExecutable(path.resolve(process.argv[3])) : await build()
   if (packaged && !fs.existsSync(electron)) throw new Error(`Portable executable not found: ${electron}`)
   const args = packaged ? [] : [path.join(root, 'phase2', 'editor-app')]
   const runId = `startup-smoke-${Date.now()}`

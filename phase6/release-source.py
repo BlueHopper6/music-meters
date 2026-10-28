@@ -57,7 +57,8 @@ def main():
     output = args.output.resolve()
     if output.exists():
         raise RuntimeError(f"Source archive already exists: {output}")
-    if not package.is_dir() or not (package / "electron.exe").is_file():
+    if not package.is_dir() or not any((package / name).is_file()
+                                     for name in ("MusicMeters.exe", "electron.exe")):
         raise RuntimeError("Choose a completed Windows portable package")
     revision = git(ROOT, "rev-parse", "HEAD").decode().strip()
     if git(ROOT, "status", "--porcelain", "--untracked-files=no").strip():

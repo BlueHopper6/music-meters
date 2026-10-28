@@ -1,0 +1,17 @@
+const fs = require('node:fs')
+const path = require('node:path')
+const assert = require('node:assert/strict')
+const { spawnSync } = require('node:child_process')
+const { createHash } = require('node:crypto')
+const { packageFiles } = require('../package-installer.cjs')
+
+if (process.argv.length !== 5) throw new Error('Usage: node phase6/test/installer-payload.cjs <setup.exe> <new-output-dir> <7za.exe>')
+const [setup, output, archiver] = process.argv.slice(2).map(value => path.resolve(value))
+assert.equal(fs.existsSync(output), false, 'Choose a fresh extraction directory')
+const provenance = JSON.parse(fs.readFileSync(path.join(path.dirname(setup), 'INSTALLER-PROVENANCE.json')))
+assert.equal(createHash('sha256').update(fs.readFileSync(setup)).digest('hex'), provenance.installer.sha256)
+// 7za locates the embedded 7z payload without executing the NSIS installer.
+const result = spawnSync(archiver, ['x', setup, '-o' + output, '-y'], { encoding: 'utf8', windowsHide: true })
+if (result.status !== 0) throw new Error(`Payload extraction failed: ${result.stderr || result.stdout || result.error}`)
+assert.deepEqual(packageFiles(output), provenance.portableFiles, 'Every embedded portable file must match the recorded package')
+console.log(JSON.stringify({ event: 'installer-payload', status: 'PASS', files: Object.keys(provenance.portableFiles).length }))

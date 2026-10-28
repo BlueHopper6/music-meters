@@ -1,3 +1,4 @@
+const { packagedExecutable } = require('../packaged-executable.cjs')
 const fs = require('node:fs')
 const path = require('node:path')
 const assert = require('node:assert/strict')
@@ -16,7 +17,7 @@ async function main() {
   const fixture = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
     'sine=frequency=660:duration=2', '-ac', '2', '-ar', '48000', input], { encoding: 'utf8' })
   if (fixture.status !== 0) throw new Error(fixture.stderr)
-  const electron = packaged ? path.join(path.resolve(process.argv[3]), 'electron.exe') : await build()
+  const electron = packaged ? packagedExecutable(path.resolve(process.argv[3])) : await build()
   const electronArgs = [...(packaged ? [] : [path.resolve(__dirname, '..', '..', 'phase2', 'editor-app')]),
     `--disk-cache-dir=${path.join(dir, 'user-data', 'Cache')}`]
   const logPath = path.join(dir, 'editor.log')

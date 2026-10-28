@@ -1,0 +1,9 @@
+{
+  "name": "musicmeters-installer-tools",
+  "version": "0.1.0",
+  "private": true,
+  "devDependencies": {
+    "electron-builder": "26.18.0",
+    "resedit": "3.1.0"
+  }
+}

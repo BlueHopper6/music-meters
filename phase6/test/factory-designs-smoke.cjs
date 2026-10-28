@@ -1,3 +1,4 @@
+const { packagedExecutable } = require('../packaged-executable.cjs')
 const fs = require('node:fs')
 const path = require('node:path')
 const assert = require('node:assert/strict')
@@ -29,7 +30,7 @@ async function main() {
     const output = path.join(dir, `${slug}.mp4`)
     const logPath = path.join(dir, `${slug}.log`)
     const log = fs.openSync(logPath, 'wx')
-    const child = spawn(path.join(pack, 'electron.exe'), [], {
+    const child = spawn(packagedExecutable(pack), [], {
       env: { ...process.env, MUSICMETERS_EXPORT_PROFILE: path.join(dir, `${slug}-profile`),
         PHASE2_JOB: JSON.stringify({ project, output, preset, audioMode: 'aac', cancelFile: path.join(dir, 'never.cancel') }) },
       stdio: ['ignore', log, log], shell: false, windowsHide: true,
