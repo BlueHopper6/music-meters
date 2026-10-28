@@ -86,6 +86,7 @@ async function main() {
     copyFile('LICENSE-NOTICES.md', path.join(output, 'LICENSE-NOTICES.md'))
     copyFile('phase6/THIRD_PARTY_NOTICES.md', path.join(output, 'THIRD_PARTY_NOTICES.md'))
     copyFile('phase6/PORTABLE-README.md', path.join(output, 'README.md'))
+    copyFile('BUILD-CONFIGURATION.md', path.join(output, 'BUILD-CONFIGURATION.md'))
     brandExecutable(output)
     const sourceManifest = path.join(root, 'SOURCE-MANIFEST.json')
     const extracted = fs.existsSync(sourceManifest) ? JSON.parse(fs.readFileSync(sourceManifest, 'utf8')) : null
@@ -102,6 +103,7 @@ async function main() {
       'resources/app/phase6/application.cjs',
       'resources/app/phase2/entry.cjs',
       'resources/app/phase2/editor-app/main.cjs',
+      'BUILD-CONFIGURATION.md',
       'resources/app/upstream/prism/native/build/Release/visualizer_dsp.node',
       'resources/app/artifacts/phase2/editor.js',
       'resources/app/artifacts/phase2/export-renderer.js',

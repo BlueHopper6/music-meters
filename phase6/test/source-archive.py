@@ -32,6 +32,7 @@ def main():
             raise RuntimeError("Unsafe or duplicate source archive path")
         required = [
             "LICENSE", "LICENSE-NOTICES.md", "README.md", "phase2/build.cjs",
+            "BUILD-CONFIGURATION.md",
             "PACKAGE-BUILD-PROVENANCE.json",
             "phase2/composition.ts", "phase6/package-windows.cjs", "phase6/release-source.py",
             "phase2/editor-app/assets/brand/icon-32.png",

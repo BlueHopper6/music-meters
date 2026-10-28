@@ -3,6 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "devDependencies": {
-    "electron": "45.0.0"
+    "electron": "45.1.0"
   }
 }
