@@ -1,3 +1,4 @@
+const { packagedExecutable } = require('../packaged-executable.cjs')
 const fs = require('node:fs')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
@@ -10,7 +11,7 @@ async function main() {
   fs.mkdirSync(dir, { recursive: true })
   const logPath = path.join(dir, 'security.log')
   const log = fs.openSync(logPath, 'w')
-  const child = spawn(path.join(packageDir, 'electron.exe'), [], {
+  const child = spawn(packagedExecutable(packageDir), [], {
     env: { ...process.env, PHASE2_HEADLESS: '1', PHASE6_SECURITY_SMOKE: '1',
       PHASE5_TEST_USER_DATA: path.join(dir, 'user-data') },
     stdio: ['ignore', log, log], shell: false, windowsHide: true,

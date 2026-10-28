@@ -38,6 +38,8 @@ def main():
             "phase2/editor-app/assets/brand/icon-64.png",
             "phase2/editor-app/assets/brand/music-meters.ico",
             "phase6/electron-runtime/package-lock.json", "phase6/build-tools/package-lock.json",
+            "phase6/installer-tools/package-lock.json", "phase6/application.cjs",
+            "phase6/package-installer.cjs", "phase6/brand-executable.cjs", "phase6/installer.nsh",
             "phase6/build-native.cjs", "SOURCE-MANIFEST.json",
             "upstream/prism/.musicmeters-prism-commit", "upstream/prism/LICENSE",
             "upstream/prism/THIRD_PARTY_NOTICES.md",

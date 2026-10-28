@@ -57,12 +57,20 @@ jobs:
           node phase2/build.cjs
           node phase6/build-tools/node_modules/typescript/lib/tsc.js --noEmit --strict --skipLibCheck --allowJs --checkJs false --target es2022 --module esnext --moduleResolution bundler --lib es2022,dom,dom.iterable --typeRoots phase6/build-tools/node_modules/@types --types node upstream/prism/src/renderer/env.d.ts phase2/composition.ts phase2/editor.ts phase2/export-renderer.ts
           node --test phase6/test/space.test.cjs phase6/test/window-security.test.cjs phase5/test/templates.test.cjs phase2/test/project.test.cjs phase2/test/stage-geometry.test.cjs phase2/test/audio-output.test.cjs phase4/test/assets.test.cjs phase2/test/fonts.test.cjs phase1/test/pcm-reader.test.cjs phase3/test/vectorscope-correlation.test.cjs
+      - name: Prepare locked Windows installer tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          npm --prefix phase6/installer-tools ci --ignore-scripts --no-audit --no-fund
+          npm --prefix phase6/installer-tools audit --audit-level=low
       - name: Portable package and audio export smokes
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           node phase6/package-windows.cjs --output artifacts/phase6/ci-package
+          node phase6/test/package-branding.cjs artifacts/phase6/ci-package
           node phase2/test/run-startup-smoke.cjs --package artifacts/phase6/ci-package
           node phase2/test/run-portrait-smoke.cjs --package artifacts/phase6/ci-package artifacts/phase6/ci-portrait
           node --test phase2/test/playback-media.test.cjs phase2/test/timecode.test.cjs
@@ -85,6 +93,7 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
           Pop-Location
           node artifacts/phase6/ci-extracted/musicmeters/phase6/build-native.cjs
+          npm --prefix artifacts/phase6/ci-extracted/musicmeters/phase6/installer-tools ci --ignore-scripts --no-audit --no-fund
           Push-Location artifacts/phase6/ci-extracted/musicmeters/phase6/electron-runtime
           npm ci --ignore-scripts --no-audit --no-fund
           node node_modules/electron/install.js
@@ -95,3 +104,12 @@ jobs:
           node phase6/package-windows.cjs --output ../../ci-rebuilt-package
           node phase6/test/package-smoke.cjs ../../ci-rebuilt-package ../../ci-rebuilt-smoke
           Pop-Location
+      - name: Build setup and verify installed lifecycle on disposable runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          node phase6/package-installer.cjs --package artifacts/phase6/ci-package --output artifacts/phase6/ci-installer
+          $setup = Get-ChildItem artifacts/phase6/ci-installer/*-setup.exe
+          if (@($setup).Count -ne 1) { throw 'Expected one setup executable' }
+          ./phase6/test/installer-lifecycle.ps1 -Installer $setup.FullName -Output artifacts/phase6/ci-installer-lifecycle

@@ -1,3 +1,4 @@
+const { packagedExecutable } = require('../packaged-executable.cjs')
 const fs = require('node:fs')
 const path = require('node:path')
 const { spawn, spawnSync } = require('node:child_process')
@@ -14,7 +15,7 @@ async function main() {
   if (fixture.status !== 0) throw new Error(fixture.stderr)
   const logPath = path.join(dir, 'editor.log')
   const log = fs.openSync(logPath, 'w')
-  const child = spawn(path.join(packaged, 'electron.exe'), [], {
+  const child = spawn(packagedExecutable(packaged), [], {
     env: { ...process.env, PHASE2_HEADLESS: '1', PHASE2_TEST_INPUT: input,
       PHASE6_PREVIEW_PERF_SMOKE: '1', PHASE6_PREVIEW_PERF_DIR: dir,
       PHASE5_TEST_USER_DATA: path.join(dir, 'user-data') },

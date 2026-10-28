@@ -4,6 +4,8 @@ const { execFileSync } = require('node:child_process')
 const { createHash } = require('node:crypto')
 const { build } = require('../phase2/build.cjs')
 const { runtimeDirectory } = require('./electron-runtime.cjs')
+const identity = require('./application.cjs')
+const { brandExecutable } = require('./brand-executable.cjs')
 
 const root = path.resolve(__dirname, '..')
 const prism = path.join(root, 'upstream', 'prism')
@@ -32,9 +34,11 @@ async function main() {
     fs.cpSync(runtime, output, { recursive: true, errorOnExist: true, force: false })
     fs.mkdirSync(app, { recursive: true })
     fs.writeFileSync(path.join(app, 'package.json'), JSON.stringify({
-      name: 'music-visualizer', version: '0.6.0',
+      name: identity.name, productName: identity.productName, version: identity.version,
+      description: 'Offline music visualization and video export', author: 'MusicMeters',
       main: 'phase2/entry.cjs', private: true,
     }, null, 2) + '\n')
+    copyFile('phase6/application.cjs', path.join(app, 'phase6', 'application.cjs'))
     for (const name of fs.readdirSync(path.join(root, 'phase2'))) {
       if (name.endsWith('.cjs') && !['build.cjs', 'run.cjs', 'export.cjs'].includes(name)) {
         copyFile(`phase2/${name}`, path.join(app, 'phase2', name))
@@ -82,6 +86,7 @@ async function main() {
     copyFile('LICENSE-NOTICES.md', path.join(output, 'LICENSE-NOTICES.md'))
     copyFile('phase6/THIRD_PARTY_NOTICES.md', path.join(output, 'THIRD_PARTY_NOTICES.md'))
     copyFile('phase6/PORTABLE-README.md', path.join(output, 'README.md'))
+    brandExecutable(output)
     const sourceManifest = path.join(root, 'SOURCE-MANIFEST.json')
     const extracted = fs.existsSync(sourceManifest) ? JSON.parse(fs.readFileSync(sourceManifest, 'utf8')) : null
     const revision = extracted?.applicationRevision ||
@@ -92,6 +97,11 @@ async function main() {
     const prismTrackedChanges = extracted ? false : Boolean(execFileSync('git',
       ['status', '--porcelain', '--untracked-files=no'], { cwd: prism, encoding: 'utf8' }).trim())
     const appFiles = [
+      identity.executable,
+      'resources/app/package.json',
+      'resources/app/phase6/application.cjs',
+      'resources/app/phase2/entry.cjs',
+      'resources/app/phase2/editor-app/main.cjs',
       'resources/app/upstream/prism/native/build/Release/visualizer_dsp.node',
       'resources/app/artifacts/phase2/editor.js',
       'resources/app/artifacts/phase2/export-renderer.js',
@@ -105,10 +115,10 @@ async function main() {
       applicationRevision: revision, trackedChanges,
       prismTrackedChanges,
       prismRevision: prismPin, electronVersion: require('./electron-runtime.cjs').expectedVersion,
-      applicationVersion: '0.6.0',
+      applicationVersion: identity.version, executable: identity.executable,
       appFileSha256: Object.fromEntries(appFiles.map(name => [name, sha256(path.join(output, name))])),
     }, null, 2) + '\n')
-    console.log(JSON.stringify({ output, executable: path.join(output, 'electron.exe'),
+    console.log(JSON.stringify({ output, executable: path.join(output, identity.executable),
       ffmpeg: 'system PATH prerequisite', prismNative: nativeTarget }))
   } catch (error) {
     fs.rmSync(output, { recursive: true, force: true })

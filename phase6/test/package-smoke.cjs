@@ -1,3 +1,4 @@
+const { packagedExecutable } = require('../packaged-executable.cjs')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -25,7 +26,7 @@ async function main() {
   const projectPath = path.join(dir, 'new project.json')
   fs.writeFileSync(projectPath, JSON.stringify(project, null, 2))
   const output = path.join(dir, 'portable output.mp4')
-  const executable = path.join(pack, 'electron.exe')
+  const executable = packagedExecutable(pack)
   const exportApp = path.join(pack, 'resources', 'app', 'phase2', 'export-app')
   assert.ok(fs.existsSync(executable) && fs.existsSync(exportApp), 'Portable package is incomplete')
   assert.equal(fs.readFileSync(path.join(pack, 'version'), 'utf8').trim(), expectedVersion)
