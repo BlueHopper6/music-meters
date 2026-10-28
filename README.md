@@ -83,7 +83,7 @@ Saving a new project creates a project folder. Keep its JSON and sibling `.asset
 
 ## Credits and license
 
-MusicMeters uses [Prism](https://github.com/Boof2015/prism) for native analysis and Canvas meter rendering. [Astrofox](https://github.com/astrofox-io/astrofox) is a source reference; it is not required to build the app.
+MusicMeters uses [Prism](https://github.com/Boof2015/prism) for native analysis and Canvas meter rendering.
 
 The software code is **GPL-3.0-only**; see [LICENSE](LICENSE) and [license notices](LICENSE-NOTICES.md). Official binary releases include a matching source archive containing the pinned Prism source.
 
