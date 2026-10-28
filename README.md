@@ -1,61 +1,90 @@
+<div align="center">
+
+<img src="phase2/editor-app/assets/brand/icon-64.png" alt="MusicMeters icon" width="64" height="64">
+
 # MusicMeters
 
-An offline music visualizer built around Prism's native analysis and Canvas meter rendering. The current development build has a static Electron layout editor and MP4 or MKV export.
+**Turn your music into videos with editable audio visualizers.**
 
-The Prism-based software code is GPL-3.0-only. See [the license](LICENSE) and [license and modification notices](LICENSE-NOTICES.md). The MusicMeters logo and icons are separately owned artwork: complete, unchanged official releases may be shared with their branding. Contribution forks and review builds may retain the unchanged branding under the notice's contribution permission; independently distributed modified products must rebrand unless separately authorized. See [the contribution guide](CONTRIBUTING.md). Each eventual public binary must be paired with its exact source archive as described in [the release checklist](docs/release-checklist.md); the current portable build is a development preview.
+[Download Windows preview](https://github.com/BlueHopper6/music-meters/releases) · [Getting started](#getting-started) · [User guide](docs/user-guide.md) · [Changelog](CHANGELOG.md)
 
-## Run the editor
+</div>
 
-Set up the pinned Prism checkout and native addon as described in [the Phase 0 report](docs/phase-0-report.md). Keep `ffmpeg` and `ffprobe` on PATH. Then run from the repository root:
+MusicMeters is an offline desktop music visualizer built around [Prism](https://github.com/Boof2015/prism)'s native audio analysis and meter rendering. Combine meters, artwork, and text into a composition, preview it with your music, and export a video.
 
-```powershell
-node phase2/run.cjs
-```
+## Features
 
-Choose **Import / replace audio** to load a WAV, MP3, or FLAC file. Select a timestamp to see a real still frame, add vectorscope, spectrum analyzer, oscilloscope, spectrogram, waveform history, VU, loudness/peak, or waterfall spectrum layers, move or resize them, save a JSON project, and render a video. Layer placement updates immediately. After adding or changing a meter, **Still out of date** indicates that its audio analysis needs updating; press **Refresh still** when ready. A late-song refresh can take time, but the editor remains usable while it runs. Vectorscope layers offer five Prism stereo projections, zoom, optional native three-band traces and colors, and optional signed full-band/band correlation indicators. Spectrum layers have independent FFT size, smoothing, frequency scale, range, and side-channel settings. Oscilloscope layers show Prism's left-channel wave with pitch-triggered or free-running display, optional underfill, and optional grid. Spectrogram layers scroll frequency history in either orientation with independent scale, color, and analysis settings. Waveform history layers offer mono left-channel or stereo lanes, scroll speed 1–8, and optional low/mid/high band colors. VU layers offer horizontal or vertical stereo bars, stereo or combined needles, a configurable 0 VU dBFS reference, and colors. Loudness/peak layers show momentary, short-term, or integrated LUFS alongside stereo bars and true peak, with independent readout and colors. Waterfall layers show Prism's native time-evolving spectrum ridges with independent FFT, scale, history, density, smoothing, tilt, and colors. Layer coordinates use a 1280 × 720 landscape or 720 × 1280 portrait canvas; export scales to the selected 720p or 1080p size at 30 FPS. Project files store an audio path relative to the JSON file.
+### Eight audio visualizers
 
-Use **Snap** above the stage to align dragged layers with the stage edges and center; choose an optional 16, 32, or 64 px grid. Guide lines show active alignments. In the Inspector, **Lock aspect ratio while resizing** keeps a layer proportional when dragging its resize handle or editing width and height. Meter layers also have a rotation control from −180° to 180°. These settings are saved with the project and are shared by the still preview and MP4 renderer.
+Each meter has its own settings, colors, and placement.
 
-For a finished composition, choose **Artwork / logo** or **Text** in the Add layer menu. Image layers use a local PNG, JPEG, or WebP file, crop-to-fill or fit-inside, opacity, rotation, and shadow. Text layers have content, font, size, weight, alignment, color, rotation, and shadow. The composition background can be a solid color, gradient, or local image. Layer order is shared across meters, artwork, and text: **Move up** places a layer in front. The project name is metadata; in version 2 projects, visible song and artist lettering comes from text layers. Older version 1 projects retain their original fixed title/subtitle/timestamp display until a new graphic layer or background style upgrades them. Saving a version 2 project copies artwork into a sibling `<project-name>.assets` folder. Keep that folder with the JSON when moving the project. Audio is still referenced separately and is never embedded. If audio or artwork is missing, the editor lists each missing file with a **Relink…** button; save the project after choosing replacements. **Save as…** creates a separate project for the next song.
+| Visualizer | What it shows |
+| --- | --- |
+| Spectrum analyzer | Frequency levels with configurable FFT, smoothing, and frequency scale |
+| Oscilloscope | Audio waveform with pitch-triggered or free-running display |
+| Vectorscope | Stereo phase with five projections and optional multiband traces |
+| Spectrogram | Scrolling frequency history in either orientation |
+| Waveform history | Scrolling mono or stereo waves with optional band colors |
+| VU meter | Stereo bars or analog needles with an adjustable reference level |
+| Loudness / peak | Momentary, short-term, or integrated LUFS and true peak |
+| Waterfall spectrum | Spectrum ridges with adjustable history, density, and tilt |
 
-Select any visualizer or text layer and open **Layer background** in the inspector. Enable a background, choose its color, and set its opacity independently of the trace or text. It fills the layer's rectangle and follows its position, rotation, and overall layer opacity. Disable the background to make it transparent again. Projects and templates preserve these settings; older projects and existing factory templates remain transparent by default. Locked layers cannot change their background settings.
+### Design your composition
 
-The startup Project Manager offers **New blank project**, **New from template…**, **Open project…**, and recent projects. **Close project** returns to it. Opening or closing a project, creating another project, or quitting prompts you to save, discard, or cancel when there are unsaved edits. Saving a new project creates a dedicated `<project-name>` folder containing its JSON and any project artwork assets; selecting that same folder does not create another nested folder. Audio remains an external reference. Recent Projects uses the saved filename when the project title is still a placeholder. Projects also save the preview marker: moving it marks the project unsaved, and reopening restores the saved position within the available audio. Older files without a saved marker open at zero. Templates clear song positions; exports still render the full song.
+- Arrange, resize, rotate, reorder, hide, and lock layers. Use snapping, alignment guides, and an optional grid.
+- Add local artwork and editable text with fonts, colors, opacity, and shadows.
+- Choose a solid, gradient, or image background, plus independent backgrounds for meter and text layers.
+- Work in landscape **16:9** or portrait **9:16** and export at **720p or 1080p, 30 FPS**.
 
-## Window controls and portrait video
+### Preview and reuse
 
-The editor title bar groups project actions under **File**, layout actions under **Templates**, and about/license information under **Help**, with **Save** and **Export…** beside the window controls. Drag the project-title area to move the window. Ctrl+S saves, Ctrl+Shift+S saves as, Ctrl+O opens, Ctrl+N creates a blank project, and Ctrl+W closes the project with the usual unsaved-change guard. Menus support arrow keys and Escape.
+- Play your audio with synchronized live meters, pause, mute, scrub, or jump to a timecode.
+- Start from eight factory templates: **Afterglow**, **Contour**, **Night Radio**, **Observatory**, **Synthwave**, **Minimalist Ambient**, **Social**, and **Hyper Chase**.
+- Save your own templates and manage them through the Project Manager.
+- Save local projects, reopen recent work, and relink missing audio or artwork.
 
-Import or replace audio beside the song details below the canvas. **Export…** (Ctrl+E) opens a dialog for resolution, format/audio mode, and destination. **Browse…** chooses the output through the native save dialog; if no destination has been chosen, the Export action opens that dialog before starting. Existing output files are never overwritten. Export progress remains in the editor, with **Cancel export** in the command bar while a job runs.
+### Export locally
 
-The integrated app title bar has minimize, maximize/restore, and close controls at the upper right, with visible hover states and a red close hover. Drag the title bar to move the window or double-click it to maximize/restore. F11 toggles app fullscreen; Escape exits. Closing still prompts for unsaved changes. The custom maximize button does not expose the native Windows snap-layout hover menu. **Full screen** beside the canvas remains a separate composition-preview view.
+- **MP4:** H.264 video with lossy AAC audio targeting up to 320 kb/s; mono and low-sample-rate sources use lower targets.
+- **MKV:** H.264 video with supported MP3, FLAC, or WAV/PCM audio copied without re-encoding. MP3 remains lossy.
+- Track export progress, cancel an export, and keep existing videos safe from silent overwrites.
 
-Choose **Canvas → Portrait · 9:16** above the preview to edit a vertical composition. Portrait uses 720 × 1280 logical coordinates; choose **1080p** for 1080 × 1920 video at 30 FPS, or **720p** for 720 × 1280. Both MP4/AAC and MKV/source-audio-copy follow the canvas orientation. Switching orientation fits and centers the current layout without stretching; adjust the layout afterward and refresh the audio still. Orientation changes mark the project unsaved, and projects and custom templates retain their dimensions. Existing landscape projects keep their original dimensions and exports. Portrait documents require this version or newer; older previews only accept landscape dimensions.
+These features describe the current source. See the [changelog](CHANGELOG.md) for changes since the published preview.
 
-Choose **Quit MusicMeters** in the Project Manager or **File → Quit MusicMeters** in the editor to exit the app. Unsaved editor changes prompt for **Save**, **Discard**, or **Cancel**, just like the window close button. Canceling a save dialog keeps the app open.
+## Download
 
-## Video preview
+MusicMeters currently has a **Windows x64 portable preview**. Download it from [GitHub Releases](https://github.com/BlueHopper6/music-meters/releases); each release lists its included features, requirements, and known limitations. Linux and macOS builds have not been validated.
 
-Choose **Play** below the canvas to listen to the source audio while the canvas renders live meters. Playback starts from the current timestamp without encoding a video or analyzing the entire song first. A small buffer of upcoming analysis frames keeps meter data synchronized to the audio clock. Landscape and portrait use the editable canvas resolution; export settings are unchanged.
+1. Install the FFmpeg command-line tools and put both `ffmpeg` and `ffprobe` on your Windows `PATH`. Check `ffmpeg -version` and `ffprobe -version` in a new terminal.
+2. Download the Windows binary ZIP and extract the **whole folder**.
+3. Open `electron.exe` inside the extracted folder. Keep the other files beside it.
 
-Use the **Play/Pause icons**, **Space** (outside text fields and controls), the seek bar, and **Mute**. Seeking uses fast live analysis even before the first Play. The thin playhead has a larger invisible drag target and supports keyboard arrows. The current timecode sits beside Play on the left, followed by the song duration; click it to enter seconds or `mm:ss.mmm` / `hh:mm:ss.mmm`, press Enter to jump or Escape to cancel. Playback and seeking do not mark the project unsaved. An explicit Save preserves the selected preview marker. Composition edits or changing audio stop the current session; press Play to continue with the new composition. Editing remains available without a separate mode button. Analyzer processes and decoders stop when the session closes. After seeking, rolling meter history and cumulative loudness restart with a short local warm-up; the on-screen status identifies this behavior. **Full-history still** explicitly analyzes all audio through the current position, and final exports always use full-song analysis.
+The current download has no installer, Start menu registration, or automatic updater. Node.js and developer build tools are not needed to run it. FFmpeg and FFprobe are required separately.
 
-## Reuse a layout for the next song
+The preview is unsigned. Check the release notes for runtime/security limitations, checksums, and testing scope before running it.
 
-In the Project Manager, choose **New from template…** and select **Afterglow**, **Contour**, **Night Radio**, **Observatory**, **Synthwave**, **Minimalist Ambient**, **Social**, **Hyper Chase**, or a saved custom template. In the editor, **Save as template…** opens a naming dialog; enter a name and choose **Save template**. If a custom template has that name, choose whether to replace it or enter another name. **Manage templates…** in the Project Manager opens the Template Manager to browse, duplicate, rename, or delete layouts. Factory templates are read-only but can be duplicated; **Use layout** starts a new project from the chosen template. Templates are versioned JSON files in Electron's local user-data `templates` folder. They keep meter settings, layer order, typography, and background styling. A background image is copied into a sibling `.assets` folder. They clear audio, artwork/logo image paths, and all text content, while preserving each text layer's style and position. When a template is used with imported audio, layers named **Song title** receive an editable title suggestion. Pick artwork for any visible empty image layer before export.
+## Getting started
 
-The eight factory designs include editable `song name`, `artist name`, `album name`, `MUSICMETERS`, and `genre / slowed + reverb` text. Their layer names are lowercase. These factory designs leave artwork empty and hidden so playback and export work immediately; select the `artwork` layer and choose your own image to enable it. Social is a portrait 9:16 design with the genre line above MUSICMETERS; the other factories use landscape 16:9. Hyper Chase keeps a rotated spectrum beside the empty cover slot, with loudness on the opposite side and a subtle waterfall overlay. The placeholders stay as written when importing audio. Custom template saves and duplicates retain the existing behavior of clearing all text content. Night Radio uses two combined-stereo VU needle faces for its paired analog layout; they show the same combined measurement rather than separate left/right channels.
+1. Choose **New from template…** in the Project Manager, or start a blank project.
+2. Choose **Import / replace audio** and open a local WAV, MP3, or FLAC file.
+3. Edit the text, choose your artwork, and arrange your meters. Choose **Canvas → Portrait · 9:16** for vertical video.
+4. Press **Play** to preview the composition with audio. Use **Full-history still** when you want analysis through the selected timestamp.
+5. **Save** your project, then choose **Export…** to select the resolution, format, and output filename.
 
-For another song, press **Import / replace audio** and, if needed, choose new artwork and edit the title text. The app clears the old still analysis and recomputes it from the new song. It remembers the last selected template and export size locally. Export defaults to **1080p at 30 FPS** and **MP4 with lossy AAC up to 320 kb/s** for compatibility. Standard stereo targets 320 kb/s; mono and low-sample-rate sources use explicit lower targets. Observed bitrate depends on the signal and sample rate. Select **MKV · Source audio copy (no re-encode)** to keep a supported MP3, FLAC, or WAV/PCM audio stream without re-encoding. MP3 source audio remains lossy. The save dialog suggests `<title>_visualizer.mp4` or `.mkv` to match the choice. Existing videos are never silently overwritten. Stream copy preserves the audio packet content, but the MKV file, its metadata, and MP3 playback padding are not byte-identical to the source audio file. Project JSON and its `.assets` folder are portable together; templates remain in this device's Electron user data unless copied separately with their asset folders.
+Saving a new project creates a project folder. Keep its JSON and sibling `.assets` folder together; audio remains a separate file reference. Templates reuse the layout with fresh song media. The [user guide](docs/user-guide.md) explains media handling, template behavior, preview history, and shortcuts.
 
-For a developer smoke test, generate the synthetic fixtures with `python phase1/make-fixtures.py` and run `node phase2/run.cjs --audio artifacts/phase1/fixtures/stereo-10s-48k.wav`.
+## Documentation
 
-The [Phase 5 report](docs/phase-5-report.md) documents the song-switch gate and its limits. Earlier [Phase 4 report](docs/phase-4-report.md), [phase reports](docs/phase-3-8-report.md), and the [meter parity matrix](docs/meter-parity.md) track composition and meter verification.
+- [User guide](docs/user-guide.md) — meters, composition, playback, templates, and project files.
+- [Changelog](CHANGELOG.md) — release history and the upcoming feature baseline.
+- [Build from source](docs/development.md) — Windows prerequisites, pinned Prism setup, and direct build commands.
+- [Release checklist](docs/release-checklist.md) — verification and matching source delivery.
+- [Contributing](CONTRIBUTING.md) · [Report an issue](https://github.com/BlueHopper6/music-meters/issues).
 
-## Developer setup and Windows portable build
+## Credits and license
 
-This repository is developed on Windows x64. Install Node.js 24 LTS, Python, Visual Studio 2022 C++ build tools, and FFmpeg/FFprobe on `PATH`. From a fresh checkout, clone Prism into the ignored `upstream/prism` directory and check out commit `49721802252b115d169e353c98b27408daa5e2b7`. In `phase6/build-tools`, run `npm ci --ignore-scripts --no-audit --no-fund`; then from the repository root run `node phase6/build-native.cjs`. MusicMeters installs only the locked native/build dependencies it uses, leaving Prism's larger development dependency tree uninstalled. If Visual Studio detection fails, use the host-specific environment setup described in [the Phase 0 setup record](docs/phase-0-report.md). In `phase6/electron-runtime`, run `npm ci --ignore-scripts --no-audit --no-fund` and `node node_modules/electron/install.js` to install the exact Electron version in its lockfile. Astrofox is a source reference and is not needed to build the application.
+MusicMeters uses [Prism](https://github.com/Boof2015/prism) for native analysis and Canvas meter rendering. [Astrofox](https://github.com/astrofox-io/astrofox) is a source reference; it is not required to build the app.
 
-From the repository root, run `python phase1/make-fixtures.py` to prepare the ignored unit-test audio, `node phase2/build.cjs`, then `node phase2/run.cjs` to open the editor. To create a portable development package, run `node phase6/package-windows.cjs --output artifacts/phase6/my-new-package` and launch its `electron.exe`. The output directory must not already exist. The package includes the Electron runtime, built renderer code, MusicMeters window icon and brand assets, and the pinned Prism native addon. It requires system FFmpeg and FFprobe; neither binary is bundled. Work files and export analysis caches are written to the current user's temp directory, not the package folder. Export checks the output drive for a working-space estimate before analysis and cleans up partial MP4 or MKV files on failure or cancellation. For a direct export, use `node phase2/export.cjs --project <project.json> --output <video.mkv> --audio-mode copy`; omitting `--audio-mode` keeps the MP4/AAC default.
+The software code is **GPL-3.0-only**; see [LICENSE](LICENSE) and [license notices](LICENSE-NOTICES.md). Official binary releases include a matching source archive containing the pinned Prism source.
 
-The [Phase 6 report](docs/phase-6-report.md) and [audio export report](docs/audio-export-report.md) record earlier verification. The [AAC quality review](docs/aac-quality-review.md) and [layout/template review](docs/layout-template-review.md) record later branch checks. The portable folder is a local development preview. Review the [release checklist](docs/release-checklist.md) and [public release review](docs/public-release-review.md) before distributing a public binary. Linux and macOS builds have not been validated; installed-font discovery and this packaging script currently require Windows.
+The MusicMeters logo and icons have separate artwork terms. Unchanged official releases and contribution review builds may retain the branding under those terms; independently distributed modified products must rebrand unless separately authorized. See [LICENSE-NOTICES.md](LICENSE-NOTICES.md).
