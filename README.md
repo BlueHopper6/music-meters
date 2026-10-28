@@ -6,7 +6,7 @@
 
 **Turn your music into videos with editable audio visualizers.**
 
-[Download Windows preview](https://github.com/BlueHopper6/music-meters/releases) · [Getting started](#getting-started) · [User guide](docs/user-guide.md) · [Changelog](CHANGELOG.md)
+[Download for Windows](https://github.com/BlueHopper6/music-meters/releases) · [Getting started](#getting-started) · [User guide](docs/user-guide.md) · [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -53,16 +53,15 @@ These features describe the current source. See the [changelog](CHANGELOG.md) fo
 
 ## Download
 
-MusicMeters currently has a **Windows x64 portable preview**. Download it from [GitHub Releases](https://github.com/BlueHopper6/music-meters/releases); each release lists its included features, requirements, and known limitations. Linux and macOS builds have not been validated.
+MusicMeters targets **Windows x64**. Get available builds from [GitHub Releases](https://github.com/BlueHopper6/music-meters/releases) and check the selected release's assets and requirements. Linux and macOS builds have not been validated.
 
 1. Install the FFmpeg command-line tools and put both `ffmpeg` and `ffprobe` on your Windows `PATH`. Check `ffmpeg -version` and `ffprobe -version` in a new terminal.
-2. Download the Windows binary ZIP and extract the **whole folder**.
-3. Open `electron.exe` inside the extracted folder. Keep the other files beside it.
+2. When the release offers a **setup EXE**, run it to install MusicMeters for your Windows account, then open **MusicMeters** from the Start menu. Setup adds an uninstall entry and preserves the existing templates/preferences location.
+3. For a **portable ZIP**, extract the **whole folder** and open `MusicMeters.exe`. Keep the other files beside it. The earlier 0.6.0 preview uses `electron.exe` instead and offers only portable packaging.
 
-The current download has no installer, Start menu registration, or automatic updater. Node.js and developer build tools are not needed to run it. FFmpeg and FFprobe are required separately.
+Node.js and developer build tools are not needed to run downloaded builds. FFmpeg and FFprobe are required separately. No automatic updater is included.
 
-The preview is unsigned. Check the release notes for runtime/security limitations, checksums, and testing scope before running it.
-
+The application and setup are unsigned. Check the selected release's checksums and validation limits before running it.
 ## Getting started
 
 1. Choose **New from template…** in the Project Manager, or start a blank project.

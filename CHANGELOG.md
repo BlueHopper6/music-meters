@@ -2,9 +2,9 @@
 
 User-facing release history, newest first. GitHub release notes provide the download announcement and exact package details; this file keeps the feature history with the source.
 
-## Unreleased — first full feature baseline
+## 1.0.0 — unreleased
 
-This upcoming release establishes the first comprehensive changelog entry. Its feature inventory deliberately includes capabilities shipped in the earlier portable preview. That preview remains part of the release history; the sections below distinguish subsequent changes from the inherited baseline. A version number, release date, and final validation results will be assigned when the release is prepared.
+This upcoming release establishes the first comprehensive changelog entry. Its feature inventory deliberately includes capabilities shipped in the earlier portable preview. That preview remains part of the release history; the sections below distinguish subsequent changes from the inherited baseline. Version 1.0.0 is the target for this release. The publication date and final validation record remain pending.
 
 ### Added since v0.6.0-preview.1
 
@@ -21,6 +21,9 @@ This upcoming release establishes the first comprehensive changelog entry. Its f
 - Independent background color and opacity for visualizer and text layers, preserved in projects and templates and rendered with the layer's rotation and opacity. Older projects default to transparent layer backgrounds.
 
 ### Changed since v0.6.0-preview.1
+
+- Updated the shipped runtime from Electron 45.0.0 to 45.1.0, including embedded Node 24.22.1 and Chromium 156.0.8078.49. This includes the Node patch level missing from the initial preview; application regression and release validation remain required.
+- Included reproducible native build configuration with the package and corresponding source so developer paths can be trimmed without changing Prism or disabling assertions.
 
 - Replaced the original factory layouts with eight designed templates: Afterglow, Contour, Night Radio, Observatory, Synthwave, Minimalist Ambient, Social, and Hyper Chase.
 - Added refined typography, lowercase layer names, editable song/artist/album/brand/genre placeholders, and hidden empty artwork slots that let factory designs preview and export before artwork is chosen.
@@ -80,7 +83,7 @@ The following capabilities carry forward from the initial preview alongside the 
 - The current source produces branded portable and setup builds. The published preview still launches through `electron.exe` and has no installer. Signing and automatic updates are not implemented; validate the new installer lifecycle before release.
 - Live preview resets rolling history and cumulative loudness after a seek with local warm-up. Use full-history still or export for full-song analysis.
 - Audio remains externally referenced. Keep project JSON with its assets, and copy custom templates with their asset folders when changing machines. Installed fonts can vary between computers.
-- Current source pins Electron 45.0.0. Reassess its runtime/security status for the next release; earlier exception acceptance and historical checks do not validate new release bytes.
+- Current source pins Electron 45.1.0 with Node 24.22.1. The earlier embedded-Node patch gap is addressed by this upgrade; this is not a blanket security clearance or a substitute for final checks.
 - Release-specific testing, clean-Windows status, exact download names, and checksums must be recorded with the final release. This entry is a feature inventory, not release clearance.
 
 ## v0.6.0-preview.1 — 2026-10-26

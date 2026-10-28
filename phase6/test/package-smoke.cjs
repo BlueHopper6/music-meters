@@ -34,7 +34,7 @@ async function main() {
     'NODE-ADDON-API-LICENSE.md', 'MUSICMETERS-LICENSE.txt', 'LICENSE-NOTICES.md',
     'PRISM-THIRD_PARTY_NOTICES.md', 'PRISM-REFERENCE_DEPENDENCIES.md',
     'DR_LIBS-LICENSE.txt', 'R8BRAIN-LICENSE.txt',
-    'THIRD_PARTY_NOTICES.md', 'BUILD-PROVENANCE.json']) {
+    'THIRD_PARTY_NOTICES.md', 'BUILD-PROVENANCE.json', 'BUILD-CONFIGURATION.md']) {
     assert.ok(fs.existsSync(path.join(pack, name)), `Missing packaged license or notice: ${name}`)
   }
   const brand = path.join('phase2', 'editor-app', 'assets', 'brand')

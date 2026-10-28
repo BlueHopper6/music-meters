@@ -6,6 +6,8 @@ For running a downloaded build, use the [README](../README.md). These instructio
 
 Install Node.js 24 LTS, Python, Visual Studio 2022 C++ build tools, and FFmpeg/FFprobe on PATH. Verify the selected tools before building. Host-specific Visual Studio detection notes are in the [Phase 0 setup record](phase-0-report.md).
 
+Official release builds must also follow [the native build configuration](../BUILD-CONFIGURATION.md) and scan the resulting addon for developer paths.
+
 ## Set up Prism and build tools
 
 From the MusicMeters repository root:
@@ -17,7 +19,7 @@ npm --prefix phase6/build-tools ci --ignore-scripts --no-audit --no-fund
 node phase6/build-native.cjs
 ```
 
-The upstream checkout and installed dependencies are ignored. MusicMeters uses locked build/native dependencies rather than installing Prism's full development tree. Astrofox is a source reference and is not required to build MusicMeters.
+The upstream checkout and installed dependencies are ignored. MusicMeters uses locked build/native dependencies rather than installing Prism's full development tree.
 
 ## Install the pinned Electron runtime
 
