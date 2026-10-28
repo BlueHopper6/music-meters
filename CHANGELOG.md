@@ -2,13 +2,13 @@
 
 User-facing release history, newest first. GitHub release notes provide the download announcement and exact package details; this file keeps the feature history with the source.
 
-## 1.0.0 — unreleased
+## [1.0.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.0.0) — 2026-10-27
 
-This upcoming release establishes the first comprehensive changelog entry. Its feature inventory deliberately includes capabilities shipped in the earlier portable preview. That preview remains part of the release history; the sections below distinguish subsequent changes from the inherited baseline. Version 1.0.0 is the target for this release. The publication date and final validation record remain pending.
+This release establishes the first comprehensive changelog entry. Its feature inventory deliberately includes capabilities shipped in the earlier portable preview. That preview remains part of the release history; the sections below distinguish subsequent changes from the inherited baseline. Published October 27 in America/Indianapolis (October 28 UTC). See the [release notes](docs/releases/1.0.0.md) for exact downloads and validation.
 
 ### Added since v0.6.0-preview.1
 
-- Branded MusicMeters.exe with application icon and Windows product details, plus an assisted per-user setup EXE with a MusicMeters Start menu shortcut and uninstall entry. Existing packaged templates/preferences keep their original storage location; setup adds no automatic updater. Installer lifecycle checks are included in hosted Windows CI and still require a successful run before release.
+- Branded MusicMeters.exe with application icon and Windows product details, plus an assisted per-user setup EXE with a MusicMeters Start menu shortcut and uninstall entry. Existing packaged templates/preferences keep their original storage location; setup adds no automatic updater. Exact-commit hosted Windows CI passed installation, installed startup/export, reinstall, uninstall, and profile-data preservation checks.
 
 - Live video preview with source-audio playback and synchronized meters, without first encoding a video or analyzing the entire song.
 - Play/pause, mute, Space shortcut, seek bar with a larger playhead drag target and arrow-key support, elapsed/duration display, and editable seconds or timecode seeking.
@@ -22,7 +22,7 @@ This upcoming release establishes the first comprehensive changelog entry. Its f
 
 ### Changed since v0.6.0-preview.1
 
-- Updated the shipped runtime from Electron 45.0.0 to 45.1.0, including embedded Node 24.22.1 and Chromium 156.0.8078.49. This includes the Node patch level missing from the initial preview; application regression and release validation remain required.
+- Updated the shipped runtime from Electron 45.0.0 to 45.1.0, including embedded Node 24.22.1 and Chromium 156.0.8078.49. This includes the Node patch level missing from the initial preview; the final package passed application regression checks.
 - Included reproducible native build configuration with the package and corresponding source so developer paths can be trimmed without changing Prism or disabling assertions.
 
 - Replaced the original factory layouts with eight designed templates: Afterglow, Contour, Night Radio, Observatory, Synthwave, Minimalist Ambient, Social, and Hyper Chase.
@@ -80,11 +80,11 @@ The following capabilities carry forward from the initial preview alongside the 
 ### Requirements and limitations
 
 - Windows x64; FFmpeg and FFprobe must be installed separately and available on PATH. Linux and macOS remain unvalidated.
-- The current source produces branded portable and setup builds. The published preview still launches through `electron.exe` and has no installer. Signing and automatic updates are not implemented; validate the new installer lifecycle before release.
+- Version 1.0.0 provides branded portable and per-user setup builds. The earlier preview launches through `electron.exe` and has no installer. The app and setup are unsigned, and no automatic updater is included.
 - Live preview resets rolling history and cumulative loudness after a seek with local warm-up. Use full-history still or export for full-song analysis.
 - Audio remains externally referenced. Keep project JSON with its assets, and copy custom templates with their asset folders when changing machines. Installed fonts can vary between computers.
 - Current source pins Electron 45.1.0 with Node 24.22.1. The earlier embedded-Node patch gap is addressed by this upgrade; this is not a blanket security clearance or a substitute for final checks.
-- Release-specific testing, clean-Windows status, exact download names, and checksums must be recorded with the final release. This entry is a feature inventory, not release clearance.
+- The [release notes](docs/releases/1.0.0.md) record exact downloads, checksums, hosted automation, source rebuild, and manual laptop checks. Manual clean-Windows testing and download-triggered SmartScreen behavior remain unverified.
 
 ## v0.6.0-preview.1 — 2026-10-26
 

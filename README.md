@@ -49,19 +49,20 @@ Each meter has its own settings, colors, and placement.
 - **MKV:** H.264 video with supported MP3, FLAC, or WAV/PCM audio copied without re-encoding. MP3 remains lossy.
 - Track export progress, cancel an export, and keep existing videos safe from silent overwrites.
 
-These features describe the current source. See the [changelog](CHANGELOG.md) for changes since the published preview.
+These features are included in [MusicMeters 1.0.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.0.0). See the [changelog](CHANGELOG.md) for the release history.
 
 ## Download
 
-MusicMeters targets **Windows x64**. Get available builds from [GitHub Releases](https://github.com/BlueHopper6/music-meters/releases) and check the selected release's assets and requirements. Linux and macOS builds have not been validated.
+MusicMeters targets **Windows x64**. Download the setup EXE or portable ZIP from [MusicMeters 1.0.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.0.0) and check its requirements and checksums. Linux and macOS builds have not been validated.
 
 1. Install the FFmpeg command-line tools and put both `ffmpeg` and `ffprobe` on your Windows `PATH`. Check `ffmpeg -version` and `ffprobe -version` in a new terminal.
-2. When the release offers a **setup EXE**, run it to install MusicMeters for your Windows account, then open **MusicMeters** from the Start menu. Setup adds an uninstall entry and preserves the existing templates/preferences location.
+2. For the **setup EXE**, run it to install MusicMeters for your Windows account, then open **MusicMeters** from the Start menu. Setup adds an uninstall entry and preserves the existing templates/preferences location.
 3. For a **portable ZIP**, extract the **whole folder** and open `MusicMeters.exe`. Keep the other files beside it. The earlier 0.6.0 preview uses `electron.exe` instead and offers only portable packaging.
 
 Node.js and developer build tools are not needed to run downloaded builds. FFmpeg and FFprobe are required separately. No automatic updater is included.
 
 The application and setup are unsigned. Check the selected release's checksums and validation limits before running it.
+
 ## Getting started
 
 1. Choose **New from template…** in the Project Manager, or start a blank project.
@@ -75,7 +76,7 @@ Saving a new project creates a project folder. Keep its JSON and sibling `.asset
 ## Documentation
 
 - [User guide](docs/user-guide.md) — meters, composition, playback, templates, and project files.
-- [Changelog](CHANGELOG.md) — release history and the upcoming feature baseline.
+- [Changelog](CHANGELOG.md) — release history and the complete 1.0.0 feature baseline.
 - [Build from source](docs/development.md) — Windows prerequisites, pinned Prism setup, and direct build commands.
 - [Release checklist](docs/release-checklist.md) — verification and matching source delivery.
 - [Contributing](CONTRIBUTING.md) · [Report an issue](https://github.com/BlueHopper6/music-meters/issues).
