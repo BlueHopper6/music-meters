@@ -9,7 +9,6 @@ module.exports = async function startupSmoke(win) {
   if (process.env.PHASE2_HISTORY_SMOKE === '1') return require('./history-smoke.cjs')(win)
   assert.equal(app.getName(), 'MusicMeters')
   assert.equal(app.getPath('userData'), process.env.PHASE5_TEST_USER_DATA)
-  win.setContentSize(1000, 700)
   const capture = async name => {
     if (!win.isVisible()) win.showInactive()
     win.webContents.invalidate()
@@ -44,6 +43,13 @@ module.exports = async function startupSmoke(win) {
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers })
     await delay(100)
   }
+
+  await waitFor('window.desktop.windowState().then(state => state.maximized && !state.fullscreen)', 'maximized startup without fullscreen')
+  assert.equal(win.isMaximized(), true)
+  assert.equal(win.isFullScreen(), false)
+  await capture('startup-maximized.png')
+  win.unmaximize()
+  win.setContentSize(1000, 700)
 
   console.log('Step 1: Checking Project Manager visibility')
   await waitFor('!document.getElementById("project-manager-screen").hidden', 'project manager visible')

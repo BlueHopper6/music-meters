@@ -38,7 +38,7 @@ async function main() {
   const child = spawn(electron, args, {
     env: {
       ...process.env,
-      PHASE2_HEADLESS: '1',
+      PHASE2_HEADLESS: '0', // Exercise the normal maximized window startup.
       PHASE2_STARTUP_SMOKE: '1',
       PHASE2_STARTUP_SMOKE_DIR: outDir,
       PHASE5_TEST_USER_DATA: userData,

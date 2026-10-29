@@ -608,9 +608,12 @@ app.whenReady().then(() => {
     backgroundColor: '#09090b',
     width: 1480, height: 900, minWidth: 1000, minHeight: 700,
     icon: join(__dirname, 'assets', 'brand', 'music-meters.ico'),
-    show: process.env.PHASE2_HEADLESS !== '1',
+    show: false,
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true,
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
+  })
+  win.once('ready-to-show', () => {
+    if (process.env.PHASE2_HEADLESS !== '1') { win.maximize(); win.show() }
   })
   win.setMenuBarVisibility(false)
   win.setMenu(null)
