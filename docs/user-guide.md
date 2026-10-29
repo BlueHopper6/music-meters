@@ -12,6 +12,8 @@ Use **Snap** above the stage to align dragged layers with the stage edges and ce
 
 ## Artwork, text, and project files
 
+The first **Save** and **Save as…** suggest a filename based on **Project name**, such as `My project.json`. Characters that Windows cannot use in filenames are removed, and an empty name falls back to `Untitled project.json`. You can edit the suggested filename in the save dialog. After saving, normal **Save** updates the existing file; changing Project name does not move or rename that file. Use **Save as…** to save a copy under the new name.
+
 For a finished composition, choose **Artwork / logo** or **Text** in the Add layer menu. Image layers use a local PNG, JPEG, or WebP file, crop-to-fill or fit-inside, opacity, rotation, and shadow. Text layers have content, font, size, weight, alignment, color, rotation, and shadow. The composition background can be a solid color, gradient, or local image. Layer order is shared across meters, artwork, and text: **Move up** places a layer in front. The project name is metadata; in version 2 projects, visible song and artist lettering comes from text layers. Older version 1 projects retain their original fixed title/subtitle/timestamp display until a new graphic layer or background style upgrades them. Saving a version 2 project copies artwork into a sibling `<project-name>.assets` folder. Keep that folder with the JSON when moving the project. Audio is still referenced separately and is never embedded. If audio or artwork is missing, the editor lists each missing file with a **Relink…** button; save the project after choosing replacements. **Save as…** creates a separate project for the next song.
 
 ## Layer backgrounds

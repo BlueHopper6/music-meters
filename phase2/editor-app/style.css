@@ -1393,6 +1393,38 @@ body.stage-fullscreen .selection {
   border-radius: 4px;
 }
 
+@supports (appearance: base-select) {
+  .template-picker-select,
+  .template-picker-select::picker(select) { appearance: base-select; }
+  .template-picker-select { min-height: 38px; cursor: pointer; }
+  .template-picker-select::picker-icon { color: var(--text-secondary); }
+  .template-picker-select::picker(select) {
+    margin-top: 5px;
+    padding: 4px;
+    max-height: min(320px, 50vh);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) var(--bg-panel);
+    color: var(--text-primary);
+    background: var(--bg-panel);
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+    font: inherit;
+  }
+  .template-picker-select option {
+    padding: 8px 10px;
+    min-height: 34px;
+    border-radius: 3px;
+    gap: 8px;
+    cursor: pointer;
+  }
+  .template-picker-select option:hover,
+  .template-picker-select option:focus-visible { background: var(--bg-hover); outline: none; }
+  .template-picker-select option:checked { background: var(--bg-active); }
+  .template-picker-select option::checkmark { color: var(--text-secondary); }
+}
+
 /* Integrated draggable chrome with app-owned caption buttons. */
 body { padding-top: 40px; }
 .app-titlebar { position: fixed; inset: 0 0 auto; height: 40px; z-index: 20000;

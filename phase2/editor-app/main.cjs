@@ -6,7 +6,7 @@ const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
 const { jobPath } = require('../runtime.cjs')
 const { defaultProject, compositionProject, normalizeProject } = require('../project.cjs')
-const { encapsulateProjectPath } = require('../project-path.cjs')
+const { encapsulateProjectPath, projectSaveName } = require('../project-path.cjs')
 const { installedFonts, assertInstalledFonts } = require('../fonts.cjs')
 const { readImage, imagePaths, assetData, saveArtwork, resolveArtwork } = require('../assets.cjs')
 const { listTemplates, readTemplate, saveTemplate, duplicateTemplate, renameTemplate, deleteTemplate, applyTemplate, titleSuggestion } = require('../templates.cjs')
@@ -328,7 +328,7 @@ handle('save-project', async (_event, raw, asNew = false) => {
     } else {
       const result = await dialog.showSaveDialog(win, {
         title: asNew ? 'Save project as' : 'Save project',
-        defaultPath: projectPath || `${titleSuggestion(value.audioPath || value.title)}-project.json`,
+        defaultPath: projectPath ? join(dirname(projectPath), projectSaveName(value.title)) : projectSaveName(value.title),
         filters: [{ name: 'Visualizer project', extensions: ['json'] }],
       })
       if (result.canceled) return null

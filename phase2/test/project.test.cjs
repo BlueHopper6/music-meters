@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { defaultProject, compositionProject, imageLayer, textLayer, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } = require('../project.cjs')
-const { encapsulateProjectPath } = require('../project-path.cjs')
+const { encapsulateProjectPath, projectSaveName } = require('../project-path.cjs')
 const { orientProject, exportDimensions } = require('../project.cjs')
 
 test('portrait projects fit without cropping, retain media and marker, and export at 1080x1920', () => {
@@ -311,4 +311,19 @@ test('encapsulateProjectPath creates dedicated project subfolder without double 
   assert.equal(result4, path.join(baseDir, 'song-c', 'song-c.json'))
 
   assert.throws(() => encapsulateProjectPath(''), /Invalid target path/)
+})
+
+test('project save names preserve the entered title rather than treating it as an audio filename', () => {
+  assert.equal(projectSaveName('My project - final_v2'), 'My project - final_v2.json')
+  assert.equal(projectSaveName('Untitled - projectasdwasd'), 'Untitled - projectasdwasd.json')
+  assert.equal(projectSaveName('Café 夜空'), 'Café 夜空.json')
+  assert.equal(projectSaveName(' Already named.JSON '), 'Already named.json')
+})
+
+test('project save names are safe Windows filename components with a nonempty fallback', () => {
+  assert.equal(projectSaveName('  My: project / take* 2? . '), 'My project  take 2.json')
+  for (const title of ['', '  ', '...', '<>:"/\\|?*\u0000']) assert.equal(projectSaveName(title), 'Untitled project.json')
+  for (const title of ['CON', 'aux', 'COM1', 'LPT9', 'NUL.notes']) assert.equal(projectSaveName(title), `_${title}.json`)
+  assert.equal(projectSaveName('x'.repeat(201)), 'x'.repeat(200) + '.json')
+  assert.throws(() => projectSaveName(null), /Invalid project title/)
 })
