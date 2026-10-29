@@ -146,7 +146,9 @@ export function installVideoPreview(api: API, project: () => Project, available:
       const resume = !audio.paused
       // A seek can interrupt an unresolved audio.play() promise. Its AbortError
       // belongs to the old position and must not cancel this new seek.
-      ++generation; fetching = false
+      ++generation; active = false; fetching = false; queue = []
+      // Retire the old session before pause events or ticks can repaint its
+      // position or refill its queue during the debounced seek.
       pause(); setPosition(seconds)
       clearTimeout(seekTimer)
       seekTimer = setTimeout(() => { seekTimer = undefined; void begin(seconds, resume) }, 70)
