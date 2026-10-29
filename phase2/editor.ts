@@ -2072,7 +2072,7 @@ async function openRecent(targetPath: string) {
     const loaded = await window.desktop.openProjectPath(targetPath)
     if (!loaded) return
     await applyLoadedProject(loaded)
-  } catch (error) { setStatus(String(error)) }
+  } catch (error) { await refreshRecentProjects(); setStatus(projectActionMessage(error)) }
 }
 
 let openProjectMenu: { trigger: HTMLButtonElement; menu: HTMLDivElement } | null = null
@@ -2084,7 +2084,14 @@ function closeProjectMenu(restoreFocus = false) {
 }
 document.addEventListener('pointerdown', event => { if (!(event.target as HTMLElement).closest('.project-card-options')) closeProjectMenu() })
 window.addEventListener('blur', () => closeProjectMenu())
+let renderedRecentProjects = ''
+window.addEventListener('focus', () => {
+  if (!$('project-manager-screen').hidden && !$('project-manager-screen').inert) void refreshRecentProjects()
+})
 function renderRecentProjects(list: RecentProject[]) {
+  const signature = JSON.stringify(list)
+  if (signature === renderedRecentProjects) return
+  renderedRecentProjects = signature
   closeProjectMenu()
   const grid = $('recent-projects-grid')
   const empty = $('recent-projects-empty')
@@ -2200,14 +2207,23 @@ async function refreshRecentProjects() {
 
 let projectAction: { item: RecentProject; action: ProjectAction; focus: HTMLElement } | null = null
 let projectActionBusy = false
+function projectActionMessage(error: unknown): string {
+  const message = String(error)
+    .replace(/^(?:Error:\s*)?Error invoking remote method '[^']+':\s*/, '')
+    .replace(/^Error:\s*/, '')
+  if (/project (?:folder|file) with that name already exists|Destination project folder already exists/.test(message)) {
+    return 'There’s already a project in that folder with that same name. Choose a different name or location.'
+  }
+  return message
+}
 function openProjectAction(item: RecentProject, action: Exclude<ProjectAction, 'delete'>, focus: HTMLElement) {
   projectAction = { item, action, focus }
   $('project-action-title').textContent = action === 'rename' ? 'Rename project' : action === 'move' ? 'Move project' : 'Copy project'
   $('project-action-description').textContent = action === 'rename'
     ? 'Rename the project, its JSON file, and its project folder. Audio and artwork references will stay connected.'
     : action === 'copy'
-      ? 'Choose a new name and location. Audio and artwork are included in the copy; the original project and media are kept.'
-      : 'Choose a new location. Audio and artwork are copied and verified before the old project files are removed. Original audio tracks and unrelated files are kept.'
+      ? 'Choose a new name and location. Images are copied with the project. The song stays at its original location.'
+      : 'Choose a new location. The project and its images are moved. The song stays at its original location.'
   $('project-action-name-field').hidden = action !== 'rename'
   ;($<HTMLInputElement>('project-action-name')).value = item.name
   $('project-action-status').textContent = ''
@@ -2236,7 +2252,7 @@ $('project-action-confirm').addEventListener('click', async () => {
   }
   projectActionBusy = true
   for (const id of ['project-action-confirm', 'project-action-cancel', 'project-action-name']) ($<HTMLInputElement | HTMLButtonElement>(id)).disabled = true
-  $('project-action-status').textContent = action === 'rename' ? 'Renaming project…' : 'Copying project and media. Keep MusicMeters open until this finishes…'
+  $('project-action-status').textContent = action === 'rename' ? 'Renaming project…' : 'Copying project and images. Keep MusicMeters open until this finishes…'
   let completed = false
   try {
     const result = await window.desktop.manageProject(item.path, action, name)
@@ -2248,7 +2264,9 @@ $('project-action-confirm').addEventListener('click', async () => {
     completed = true
   } catch (error) {
     await refreshRecentProjects()
-    $('project-action-status').textContent = String(error)
+    const message = projectActionMessage(error)
+    if (message.startsWith('This project can’t be found.')) { setStatus(message); completed = true }
+    else $('project-action-status').textContent = message
   } finally {
     projectActionBusy = false
     for (const id of ['project-action-confirm', 'project-action-cancel', 'project-action-name']) ($<HTMLInputElement | HTMLButtonElement>(id)).disabled = false
@@ -2264,7 +2282,7 @@ async function deleteRecentProject(item: RecentProject, focus: HTMLElement) {
     if (!result) { setStatus('Delete cancelled. No changes made.'); return }
     await refreshRecentProjects()
     setStatus(`Moved project and copied media to the Recycle Bin: ${result.name}`)
-  } catch (error) { await refreshRecentProjects(); setStatus(String(error)) }
+  } catch (error) { await refreshRecentProjects(); setStatus(projectActionMessage(error)) }
   finally {
     projectActionBusy = false; $('project-manager-screen').inert = false
     ;(focus.isConnected ? focus : $('pm-new-blank')).focus()
@@ -2546,7 +2564,7 @@ async function start() {
   refreshExportResolution()
   refreshInspector(); refreshLayers(); refreshAudio(); markProjectSaved(); renderMissingMedia(); await syncAssets()
 
-  const recentList = initial.preferences.recentProjects || []
+  const recentList = await window.desktop.getRecentProjects()
   renderRecentProjects(recentList)
 
   if (initial.isStartupSession) {

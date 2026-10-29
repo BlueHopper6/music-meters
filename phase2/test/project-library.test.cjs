@@ -35,6 +35,17 @@ function fixture(version = 2) {
   return { dir, source, audio, target: path.join(dir, 'Copied', 'Copied.json') }
 }
 
+
+// Reproduce projects created before Move/Copy stopped duplicating audio.
+async function legacyCopy(f) {
+  await copyLibraryProject(f.source, f.target, 'Copy')
+  const root = path.dirname(f.target), dir = path.join(root, 'audio')
+  fs.mkdirSync(dir); fs.copyFileSync(f.audio, path.join(dir, path.basename(f.audio)))
+  const document = JSON.parse(fs.readFileSync(f.target)); document.audioRelativePath = 'audio/' + path.basename(f.audio)
+  fs.writeFileSync(f.target, JSON.stringify(document))
+  fs.writeFileSync(path.join(root, '.musicmeters-owned-media'), JSON.stringify({ version: 1, project: path.basename(f.target), files: [{ path: document.audioRelativePath, sha256: hash(f.audio) }] }))
+}
+
 test('rename changes title, folder, JSON and artwork references while preserving media and extra files', () => {
   const f = fixture(), originalHash = hash(f.audio)
   fs.writeFileSync(path.join(path.dirname(f.source), 'notes.txt'), 'Keep me')
@@ -71,7 +82,7 @@ test('rename refuses collisions and restores all original bytes if the final fol
   assert.equal(fs.readdirSync(f.dir).some(name => name.startsWith('.musicmeters-rename-')), false)
 })
 
-test('copy includes byte-identical audio/artwork and portable relative references without modifying originals', async () => {
+test('copy preserves the original song reference and copies only artwork', async () => {
   const f = fixture()
   const before = hash(f.source)
   let registered = false
@@ -80,7 +91,9 @@ test('copy includes byte-identical audio/artwork and portable relative reference
   const opened = readLibraryProject(copy.path)
   assert.equal(opened.project.title, 'Copied project')
   assert.equal(hash(opened.project.audioPath), hash(f.audio))
-  assert.ok(opened.project.audioPath.startsWith(path.dirname(f.target) + path.sep))
+  assert.equal(opened.project.audioPath, f.audio)
+  assert.equal(fs.existsSync(path.join(path.dirname(f.target), 'audio')), false)
+  assert.equal(fs.existsSync(path.join(path.dirname(f.target), '.musicmeters-owned-media')), false)
   for (const image of imagePaths(opened.project)) assert.equal(hash(image), createHash('sha256').update(png).digest('hex'))
   assert.ok(opened.project.background.imagePath, 'Inactive background image choice must be retained')
   assert.equal(hash(f.source), before)
@@ -122,27 +135,33 @@ test('source changes after verification prevent deletion and preserve both proje
   assert.equal(readLibraryProject(f.target).project.title, 'Copy')
 })
 
-test('missing media leaves originals unchanged and does not create a destination', async () => {
-  const f = fixture()
-  const stored = JSON.parse(fs.readFileSync(f.source, 'utf8'))
-  stored.audioRelativePath = '../missing.wav'
+test('missing song references remain connected to the original location without preventing move or copy', async () => {
+  const f = fixture(), missing = path.join(f.dir, 'missing.wav')
+  const stored = JSON.parse(fs.readFileSync(f.source)); stored.audioRelativePath = '../missing.wav'
   fs.writeFileSync(f.source, JSON.stringify(stored))
-  const before = hash(f.source)
-  await assert.rejects(copyLibraryProject(f.source, f.target, 'Copy'), /ENOENT/)
-  assert.equal(hash(f.source), before)
-  assert.equal(fs.existsSync(path.dirname(f.target)), false)
-  const renamed = renameLibraryProject(f.source, 'Still renameable')
-  assert.equal(readLibraryProject(renamed.path).project.title, 'Still renameable')
+  const copied = await copyLibraryProject(f.source, f.target, 'Copy')
+  assert.equal(readLibraryProject(f.target).project.audioPath, missing)
+  removeOriginalProject(copied)
+  assert.equal(fs.existsSync(f.source), false)
+  assert.equal(readLibraryProject(f.target).project.audioPath, missing)
 })
 
-test('failed audio verification removes only files created by this copy', async () => {
-  const f = fixture()
-  const copyFile = fs.promises.copyFile
-  fs.promises.copyFile = async (_source, target) => fs.writeFileSync(target, 'corrupted')
-  try { await assert.rejects(copyLibraryProject(f.source, f.target, 'Copy'), /verification failed/) }
-  finally { fs.promises.copyFile = copyFile }
-  assert.ok(fs.existsSync(f.source))
-  assert.equal(fs.existsSync(path.dirname(f.target)), false)
+test('copy never reads or copies song bytes, and move leaves an internal song at its original path', async () => {
+  const f = fixture(), local = path.join(path.dirname(f.source), 'original.wav')
+  fs.copyFileSync(f.audio, local)
+  const stored = JSON.parse(fs.readFileSync(f.source)); stored.audioRelativePath = 'original.wav'
+  fs.writeFileSync(f.source, JSON.stringify(stored))
+  const read = fs.readFileSync, stream = fs.createReadStream, copy = fs.promises.copyFile
+  fs.readFileSync = (file, ...args) => { assert.notEqual(file, local, 'Must not read audio bytes'); return read(file, ...args) }
+  fs.createReadStream = file => { assert.fail('Must not stream audio: ' + file) }
+  fs.promises.copyFile = async () => { assert.fail('Must not copy audio') }
+  let copied
+  try { copied = await copyLibraryProject(f.source, f.target, 'Copy') }
+  finally { fs.readFileSync = read; fs.createReadStream = stream; fs.promises.copyFile = copy }
+  assert.equal(readLibraryProject(f.target).project.audioPath, local)
+  removeOriginalProject(copied)
+  assert.ok(fs.existsSync(local))
+  assert.equal(readLibraryProject(f.target).project.audioPath, local)
 })
 
 test('insufficient destination space is rejected before any project files are created', async () => {
@@ -195,7 +214,7 @@ async function recycleInFixture(f, source) {
 
 test('delete recycles copied audio and artwork, preserving original media and unrelated files', async () => {
   const f = fixture(), audioHash = hash(f.audio), sourceHash = hash(f.source)
-  await copyLibraryProject(f.source, f.target, 'Copy')
+  await legacyCopy(f)
   const renamed = renameLibraryProject(f.target, 'Renamed copy')
   const copy = readLibraryProject(renamed.path)
   assert.equal(JSON.parse(fs.readFileSync(path.join(path.dirname(renamed.path), '.musicmeters-owned-media'))).project, 'Renamed copy.json')
@@ -225,7 +244,7 @@ test('delete keeps unrecorded internal audio and external originals, including i
 
 test('failed recycling restores the project and every copied media file byte for byte', async () => {
   const f = fixture()
-  await copyLibraryProject(f.source, f.target, 'Copy')
+  await legacyCopy(f)
   const before = readLibraryProject(f.target), original = hash(f.target)
   await assert.rejects(deleteLibraryProject(f.target, async () => { throw new Error('Recycle unavailable') }), /Recycle unavailable/)
   assert.equal(hash(f.target), original)
@@ -236,7 +255,7 @@ test('failed recycling restores the project and every copied media file byte for
 
 test('forged ownership paths and linked copied media are rejected without deleting anything', async t => {
   const f = fixture()
-  await copyLibraryProject(f.source, f.target, 'Copy')
+  await legacyCopy(f)
   const record = path.join(path.dirname(f.target), '.musicmeters-owned-media')
   const value = JSON.parse(fs.readFileSync(record)); const valid = JSON.stringify(value)
   value.files[0].path = '../song.wav'; fs.writeFileSync(record, JSON.stringify(value))
@@ -249,4 +268,15 @@ test('forged ownership paths and linked copied media are rejected without deleti
   assert.throws(() => renameLibraryProject(f.target, 'Blocked'), /links or junctions/)
   await assert.rejects(deleteLibraryProject(path.join(alias, 'Copied', 'Copied.json'), async () => assert.fail('Must not recycle')), /links or junctions/)
   assert.ok(fs.existsSync(f.target)); assert.ok(fs.existsSync(f.audio))
+})
+
+test('deleting a new copy recycles artwork while preserving the shared song', async () => {
+  const f = fixture(), before = hash(f.audio)
+  await copyLibraryProject(f.source, f.target, 'Copy')
+  const project = readLibraryProject(f.target).project
+  await recycleInFixture(f, f.target)
+  assert.equal(fs.existsSync(f.target), false)
+  assert.equal(hash(f.audio), before)
+  for (const image of imagePaths(project)) assert.equal(fs.existsSync(image), false)
+  assert.ok(fs.existsSync(f.source))
 })

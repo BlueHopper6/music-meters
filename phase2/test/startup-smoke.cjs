@@ -49,6 +49,7 @@ module.exports = async function startupSmoke(win) {
   await waitFor('!document.getElementById("project-manager-screen").hidden', 'project manager visible')
   assert.equal(await evaluate('document.getElementById("editor-screen").hidden'), true)
   await waitFor('document.getElementById("splash-screen").hidden', 'splash dismissed')
+  assert.equal(await evaluate('document.querySelectorAll("#recent-projects-grid .project-card").length'), 0, 'Missing recent projects must be hidden on startup')
   assert.equal(await evaluate('document.title'), 'MusicMeters')
   assert.equal(await evaluate('document.getElementById("window-project-title").hidden'), true)
   assert.equal(await evaluate('document.getElementById("window-project-title").textContent'), '')

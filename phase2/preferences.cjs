@@ -54,6 +54,17 @@ function writePreferences(userData, update) {
   return next
 }
 
+// Unavailable drives may return later, so hide missing files without forgetting
+// their saved entries. Permission errors do not prove that a file was deleted.
+function isMissingProject(projectPath) {
+  try { return !fs.statSync(projectPath).isFile() }
+  catch (error) { return ['ENOENT', 'ENOTDIR'].includes(error.code) }
+}
+
+function availableRecentProjects(userData) {
+  return readPreferences(userData).recentProjects.filter(item => !isMissingProject(item.path))
+}
+
 function recordRecentProject(userData, projectPath, projectName = '') {
   const current = readPreferences(userData)
   const resolved = path.resolve(projectPath)
@@ -63,4 +74,4 @@ function recordRecentProject(userData, projectPath, projectName = '') {
   return writePreferences(userData, { recentProjects: filtered.slice(0, 10) })
 }
 
-module.exports = { readPreferences, writePreferences, recordRecentProject, normalizeRecentProjects }
+module.exports = { readPreferences, writePreferences, recordRecentProject, normalizeRecentProjects, availableRecentProjects, isMissingProject }

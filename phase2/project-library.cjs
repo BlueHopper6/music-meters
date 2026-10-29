@@ -4,6 +4,7 @@ const { createHash, randomUUID } = require('node:crypto')
 const { normalizeProject } = require('./project.cjs')
 const { imagePaths, readImage, resolveArtwork } = require('./assets.cjs')
 const { projectSaveName } = require('./project-path.cjs')
+const { resolveProjectAudio, projectAudioReference } = require('./project-audio.cjs')
 const OWNED_MEDIA = '.musicmeters-owned-media'
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
@@ -34,8 +35,7 @@ function readLibraryProject(source) {
   if (!stat.isFile() || stat.size > 1024 * 1024 || path.extname(source).toLowerCase() !== '.json') throw new Error('Choose a valid project JSON file under 1 MB')
   const bytes = fs.readFileSync(source)
   const stored = JSON.parse(bytes)
-  if (typeof stored.audioRelativePath !== 'string' || stored.audioRelativePath.length > 4096 || path.isAbsolute(stored.audioRelativePath)) throw new Error('Invalid project audio reference')
-  const audioPath = stored.audioRelativePath ? path.resolve(path.dirname(source), stored.audioRelativePath) : ''
+  const audioPath = resolveProjectAudio(source, stored.audioRelativePath)
   const project = normalizeProject(resolveArtwork({ ...stored, audioPath }, source))
   return { source, bytes, stored, project }
 }
@@ -91,7 +91,7 @@ function renameLibraryProject(source, title) {
   const audio = snapshot.project.audioPath
   const relativeAudio = audio ? path.relative(root, audio) : ''
   const audioInside = audio && relativeAudio !== '..' && !relativeAudio.startsWith('..' + path.sep) && !path.isAbsolute(relativeAudio)
-  next.audioRelativePath = audio ? path.relative(destination, audioInside ? path.join(destination, relativeAudio) : audio).replaceAll('\\', '/') : ''
+  next.audioRelativePath = projectAudioReference(target, audioInside ? path.join(destination, relativeAudio) : audio)
   const manifestPath = path.join(root, OWNED_MEDIA)
   const manifest = fs.existsSync(manifestPath) ? readOwnedMedia(snapshot) : null
   const manifestBytes = manifest ? fs.readFileSync(manifestPath) : null
@@ -182,12 +182,6 @@ async function copyLibraryProject(source, target, title, onCopied = () => {}) {
     originals.push({ path: input, bytes: image.bytes })
   }
   const audio = snapshot.project.audioPath
-  if (audio) {
-    assertLocal(audio)
-    const stat = fs.statSync(audio)
-    if (!stat.isFile() || !['.wav', '.mp3', '.flac'].includes(path.extname(audio).toLowerCase())) throw new Error('Relink the project audio before copying or moving it')
-    bytesNeeded += BigInt(stat.size)
-  }
   const space = fs.statfsSync(path.dirname(root), { bigint: true })
   if (space.bavail * space.bsize < bytesNeeded + 8n * 1024n * 1024n) throw new Error('Not enough free space at the destination')
   const files = [], directories = []
@@ -212,24 +206,8 @@ async function copyLibraryProject(source, target, title, onCopied = () => {}) {
       next.background.imagePath = rewritten.get(next.background.imagePath) || ''
       for (const layer of next.layers) if (layer.type === 'image') layer.imagePath = rewritten.get(layer.imagePath) || ''
     }
-    let reference = ''
-    const ownedFiles = []
-    if (audio) {
-      const dir = path.join(root, 'audio')
-      within(root, dir); fs.mkdirSync(dir); directories.push(dir)
-      const destination = path.join(dir, path.basename(audio))
-      within(root, destination)
-      const before = await fileDigest(audio)
-      await fs.promises.copyFile(audio, destination, fs.constants.COPYFILE_EXCL)
-      files.push(destination)
-      if (before !== await fileDigest(destination) || before !== await fileDigest(audio)) throw new Error('Audio changed or copy verification failed')
-      reference = 'audio/' + path.basename(audio)
-      ownedFiles.push({ path: reference, sha256: before })
-    }
-    const document = { ...next, audioPath: undefined, audioRelativePath: reference }
+    const document = { ...next, audioPath: undefined, audioRelativePath: projectAudioReference(target, audio) }
     within(root, target); fs.writeFileSync(target, JSON.stringify(document, null, 2) + '\n', { flag: 'wx' }); files.push(target)
-    const ownership = path.join(root, OWNED_MEDIA)
-    within(root, ownership); fs.writeFileSync(ownership, JSON.stringify({ version: 1, project: path.basename(target), files: ownedFiles }, null, 2) + '\n', { flag: 'wx' }); files.push(ownership)
     const reopened = readLibraryProject(target)
     if (reopened.project.title !== title.trim()) throw new Error('Project copy verification failed')
     for (const original of originals) assertUnchanged(original.path, original.bytes)
@@ -320,7 +298,7 @@ async function deleteLibraryProject(source, trash) {
     const stagedProject = path.join(payload, path.basename(source))
     const next = { ...snapshot.stored }
     const audioOwned = files.has(snapshot.project.audioPath)
-    if (snapshot.project.audioPath && !audioOwned) next.audioRelativePath = path.relative(payload, snapshot.project.audioPath).replaceAll('\\', '/')
+    if (snapshot.project.audioPath && !audioOwned) next.audioRelativePath = projectAudioReference(stagedProject, snapshot.project.audioPath)
     writeAtomic(stagedProject, JSON.stringify(next, null, 2) + '\n')
     inspectTree(staging)
     await trash(staging)

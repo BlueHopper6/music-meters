@@ -20,6 +20,10 @@ async function main() {
 
   const userData = path.join(outDir, 'user-data')
   fs.mkdirSync(userData, { recursive: true })
+  // Simulate a project deleted in File Explorer before the app was reopened.
+  fs.writeFileSync(path.join(userData, 'workflow-preferences.json'), JSON.stringify({
+    recentProjects: [{ path: path.join(outDir, 'deleted-project.json'), name: 'Deleted project', lastOpened: Date.now() }],
+  }))
 
   const savePath = path.join(outDir, 'saved-smoke-project.json')
   const audioPath = path.join(outDir, 'startup-song.wav')

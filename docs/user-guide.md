@@ -26,14 +26,16 @@ The startup Project Manager offers **New blank project**, **New from template…
 
 ## Manage saved projects
 
+Recent Projects hides files that are no longer available, including projects deleted or moved in File Explorer. The list refreshes when you return to MusicMeters or the Project Manager. If a disconnected drive becomes available again, its projects can reappear. Use **Open project…** to find a project you moved elsewhere.
+
 Open the **⋯** menu on a recent-project card in the Project Manager to manage it:
 
 - **Rename…** updates the project name, JSON filename, artwork folder, and project folder together, keeping media connected. Existing destination folders are never overwritten. For older projects saved outside a matching project folder, use **Move to…** first.
-- **Delete project…** asks for confirmation, then sends the project, copied artwork, and recorded audio copies to the Recycle Bin. Original media and unrelated files stay in place. Audio copies made before ownership records were introduced are kept conservatively.
-- **Copy to…** creates a separate project folder at the name and location you choose, including copies of its audio and artwork. Use a new name in the same parent folder to duplicate a project beside the original.
-- **Move to…** creates and verifies the new project and media before removing the old project JSON and its referenced artwork. Original audio tracks and unrelated files stay at their existing locations; folders containing those files are kept.
+- **Delete project…** asks for confirmation, then sends the project, copied artwork, and recorded audio copies to the Recycle Bin. Original media and unrelated files stay in place. Older recorded song copies are recycled with their project; audio files without ownership records are kept conservatively. New Move and Copy operations leave songs in place and do not create audio-ownership records.
+- **Copy to…** creates a separate project folder at the name and location you choose, including copies of its images. The song stays at its original location and the new project refers to that same file. Use a new name in the same parent folder to duplicate a project beside the original.
+- **Move to…** creates and verifies the new project and images before removing the old project JSON and its referenced artwork. The song is neither copied nor moved; its reference is updated to keep pointing to the same file. Original audio tracks and unrelated files stay at their existing locations; folders containing those files are kept.
 
-Move and Copy require a new destination folder and never overwrite an existing project. Their copied audio/artwork references point inside the new project folder, so keep the whole folder together. If media is missing, open the project and relink it before moving or copying it. The recent-project cards update after the operation; canceling the location chooser leaves the project unchanged. Close an open project before using these actions.
+Move and Copy require a new destination folder and never overwrite an existing project. Keep the project folder and its copied images together. Keep the original song available at its existing location; if you move or delete it, open the project and relink it. Missing song references are preserved when moving or copying. If an image is missing, relink it first. Song references use relative paths on the same drive and a local absolute path across drives, so a project saved on another drive may contain the original song’s full path. The recent-project cards update after the operation; canceling the location chooser leaves the project unchanged. Close an open project before using these actions.
 
 ## Window controls and portrait video
 

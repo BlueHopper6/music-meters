@@ -69,7 +69,7 @@ module.exports = async function projectManagerSmoke(win, source) {
     const sourceHash = hash(source)
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: source })
     await action(source, 'copy'); await click('project-action-confirm')
-    await wait('document.getElementById("project-action-status").textContent.includes("already exists")', 'collision rejection')
+    await wait('document.getElementById("project-action-status").textContent === "There’s already a project in that folder with that same name. Choose a different name or location."', 'collision rejection')
     assert.equal(hash(source), sourceHash)
     await click('project-action-cancel')
     const copyFile = path.join(output, 'Library copy.json')
@@ -81,7 +81,9 @@ module.exports = async function projectManagerSmoke(win, source) {
     assert.equal(hash(source), sourceHash)
     const copiedProject = readLibraryProject(copied.path)
     assert.equal(hash(copiedProject.project.audioPath), originalHash)
-    assert.ok(copiedProject.project.audioPath.startsWith(path.dirname(copied.path) + path.sep))
+    assert.equal(copiedProject.project.audioPath, originalAudio)
+    assert.equal(fs.existsSync(path.join(path.dirname(copied.path), 'audio')), false)
+    assert.equal(fs.existsSync(path.join(path.dirname(copied.path), '.musicmeters-owned-media')), false)
     assert.ok(fs.existsSync(copiedProject.project.background.imagePath))
     const note = path.join(path.dirname(copied.path), 'keep-this-note.txt')
     fs.writeFileSync(note, 'Unrelated content must stay')
@@ -117,7 +119,7 @@ module.exports = async function projectManagerSmoke(win, source) {
     fs.writeFileSync(path.join(output, 'project-manager-move-dialog.png'), (await win.webContents.capturePage()).toPNG())
     await click('project-action-cancel')
     await evaluate(`Array.from(document.querySelectorAll('.project-card')).find(card => card.dataset.projectPath === ${JSON.stringify(moved.path)}).click()`)
-    await wait('!document.getElementById("editor-screen").hidden && document.getElementById("status").textContent.includes("Real Prism")', 'open moved project with copied media')
+    await wait('!document.getElementById("editor-screen").hidden && document.getElementById("status").textContent.includes("Real Prism")', 'open moved project with linked audio and copied artwork')
     const loaded = await evaluate('window.desktop.initial()')
     assert.equal(loaded.projectPath, moved.path)
     assert.equal(loaded.missingMedia.length, 0)
@@ -143,10 +145,46 @@ module.exports = async function projectManagerSmoke(win, source) {
     dialog.showMessageBox = async () => ({ response: 1 })
     shell.trashItem = async staging => { recycled++; fs.renameSync(staging, path.join(output, 'fake-recycle-bin')) }
     await deleteAction()
-    assert.equal(recycled, 1); assert.equal(fs.existsSync(moved.path), false); assert.equal(fs.existsSync(movedAudio), false)
+    assert.equal(recycled, 1); assert.equal(fs.existsSync(moved.path), false); assert.equal(fs.existsSync(movedAudio), true)
     assert.equal((await recent()).some(item => item.path === moved.path), false)
     assert.equal(fs.readFileSync(keep, 'utf8'), 'Unrelated file')
     assert.equal(hash(originalAudio), originalHash); assert.ok(fs.existsSync(source))
+    const unavailable = source + '.temporarily-moved'
+    const sourceCard = () => `Array.from(document.querySelectorAll('.project-card')).some(card => card.dataset.projectPath === ${JSON.stringify(source)})`
+    // A source deleted after opening an action must not open a destination dialog.
+    await action(source, 'copy')
+    fs.renameSync(source, unavailable)
+    try {
+      dialog.showSaveDialog = async () => { assert.fail('Missing source must not prompt for a destination') }
+      await click('project-action-confirm')
+      await wait('document.getElementById("project-action-modal").hidden', 'missing source closes action')
+      assert.equal(await evaluate(sourceCard()), false)
+      assert.equal(await evaluate('document.getElementById("project-manager-status").textContent'), 'This project can’t be found. It may have been moved or deleted. Use Open project to find it again.')
+    } finally { fs.renameSync(unavailable, source) }
+    await evaluate(`window.dispatchEvent(new Event('focus'))`)
+    await wait(sourceCard(), 'restored project appears on focus')
+    // A stale card click refreshes the list and shows a friendly missing-project message.
+    fs.renameSync(source, unavailable)
+    try {
+      await evaluate(`Array.from(document.querySelectorAll('.project-card')).find(card => card.dataset.projectPath === ${JSON.stringify(source)}).click()`)
+      await wait(`!(${sourceCard()})`, 'missing open removes stale card')
+      assert.equal(await evaluate('document.getElementById("editor-screen").hidden'), true)
+      assert.ok(await evaluate('document.getElementById("project-manager-status").textContent.startsWith("This project can’t be found.")'))
+    } finally { fs.renameSync(unavailable, source) }
+    await evaluate(`window.dispatchEvent(new Event('focus'))`)
+    await wait(sourceCard(), 'restored project listed again')
+    // Also cover a source disappearing while the native destination dialog is open.
+    dialog.showSaveDialog = async () => { fs.renameSync(source, unavailable); return { canceled: false, filePath: path.join(output, 'Missing source copy.json') } }
+    try {
+      await action(source, 'copy'); await click('project-action-confirm')
+      await wait('document.getElementById("project-action-modal").hidden', 'source removed during chooser')
+      assert.equal(await evaluate(sourceCard()), false)
+      assert.equal(fs.existsSync(path.join(output, 'Missing source copy')), false)
+      assert.ok(await evaluate('document.getElementById("project-manager-status").textContent.startsWith("This project can’t be found.")'))
+    } finally { if (fs.existsSync(unavailable)) fs.renameSync(unavailable, source) }
+    await evaluate(`window.dispatchEvent(new Event('focus'))`)
+    await wait(sourceCard(), 'final restored source')
+    assert.equal(hash(originalAudio), originalHash)
   } finally { dialog.showSaveDialog = originalDialog; dialog.showMessageBox = originalMessage; shell.trashItem = originalTrash }
-  console.log(JSON.stringify({ event: 'project-manager-smoke', status: 'PASS', actions: 'menu/physical-rename/copy/move/delete/cancel/collision', media: 'verified audio and artwork', guards: 'recent-only and closed-project' }))
+  console.log(JSON.stringify({ event: 'project-manager-smoke', status: 'PASS', actions: 'menu/physical-rename/copy/move/delete/cancel/collision/missing-source/focus-refresh', media: 'original audio reference and copied artwork', guards: 'recent-only and closed-project' }))
 }

@@ -1,17 +1,18 @@
 const { app, BrowserWindow, dialog, ipcMain, protocol, shell } = require('electron')
-const { join, resolve, dirname, basename, extname, relative, isAbsolute } = require('node:path')
+const { join, resolve, dirname, basename, extname, isAbsolute } = require('node:path')
 const { spawn } = require('node:child_process')
 const { Worker } = require('node:worker_threads')
 const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
 const { jobPath } = require('../runtime.cjs')
+const { resolveProjectAudio, projectAudioReference } = require('../project-audio.cjs')
 const { defaultProject, compositionProject, normalizeProject } = require('../project.cjs')
 const { encapsulateProjectPath, projectSaveName } = require('../project-path.cjs')
 const { readLibraryProject, renameLibraryProject, copyLibraryProject, removeOriginalProject, deleteLibraryProject } = require('../project-library.cjs')
 const { installedFonts, assertInstalledFonts } = require('../fonts.cjs')
 const { readImage, imagePaths, assetData, saveArtwork, resolveArtwork } = require('../assets.cjs')
 const { listTemplates, readTemplate, saveTemplate, duplicateTemplate, renameTemplate, deleteTemplate, applyTemplate, titleSuggestion } = require('../templates.cjs')
-const { readPreferences, writePreferences, recordRecentProject } = require('../preferences.cjs')
+const { readPreferences, writePreferences, recordRecentProject, availableRecentProjects, isMissingProject } = require('../preferences.cjs')
 const { probeAudio } = require('../audio.cjs')
 const { outputFormat, validateOutputPath, validateAudioCopy } = require('../audio-output.cjs')
 const { lockWindowNavigation, assertTrustedSender } = require('../window-security.cjs')
@@ -170,7 +171,7 @@ handle('initial', () => ({ project, metadata, projectPath, fonts: installedFonts
   templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project),
   isStartupSession: process.env.PHASE2_STARTUP_SMOKE === '1' || !isAutomatedTest,
   isAutomatedTest: Boolean(isAutomatedTest) }))
-handle('get-recent-projects', () => readPreferences(userData()).recentProjects || [])
+handle('get-recent-projects', () => availableRecentProjects(userData()))
 function freshBlankProject() {
   const fresh = compositionProject()
   fresh.layers = []
@@ -348,7 +349,7 @@ handle('save-project', async (_event, raw, asNew = false) => {
   if (extname(target).toLowerCase() !== '.json') throw new Error('Project file must end in .json')
   const reference = activeAudio || value.audioPath
   const document = { ...saveArtwork(value, target), audioPath: undefined,
-    audioRelativePath: reference ? relative(dirname(target), reference).replaceAll('\\', '/') : '' }
+    audioRelativePath: projectAudioReference(target, reference) }
   fs.mkdirSync(dirname(target), { recursive: true })
   fs.writeFileSync(target, JSON.stringify(document, null, 2) + '\n', { flag: 'w' })
   project = normalizeProject(resolveArtwork({ ...document, audioPath: reference }, target))
@@ -360,11 +361,7 @@ handle('save-project', async (_event, raw, asNew = false) => {
 function loadProjectFromDisk(target) {
   if (fs.statSync(target).size > 1024 * 1024) throw new Error('Project file is too large')
   const stored = JSON.parse(fs.readFileSync(target, 'utf8'))
-  const ref = stored.audioRelativePath
-  if (typeof ref !== 'string' || ref.length > 4096 || isAbsolute(ref)) {
-    throw new Error('Project audio reference is invalid')
-  }
-  const candidate = ref ? resolve(dirname(target), ref) : ''
+  const candidate = resolveProjectAudio(target, stored.audioRelativePath)
   const value = normalizeProject(resolveArtwork({ ...stored, audioPath: candidate }, target))
   assertInstalledFonts(value)
   allowedImages.clear()
@@ -402,6 +399,7 @@ handle('open-project', async () => {
   return loadProjectFromDisk(target)
 })
 
+const missingProjectMessage = 'This project can’t be found. It may have been moved or deleted. Use Open project to find it again.'
 handle('open-project-path', async (_event, targetPath) => {
   if (typeof targetPath !== 'string' || !isAbsolute(targetPath) || targetPath.length > 4096) {
     throw new Error('Invalid project path')
@@ -411,8 +409,12 @@ handle('open-project-path', async (_event, targetPath) => {
   if (!recent.some(item => item.path.toLowerCase() === resolved.toLowerCase())) {
     throw new Error('Project is not in recent projects')
   }
-  if (!fs.existsSync(resolved)) throw new Error('Project file not found: ' + resolved)
-  return loadProjectFromDisk(resolved)
+  if (isMissingProject(resolved)) throw new Error(missingProjectMessage)
+  try { return loadProjectFromDisk(resolved) }
+  catch (error) {
+    if (['ENOENT', 'ENOTDIR'].includes(error.code) && isMissingProject(resolved)) throw new Error(missingProjectMessage)
+    throw error
+  }
 })
 handle('manage-project', async (_event, source, action, name = '') => {
   if (projectOpen || exportJob) throw new Error('Close the current project before managing saved projects')
@@ -422,6 +424,7 @@ handle('manage-project', async (_event, source, action, name = '') => {
   source = resolve(source)
   const recent = readPreferences(userData()).recentProjects
   if (!recent.some(item => item.path.toLowerCase() === source.toLowerCase())) throw new Error('Project is not in recent projects')
+  if (isMissingProject(source)) throw new Error(missingProjectMessage)
   projectManagementRunning = true
   try {
     if (action === 'rename') {
@@ -462,6 +465,9 @@ handle('manage-project', async (_event, source, action, name = '') => {
       writePreferences(userData(), { recentProjects: current.recentProjects.filter(item => item.path.toLowerCase() !== source.toLowerCase()) })
     }
     return { path: copied.path, name: copied.name }
+  } catch (error) {
+    if (['ENOENT', 'ENOTDIR'].includes(error.code) && isMissingProject(source)) throw new Error(missingProjectMessage)
+    throw error
   } finally {
     projectManagementRunning = false
     if (quitAfterProjectManagement) { quitAfterProjectManagement = false; app.quit() }
