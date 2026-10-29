@@ -1,5 +1,15 @@
 const path = require('node:path')
 
+function projectSaveName(title) {
+  if (typeof title !== 'string') throw new Error('Invalid project title')
+  let name = title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim().slice(0, 200)
+    .replace(/\.json$/i, '').replace(/[. ]+$/g, '')
+  if (!name) name = 'Untitled project'
+  // Windows reserves these names even when followed by an extension.
+  if (/^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(name)) name = '_' + name
+  return name + '.json'
+}
+
 function encapsulateProjectPath(targetPath) {
   if (typeof targetPath !== 'string' || !targetPath.trim()) throw new Error('Invalid target path')
   const ext = path.extname(targetPath).toLowerCase()
@@ -12,4 +22,4 @@ function encapsulateProjectPath(targetPath) {
   return path.join(parentDir, projectName, `${projectName}.json`)
 }
 
-module.exports = { encapsulateProjectPath }
+module.exports = { encapsulateProjectPath, projectSaveName }

@@ -1,3 +1,4 @@
+const { resolveProjectAudio } = require('./project-audio.cjs')
 const fs = require('node:fs')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
@@ -37,11 +38,7 @@ async function main() {
   const options = parse(process.argv.slice(2))
   if (fs.statSync(options.project).size > 1024 * 1024) throw new Error('Project file is too large')
   const document = JSON.parse(fs.readFileSync(options.project, 'utf8'))
-  if (typeof document.audioRelativePath !== 'string' || path.isAbsolute(document.audioRelativePath)) {
-    throw new Error('Project audio reference is invalid')
-  }
-  const audioPath = document.audioRelativePath
-    ? path.resolve(path.dirname(options.project), document.audioRelativePath) : ''
+  const audioPath = resolveProjectAudio(options.project, document.audioRelativePath)
   const project = normalizeProject(resolveArtwork({ ...document, audioPath }, options.project))
   assertInstalledFonts(project)
   if (!audioPath || !fs.statSync(audioPath).isFile()) throw new Error('Project audio is unavailable')

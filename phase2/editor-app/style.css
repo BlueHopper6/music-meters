@@ -1275,6 +1275,17 @@ body.stage-fullscreen .selection {
   background: var(--bg-hover);
 }
 
+.project-card { position: relative; }
+.project-card-options { position: absolute; right: 23px; top: 23px; z-index: 2; }
+.project-options-trigger { width: 30px; height: 26px; padding: 0; font-size: 20px; line-height: 1; }
+.project-options-menu { position: absolute; top: 32px; right: 0; min-width: 150px; padding: 4px; background: var(--bg-panel); border: 1px solid var(--border-strong); border-radius: 5px; box-shadow: 0 8px 22px rgba(0,0,0,.45); }
+.project-options-menu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; font-size: 12px; }
+.project-options-menu button:hover, .project-options-menu button:focus-visible { background: var(--bg-hover); }
+.project-options-menu hr { border: 0; border-top: 1px solid var(--border-subtle); margin: 4px 2px; }
+.project-action-name-field { display: grid; gap: 6px; margin-bottom: 16px; }
+.project-action-name-field label { color: var(--text-secondary); font-size: 11px; }
+#project-action-name { width: 100%; min-width: 0; padding: 8px 10px; color: var(--text-primary); background: var(--bg-well); border: 1px solid var(--border-control); border-radius: 4px; }
+
 .project-card-thumb {
   height: 120px;
   background: var(--bg-well);
@@ -1391,6 +1402,38 @@ body.stage-fullscreen .selection {
   border: 1px solid var(--border-control);
   color: var(--text-primary);
   border-radius: 4px;
+}
+
+@supports (appearance: base-select) {
+  .template-picker-select,
+  .template-picker-select::picker(select) { appearance: base-select; }
+  .template-picker-select { min-height: 38px; cursor: pointer; }
+  .template-picker-select::picker-icon { color: var(--text-secondary); }
+  .template-picker-select::picker(select) {
+    margin-top: 5px;
+    padding: 4px;
+    max-height: min(320px, 50vh);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) var(--bg-panel);
+    color: var(--text-primary);
+    background: var(--bg-panel);
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+    font: inherit;
+  }
+  .template-picker-select option {
+    padding: 8px 10px;
+    min-height: 34px;
+    border-radius: 3px;
+    gap: 8px;
+    cursor: pointer;
+  }
+  .template-picker-select option:hover,
+  .template-picker-select option:focus-visible { background: var(--bg-hover); outline: none; }
+  .template-picker-select option:checked { background: var(--bg-active); }
+  .template-picker-select option::checkmark { display: none; }
 }
 
 /* Integrated draggable chrome with app-owned caption buttons. */

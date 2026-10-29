@@ -1,16 +1,18 @@
-const { app, BrowserWindow, dialog, ipcMain, protocol } = require('electron')
-const { join, resolve, dirname, extname, relative, isAbsolute } = require('node:path')
+const { app, BrowserWindow, dialog, ipcMain, protocol, shell } = require('electron')
+const { join, resolve, dirname, basename, extname, isAbsolute } = require('node:path')
 const { spawn } = require('node:child_process')
 const { Worker } = require('node:worker_threads')
 const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
 const { jobPath } = require('../runtime.cjs')
+const { resolveProjectAudio, projectAudioReference } = require('../project-audio.cjs')
 const { defaultProject, compositionProject, normalizeProject } = require('../project.cjs')
-const { encapsulateProjectPath } = require('../project-path.cjs')
+const { encapsulateProjectPath, projectSaveName } = require('../project-path.cjs')
+const { readLibraryProject, renameLibraryProject, copyLibraryProject, removeOriginalProject, deleteLibraryProject } = require('../project-library.cjs')
 const { installedFonts, assertInstalledFonts } = require('../fonts.cjs')
 const { readImage, imagePaths, assetData, saveArtwork, resolveArtwork } = require('../assets.cjs')
 const { listTemplates, readTemplate, saveTemplate, duplicateTemplate, renameTemplate, deleteTemplate, applyTemplate, titleSuggestion } = require('../templates.cjs')
-const { readPreferences, writePreferences, recordRecentProject } = require('../preferences.cjs')
+const { readPreferences, writePreferences, recordRecentProject, availableRecentProjects, isMissingProject } = require('../preferences.cjs')
 const { probeAudio } = require('../audio.cjs')
 const { outputFormat, validateOutputPath, validateAudioCopy } = require('../audio-output.cjs')
 const { lockWindowNavigation, assertTrustedSender } = require('../window-security.cjs')
@@ -39,6 +41,9 @@ let activeAudio = ''
 // Only picker/opened-project paths from this project session may be restored.
 const historyAudio = new Set([''])
 let projectPath = null
+let projectOpen = false
+let projectManagementRunning = false
+let quitAfterProjectManagement = false
 let previewGeneration = 0
 let previewAudioRevision = 0
 let previewWorker = null
@@ -54,6 +59,9 @@ const editorDocument = join(__dirname, 'index.html')
 function handle(channel, callback) {
   ipcMain.handle(channel, (event, ...args) => {
     assertTrustedSender(event, win?.webContents, editorDocument)
+    if (projectManagementRunning && ['new-blank-project', 'new-project-from-template', 'close-project', 'open-project', 'open-project-path', 'save-project', 'choose-audio'].includes(channel)) {
+      throw new Error('Wait for the project operation to finish')
+    }
     return callback(event, ...args)
   })
 }
@@ -163,7 +171,7 @@ handle('initial', () => ({ project, metadata, projectPath, fonts: installedFonts
   templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project),
   isStartupSession: process.env.PHASE2_STARTUP_SMOKE === '1' || !isAutomatedTest,
   isAutomatedTest: Boolean(isAutomatedTest) }))
-handle('get-recent-projects', () => readPreferences(userData()).recentProjects || [])
+handle('get-recent-projects', () => availableRecentProjects(userData()))
 function freshBlankProject() {
   const fresh = compositionProject()
   fresh.layers = []
@@ -171,6 +179,7 @@ function freshBlankProject() {
   return fresh
 }
 handle('new-blank-project', () => {
+  projectOpen = true
   cancelPreview()
   project = freshBlankProject()
   projectPath = null
@@ -182,6 +191,7 @@ handle('new-blank-project', () => {
     templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: [] }
 })
 handle('close-project', () => {
+  projectOpen = false
   cancelPreview()
   project = freshBlankProject()
   projectPath = null
@@ -200,6 +210,7 @@ handle('new-project-from-template', (_event, templateId) => {
   base.title = 'Untitled project'
   const applied = applyTemplate(tmpl.layout, base)
   assertInstalledFonts(applied)
+  projectOpen = true
   allowedImages.clear()
   for (const input of imagePaths(applied)) allowedImages.add(input)
   project = applied
@@ -328,7 +339,7 @@ handle('save-project', async (_event, raw, asNew = false) => {
     } else {
       const result = await dialog.showSaveDialog(win, {
         title: asNew ? 'Save project as' : 'Save project',
-        defaultPath: projectPath || `${titleSuggestion(value.audioPath || value.title)}-project.json`,
+        defaultPath: projectPath ? join(dirname(projectPath), projectSaveName(value.title)) : projectSaveName(value.title),
         filters: [{ name: 'Visualizer project', extensions: ['json'] }],
       })
       if (result.canceled) return null
@@ -338,7 +349,7 @@ handle('save-project', async (_event, raw, asNew = false) => {
   if (extname(target).toLowerCase() !== '.json') throw new Error('Project file must end in .json')
   const reference = activeAudio || value.audioPath
   const document = { ...saveArtwork(value, target), audioPath: undefined,
-    audioRelativePath: reference ? relative(dirname(target), reference).replaceAll('\\', '/') : '' }
+    audioRelativePath: projectAudioReference(target, reference) }
   fs.mkdirSync(dirname(target), { recursive: true })
   fs.writeFileSync(target, JSON.stringify(document, null, 2) + '\n', { flag: 'w' })
   project = normalizeProject(resolveArtwork({ ...document, audioPath: reference }, target))
@@ -350,11 +361,7 @@ handle('save-project', async (_event, raw, asNew = false) => {
 function loadProjectFromDisk(target) {
   if (fs.statSync(target).size > 1024 * 1024) throw new Error('Project file is too large')
   const stored = JSON.parse(fs.readFileSync(target, 'utf8'))
-  const ref = stored.audioRelativePath
-  if (typeof ref !== 'string' || ref.length > 4096 || isAbsolute(ref)) {
-    throw new Error('Project audio reference is invalid')
-  }
-  const candidate = ref ? resolve(dirname(target), ref) : ''
+  const candidate = resolveProjectAudio(target, stored.audioRelativePath)
   const value = normalizeProject(resolveArtwork({ ...stored, audioPath: candidate }, target))
   assertInstalledFonts(value)
   allowedImages.clear()
@@ -369,6 +376,7 @@ function loadProjectFromDisk(target) {
   previewAudioRevision++
   cancelPreview()
   project = value
+  projectOpen = true
   historyAudio.clear(); historyAudio.add(''); historyAudio.add(value.audioPath)
   metadata = nextMetadata
   activeAudio = nextAudio
@@ -391,6 +399,7 @@ handle('open-project', async () => {
   return loadProjectFromDisk(target)
 })
 
+const missingProjectMessage = 'This project can’t be found. It may have been moved or deleted. Use Open project to find it again.'
 handle('open-project-path', async (_event, targetPath) => {
   if (typeof targetPath !== 'string' || !isAbsolute(targetPath) || targetPath.length > 4096) {
     throw new Error('Invalid project path')
@@ -400,8 +409,69 @@ handle('open-project-path', async (_event, targetPath) => {
   if (!recent.some(item => item.path.toLowerCase() === resolved.toLowerCase())) {
     throw new Error('Project is not in recent projects')
   }
-  if (!fs.existsSync(resolved)) throw new Error('Project file not found: ' + resolved)
-  return loadProjectFromDisk(resolved)
+  if (isMissingProject(resolved)) throw new Error(missingProjectMessage)
+  try { return loadProjectFromDisk(resolved) }
+  catch (error) {
+    if (['ENOENT', 'ENOTDIR'].includes(error.code) && isMissingProject(resolved)) throw new Error(missingProjectMessage)
+    throw error
+  }
+})
+handle('manage-project', async (_event, source, action, name = '') => {
+  if (projectOpen || exportJob) throw new Error('Close the current project before managing saved projects')
+  if (projectManagementRunning) throw new Error('Another project operation is in progress')
+  if (typeof source !== 'string' || !isAbsolute(source) || source.length > 4096) throw new Error('Invalid project path')
+  if (!['rename', 'move', 'copy', 'delete'].includes(action)) throw new Error('Invalid project action')
+  source = resolve(source)
+  const recent = readPreferences(userData()).recentProjects
+  if (!recent.some(item => item.path.toLowerCase() === source.toLowerCase())) throw new Error('Project is not in recent projects')
+  if (isMissingProject(source)) throw new Error(missingProjectMessage)
+  projectManagementRunning = true
+  try {
+    if (action === 'rename') {
+      const renamed = renameLibraryProject(source, name)
+      const current = readPreferences(userData())
+      writePreferences(userData(), { recentProjects: [{ path: renamed.path, name: renamed.name, lastOpened: Date.now() }, ...current.recentProjects.filter(item => ![source.toLowerCase(), renamed.path.toLowerCase()].includes(item.path.toLowerCase()))] })
+      return { path: renamed.path, name: renamed.name }
+    }
+    const original = readLibraryProject(source)
+    if (action === 'delete') {
+      const choice = await dialog.showMessageBox(win, { type: 'warning', title: 'Delete project',
+        message: `Delete “${original.project.title || basename(source, '.json')}”?`,
+        detail: `${source}\n\nThe project and its recorded copied media will go to the Recycle Bin. Original media and unrelated files will be kept.`,
+        buttons: ['Cancel', 'Delete project'], defaultId: 0, cancelId: 0, noLink: true })
+      if (choice.response !== 1) return null
+      const deleted = await deleteLibraryProject(source, folder => shell.trashItem(folder))
+      const current = readPreferences(userData())
+      writePreferences(userData(), { recentProjects: current.recentProjects.filter(item => item.path.toLowerCase() !== source.toLowerCase()) })
+      return deleted
+    }
+    const folder = dirname(source)
+    const parent = basename(folder).toLowerCase() === basename(source, '.json').toLowerCase() ? dirname(folder) : folder
+    const displayName = original.project.title.trim() || basename(source, '.json')
+    const proposedName = action === 'copy' ? displayName + ' copy' : displayName
+    const choice = await dialog.showSaveDialog(win, {
+      title: action === 'move' ? 'Move project to' : 'Copy project to',
+      defaultPath: join(parent, projectSaveName(proposedName)),
+      filters: [{ name: 'Visualizer project', extensions: ['json'] }],
+    })
+    if (choice.canceled) return null
+    const target = encapsulateProjectPath(choice.filePath)
+    const title = action === 'copy' ? basename(target, '.json') : displayName
+    const copied = await copyLibraryProject(source, target, title, entry => recordRecentProject(userData(), entry.path, entry.name))
+    if (action === 'move') {
+      try { removeOriginalProject(copied) }
+      catch (error) { throw new Error(`Copy is available at ${target}. Move did not finish: ${error.message}`) }
+      const current = readPreferences(userData())
+      writePreferences(userData(), { recentProjects: current.recentProjects.filter(item => item.path.toLowerCase() !== source.toLowerCase()) })
+    }
+    return { path: copied.path, name: copied.name }
+  } catch (error) {
+    if (['ENOENT', 'ENOTDIR'].includes(error.code) && isMissingProject(source)) throw new Error(missingProjectMessage)
+    throw error
+  } finally {
+    projectManagementRunning = false
+    if (quitAfterProjectManagement) { quitAfterProjectManagement = false; app.quit() }
+  }
 })
 let chosenExportDestination = null
 async function chooseExportDestination(value, audioMode) {
@@ -530,6 +600,7 @@ app.whenReady().then(() => {
     metadata = info.metadata
     project.audioPath = activeAudio
     historyAudio.add(activeAudio)
+    projectOpen = true
     previewAudioRevision++
   }
   win = new BrowserWindow({
@@ -537,9 +608,12 @@ app.whenReady().then(() => {
     backgroundColor: '#09090b',
     width: 1480, height: 900, minWidth: 1000, minHeight: 700,
     icon: join(__dirname, 'assets', 'brand', 'music-meters.ico'),
-    show: process.env.PHASE2_HEADLESS !== '1',
+    show: false,
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true,
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
+  })
+  win.once('ready-to-show', () => {
+    if (process.env.PHASE2_HEADLESS !== '1') { win.maximize(); win.show() }
   })
   win.setMenuBarVisibility(false)
   win.setMenu(null)
@@ -548,6 +622,7 @@ app.whenReady().then(() => {
   }
   lockWindowNavigation(win.webContents)
   win.on('close', event => {
+    if (projectManagementRunning) { event.preventDefault(); quitAfterProjectManagement = true; return }
     if (forceQuit || isAutomatedTest) return
     event.preventDefault()
     win.webContents.send('app-close-requested')
@@ -586,6 +661,7 @@ app.whenReady().then(() => {
 }).catch(error => { console.error(error); app.exit(1) })
 app.on('window-all-closed', () => app.quit())
 app.on('before-quit', event => {
+  if (projectManagementRunning) { event.preventDefault(); quitAfterProjectManagement = true; return }
   if (exportJob) {
     event.preventDefault()
     closingAfterExport = true

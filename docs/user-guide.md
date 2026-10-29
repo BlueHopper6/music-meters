@@ -12,6 +12,8 @@ Use **Snap** above the stage to align dragged layers with the stage edges and ce
 
 ## Artwork, text, and project files
 
+The first **Save** and **Save as…** suggest a filename based on **Project name**, such as `My project.json`. Characters that Windows cannot use in filenames are removed, and an empty name falls back to `Untitled project.json`. You can edit the suggested filename in the save dialog. After saving, normal **Save** updates the existing file; changing Project name does not move or rename that file. Use **Save as…** to save a copy under the new name.
+
 For a finished composition, choose **Artwork / logo** or **Text** in the Add layer menu. Image layers use a local PNG, JPEG, or WebP file, crop-to-fill or fit-inside, opacity, rotation, and shadow. Text layers have content, font, size, weight, alignment, color, rotation, and shadow. The composition background can be a solid color, gradient, or local image. Layer order is shared across meters, artwork, and text: **Move up** places a layer in front. The project name is metadata; in version 2 projects, visible song and artist lettering comes from text layers. Older version 1 projects retain their original fixed title/subtitle/timestamp display until a new graphic layer or background style upgrades them. Saving a version 2 project copies artwork into a sibling `<project-name>.assets` folder. Keep that folder with the JSON when moving the project. Audio is still referenced separately and is never embedded. If audio or artwork is missing, the editor lists each missing file with a **Relink…** button; save the project after choosing replacements. **Save as…** creates a separate project for the next song.
 
 ## Layer backgrounds
@@ -21,6 +23,19 @@ Select any visualizer or text layer and open **Layer background** in the inspect
 ## Projects and saving
 
 The startup Project Manager offers **New blank project**, **New from template…**, **Open project…**, and recent projects. **Close project** returns to it. Opening or closing a project, creating another project, or quitting prompts you to save, discard, or cancel when there are unsaved edits. Saving a new project creates a dedicated `<project-name>` folder containing its JSON and any project artwork assets; selecting that same folder does not create another nested folder. Audio remains an external reference. Recent Projects uses the saved filename when the project title is still a placeholder. Projects also save the preview marker: an explicit Save records the current position, and reopening restores it within the available audio. Playback and seeking alone do not mark the project unsaved. Older files without a saved marker open at zero. Templates clear song positions; exports still render the full song.
+
+## Manage saved projects
+
+Recent Projects hides files that are no longer available, including projects deleted or moved in File Explorer. The list refreshes when you return to MusicMeters or the Project Manager. If a disconnected drive becomes available again, its projects can reappear. Use **Open project…** to find a project you moved elsewhere.
+
+Open the **⋯** menu on a recent-project card in the Project Manager to manage it:
+
+- **Rename…** updates the project name, JSON filename, artwork folder, and project folder together, keeping media connected. Existing destination folders are never overwritten. For older projects saved outside a matching project folder, use **Move to…** first.
+- **Delete project…** asks for confirmation, then sends the project, copied artwork, and recorded audio copies to the Recycle Bin. Original media and unrelated files stay in place. Older recorded song copies are recycled with their project; audio files without ownership records are kept conservatively. New Move and Copy operations leave songs in place and do not create audio-ownership records.
+- **Copy to…** creates a separate project folder at the name and location you choose, including copies of its images. The song stays at its original location and the new project refers to that same file. Use a new name in the same parent folder to duplicate a project beside the original.
+- **Move to…** creates and verifies the new project and images before removing the old project JSON and its referenced artwork. The song is neither copied nor moved; its reference is updated to keep pointing to the same file. Original audio tracks and unrelated files stay at their existing locations; folders containing those files are kept.
+
+Move and Copy require a new destination folder and never overwrite an existing project. Keep the project folder and its copied images together. Keep the original song available at its existing location; if you move or delete it, open the project and relink it. Missing song references are preserved when moving or copying. If an image is missing, relink it first. Song references use relative paths on the same drive and a local absolute path across drives, so a project saved on another drive may contain the original song’s full path. The recent-project cards update after the operation; canceling the location chooser leaves the project unchanged. Close an open project before using these actions.
 
 ## Window controls and portrait video
 

@@ -6,10 +6,15 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ### Added
 
+- A three-dot menu on recent-project cards for Rename, Move to, Copy to, and confirmed Delete project. Rename updates the folder and filename; Delete recycles the project and recorded copied media while preserving originals. Move and Copy keep a reference to the original song without copying or moving it, while images stay with the project. Moves verify the new project files before removing the old ones and retain unrelated content.
 - Project undo/redo through the Edit menu and Ctrl+Z, Ctrl+Y, or Ctrl+Shift+Z, with grouped typing/dragging and up to 100 steps per session.
 
 ### Fixed
 
+- Recent Projects hides unavailable files after external moves or deletions; actions on a project that disappears show a clear message instead of a filesystem error.
+
+- First-save and Save As filename suggestions use the entered project name rather than the imported audio filename, with Windows filename sanitization.
+- The New from Template dropdown and its open options list now match the app's dark styling while retaining native keyboard navigation.
 - Space toggles preview playback after clicking or dragging the timeline. Timeline focus uses a playhead cue for keyboard users instead of a white box around the seek bar.
 - Layout changes retain the live playback position after pausing. Template Manager no longer highlights a remembered dropdown selection as though it were the active layout.
 - Still updates after undo/redo and layout changes run without locking the editor. Starting playback cancels the pending still update.

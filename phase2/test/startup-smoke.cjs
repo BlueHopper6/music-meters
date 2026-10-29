@@ -9,7 +9,6 @@ module.exports = async function startupSmoke(win) {
   if (process.env.PHASE2_HISTORY_SMOKE === '1') return require('./history-smoke.cjs')(win)
   assert.equal(app.getName(), 'MusicMeters')
   assert.equal(app.getPath('userData'), process.env.PHASE5_TEST_USER_DATA)
-  win.setContentSize(1000, 700)
   const capture = async name => {
     if (!win.isVisible()) win.showInactive()
     win.webContents.invalidate()
@@ -45,10 +44,18 @@ module.exports = async function startupSmoke(win) {
     await delay(100)
   }
 
+  await waitFor('window.desktop.windowState().then(state => state.maximized && !state.fullscreen)', 'maximized startup without fullscreen')
+  assert.equal(win.isMaximized(), true)
+  assert.equal(win.isFullScreen(), false)
+  await capture('startup-maximized.png')
+  win.unmaximize()
+  win.setContentSize(1000, 700)
+
   console.log('Step 1: Checking Project Manager visibility')
   await waitFor('!document.getElementById("project-manager-screen").hidden', 'project manager visible')
   assert.equal(await evaluate('document.getElementById("editor-screen").hidden'), true)
   await waitFor('document.getElementById("splash-screen").hidden', 'splash dismissed')
+  assert.equal(await evaluate('document.querySelectorAll("#recent-projects-grid .project-card").length'), 0, 'Missing recent projects must be hidden on startup')
   assert.equal(await evaluate('document.title'), 'MusicMeters')
   assert.equal(await evaluate('document.getElementById("window-project-title").hidden'), true)
   assert.equal(await evaluate('document.getElementById("window-project-title").textContent'), '')
@@ -90,6 +97,34 @@ module.exports = async function startupSmoke(win) {
   await waitFor('!document.getElementById("template-picker-modal").hidden', 'open template picker modal')
   const templateOptions = await evaluate('Array.from(document.querySelectorAll("#template-picker-select option"), o => o.value)')
   assert.ok(templateOptions.includes('starter:Observatory'))
+
+  const pickerStyle = await evaluate(`(() => { const el = document.getElementById('template-picker-select');
+    const picker = getComputedStyle(el, '::picker(select)'); return { appearance: getComputedStyle(el).appearance,
+      background: picker.backgroundColor, border: picker.borderTopStyle }; })()`)
+  assert.deepEqual(pickerStyle, { appearance: 'base-select', background: 'rgb(17, 17, 20)', border: 'solid' })
+  win.focus(); win.webContents.focus()
+  async function openStyledPicker() {
+    const point = await evaluate(`(() => { const r = document.getElementById('template-picker-select').getBoundingClientRect();
+      return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`)
+    win.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 })
+    win.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 })
+    await waitFor('document.getElementById("template-picker-select").matches(":open")', 'styled template options open')
+  }
+  await openStyledPicker()
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('#template-picker-select option:checked'), '::checkmark').display`), 'none')
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('#template-picker-select option:checked')).backgroundColor`), 'rgb(39, 39, 47)')
+  await capture('template-picker-open-1000x700.png')
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Down' })
+  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Down' })
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Enter' })
+  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Enter' })
+  await waitFor('!document.getElementById("template-picker-select").matches(":open")', 'keyboard selection closes picker')
+  assert.equal(await evaluate('document.getElementById("template-picker-select").value'), templateOptions[1])
+  await openStyledPicker()
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
+  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' })
+  await waitFor('!document.getElementById("template-picker-select").matches(":open")', 'Escape closes template options')
+  assert.equal(await evaluate('document.getElementById("template-picker-modal").hidden'), false)
 
   await evaluate('(() => { const sel = document.getElementById("template-picker-select"); sel.value = "starter:Observatory"; return true })()')
   await click('template-picker-create')

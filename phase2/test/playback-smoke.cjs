@@ -13,7 +13,10 @@ module.exports = async function playbackSmoke(win, playback) {
       if (await evaluate(code)) return
       await delay(30)
     }
-    throw new Error(`${label}: ${await evaluate('document.getElementById("playback-status").textContent')}`)
+    const state = await evaluate(`(() => { const audio = document.getElementById('playback-audio'); return {
+      status: document.getElementById('playback-status').textContent, time: audio.currentTime, seeking: audio.seeking, paused: audio.paused,
+      slider: document.getElementById('time-slider').value, frame: document.getElementById('stage').dataset.previewFrame, focus: document.activeElement.id }; })()`)
+    throw new Error(`${label}: ${JSON.stringify(state)}`)
   }
   const click = id => evaluate(`document.getElementById(${JSON.stringify(id)}).click()`)
   const seek = seconds => evaluate(`(() => { const el = document.getElementById('time-input'); el.value = ${JSON.stringify(String(seconds))}; el.dispatchEvent(new Event('change', { bubbles: true })); })()`)
@@ -46,6 +49,12 @@ module.exports = async function playbackSmoke(win, playback) {
   await evaluate(`(() => { const el = document.getElementById('time-input'); el.value = '00:45.000'; el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); })()`)
   assert.equal(await evaluate('document.getElementById("time-display").textContent'), '00:30.000', 'Escape discards time entry')
   assert.equal(await evaluate('document.activeElement.id'), 'time-display')
+  // A queued pause event from the old position must not reset a newer seek.
+  await evaluate(`(() => { const slider = document.getElementById('time-slider'); slider.value = '600';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('playback-audio').dispatchEvent(new Event('pause')); })()`)
+  assert.equal(await evaluate('document.getElementById("time-slider").value'), '600', 'Late pause must preserve the requested seek position')
+  await wait('document.getElementById("stage").dataset.previewFrame === "600" && document.getElementById("playback-cancel").hidden', 'seek after late pause')
   async function press(keyCode, modifiers = []) {
     win.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers })
     win.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers })
@@ -101,8 +110,11 @@ module.exports = async function playbackSmoke(win, playback) {
   await wait('document.getElementById("playback-audio").paused', 'focused Pause button toggles only once')
   // Restore the existing exact-frame keyboard seek regression's starting point.
   await seek(30)
-  await wait('Math.abs(document.getElementById("playback-audio").currentTime - 30) < 0.1 && document.getElementById("playback-cancel").hidden', 'return to 30 seconds')
+  await wait(`(() => { const audio = document.getElementById('playback-audio'); return audio.paused && !audio.seeking
+    && Math.abs(audio.currentTime - 30) < 0.001 && document.getElementById('time-slider').value === '900'
+    && document.getElementById('stage').dataset.previewFrame === '900' && document.getElementById('playback-cancel').hidden; })()`, 'return to exact frame 900')
   await evaluate('document.getElementById("time-slider").focus()')
+  await wait('document.activeElement.id === "time-slider"', 'timeline focused for frame step')
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Right' })
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Right' })
   await wait('document.getElementById("stage").dataset.previewFrame === "901" && document.getElementById("playback-cancel").hidden', 'keyboard seek by one frame')

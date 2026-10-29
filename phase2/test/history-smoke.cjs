@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const { app } = require('electron')
+const { app, dialog } = require('electron')
 
 module.exports = async function historySmoke(win) {
   const evaluate = source => win.webContents.executeJavaScript(source)
@@ -239,6 +239,56 @@ module.exports = async function historySmoke(win) {
   await click('template-picker-create'); await ready()
   assert.equal((await state()).project.audioPath, '')
   assert.equal((await state()).metadata, null)
+  // Exercise the real Save handler/dialog suggestions instead of test-path bypasses.
+  const saveDialog = dialog.showSaveDialog
+  const saveOverride = process.env.PHASE2_TEST_SAVE_PATH
+  const projectOverride = process.env.PHASE2_TEST_PROJECT_PATH
+  const suggestions = []
+  delete process.env.PHASE2_TEST_SAVE_PATH
+  delete process.env.PHASE2_TEST_PROJECT_PATH
+  dialog.showSaveDialog = async (_window, options) => {
+    suggestions.push(options.defaultPath)
+    return { canceled: false, filePath: path.join(process.env.PHASE2_STARTUP_SMOKE_DIR, path.basename(options.defaultPath)) }
+  }
+  try {
+    await click('import-audio'); await ready()
+    await title('My named project - v2')
+    await click('save-project')
+    await wait('document.getElementById("status").textContent.includes("My named project - v2.json")', 'save named project')
+    const firstSave = await state()
+    assert.deepEqual(suggestions, ['My named project - v2.json'])
+    assert.equal(path.basename(firstSave.projectPath), 'My named project - v2.json')
+    assert.equal(path.basename(path.dirname(firstSave.projectPath)), 'My named project - v2')
+    assert.equal(JSON.parse(fs.readFileSync(firstSave.projectPath, 'utf8')).title, 'My named project - v2')
+    assert.equal(firstSave.preferences.recentProjects[0].name, 'My named project - v2')
+    await title('Renamed project')
+    await click('save-project')
+    await wait('!document.title.endsWith("*")', 'normal Save remains at existing location')
+    assert.equal((await state()).projectPath, firstSave.projectPath)
+    assert.equal(suggestions.length, 1, 'Normal Save must not rename or open a dialog')
+    await click('save-project-as')
+    await wait('document.getElementById("status").textContent.includes("Renamed project.json")', 'Save As uses renamed project title')
+    assert.equal(suggestions[1], path.join(path.dirname(firstSave.projectPath), 'Renamed project.json'))
+    const secondSave = await state()
+    assert.notEqual(secondSave.projectPath, firstSave.projectPath)
+    assert.equal(path.basename(secondSave.projectPath), 'Renamed project.json')
+    assert.ok(fs.existsSync(firstSave.projectPath), 'Save As retains the original project')
+    dialog.showSaveDialog = async () => ({ canceled: true, filePath: undefined })
+    const cancelled = await evaluate(`window.desktop.saveProject(${JSON.stringify(secondSave.project)}, true)`)
+    assert.equal(cancelled, null)
+    assert.equal((await state()).projectPath, secondSave.projectPath)
+    await evaluate(`(() => { const el = document.getElementById('background-type'); el.value = 'image'; el.dispatchEvent(new Event('change', { bubbles: true })); })()`)
+    await click('background-choose-image'); await ready()
+    await click('save-project')
+    await wait('!document.title.endsWith("*")', 'save project-manager artwork fixture')
+    await click('close-project')
+    await wait('!document.getElementById("project-manager-screen").hidden', 'manager before saved-project operations')
+    await require('./project-manager-smoke.cjs')(win, secondSave.projectPath)
+  } finally {
+    dialog.showSaveDialog = saveDialog
+    if (saveOverride !== undefined) process.env.PHASE2_TEST_SAVE_PATH = saveOverride
+    if (projectOverride !== undefined) process.env.PHASE2_TEST_PROJECT_PATH = projectOverride
+  }
   console.log(JSON.stringify({ event: 'history-smoke', status: 'PASS', tests: 'template audio/project identity, import undo/redo, grouped typing, dirty state, branching, structural edits, trusted media, session reset' }))
   app.quit()
 }
