@@ -7,6 +7,7 @@ import { installCommandMenus } from './command-menus'
 import { installVideoPreview, type LiveFrame } from './video-preview'
 import type { PlaybackStart } from './video-preview'
 import { formatTimecode, parseTimecode, frameAtTime } from './timecode.cjs'
+import { ProjectHistory } from './project-history.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number; codecName: string }
 type TemplateEntry = { id: string; name: string; builtIn: boolean }
@@ -24,6 +25,7 @@ type Desktop = {
   onWindowState(listener: (state: { fullscreen: boolean; maximized: boolean }) => void): () => void
   initial(): Promise<Initial>
   chooseAudio(): Promise<{ path: string; metadata: Metadata } | null>
+  restoreProject(project: Project): Promise<{ project: Project; metadata: Metadata | null; missingMedia: MissingMedia[] }>
   chooseImage(): Promise<string | null>
   loadAssets(project: Project): Promise<Record<string, string>>
   previewAt(frame: number, project: Project): Promise<
@@ -92,6 +94,69 @@ let exportDestination = ''
 let exportSubmitting = false
 let templateManagerReturnFocus: HTMLElement | null = null
 let playback: ReturnType<typeof installVideoPreview> | null = null
+const history = new ProjectHistory(100)
+let historyBusy = false
+let historyGroup = ''
+
+function updateHistoryControls() {
+  const blocked = historyBusy || exportRunning || exportSubmitting || $('editor-screen').hidden
+  ;($<HTMLButtonElement>('undo-project')).disabled = blocked || !history.canUndo
+  ;($<HTMLButtonElement>('redo-project')).disabled = blocked || !history.canRedo
+}
+function recordEdit() {
+  if (!historyBusy) history.record(project, historyGroup)
+  updateHistoryControls()
+}
+function endHistoryGroup() { historyGroup = ''; history.endGroup() }
+// Capture before target handlers mutate the document. Only continuous input
+// and a single pointer gesture coalesce; separate clicks remain separate edits.
+document.addEventListener('input', event => {
+  const target = event.target as HTMLElement
+  historyGroup = `${selectedId || 'project'}:${target.id}`
+}, true)
+document.addEventListener('pointerdown', event => {
+  endHistoryGroup()
+  if (selection.contains(event.target as Node)) historyGroup = 'stage-drag'
+}, true)
+for (const type of ['change', 'focusout', 'pointerup', 'pointercancel']) {
+  document.addEventListener(type, endHistoryGroup)
+}
+async function restoreEdit(direction: -1 | 1) {
+  if (historyBusy || exportRunning || exportSubmitting || $('editor-screen').hidden) return
+  recordEdit(); endHistoryGroup()
+  const target = history.peek(direction) as Project | null
+  if (!target) return
+  playback?.pause()
+  target.previewFrame = frameIndex
+  historyBusy = true; $('editor-screen').inert = true; updateHistoryControls()
+  try {
+    const loaded = await window.desktop.restoreProject(target)
+    resetSongPreview()
+    project = normalizeProject(loaded.project) as Project
+    metadata = loaded.metadata; missingMedia = loaded.missingMedia
+    frameIndex = project.previewFrame ?? 0
+    if (!project.layers.some(layer => layer.id === selectedId)) selectedId = project.layers.at(-1)?.id || null
+    history.move(direction)
+    refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
+    if (metadata) await refreshPreview()
+    else setStatus(direction === -1 ? 'Edit undone.' : 'Edit redone.')
+  } catch (error) { setStatus(String(error)) }
+  finally { historyBusy = false; $('editor-screen').inert = false; updateHistoryControls() }
+}
+$('undo-project').addEventListener('click', () => { void restoreEdit(-1) })
+$('redo-project').addEventListener('click', () => { void restoreEdit(1) })
+async function editArtwork(change: (path: string) => void): Promise<boolean> {
+  if (historyBusy || exportRunning || exportSubmitting) return false
+  endHistoryGroup(); recordEdit()
+  historyBusy = true; $('editor-screen').inert = true; updateHistoryControls()
+  try {
+    const path = await window.desktop.chooseImage()
+    if (!path) return false
+    change(path)
+    refreshInspector(); refreshLayers(); renderMissingMedia(); await syncAssets()
+    return true
+  } finally { historyBusy = false; $('editor-screen').inert = false; recordEdit() }
+}
 
 function selected() { return project.layers.find(layer => layer.id === selectedId) }
 function selectLayer(id: string | null) {
@@ -130,6 +195,7 @@ function snapshotProject(p: Project): string {
 }
 
 function markProjectSaved() {
+  history.replaceCurrent(project)
   savedProjectSnapshot = snapshotProject(project)
   updateTitleDirtyIndicator()
 }
@@ -172,6 +238,7 @@ function closeUnsavedChangesModal() {
 }
 
 function render() {
+  recordEdit()
   playback?.sync()
   if (canvas.width !== project.width || canvas.height !== project.height) {
     canvas.width = project.width; canvas.height = project.height
@@ -654,15 +721,15 @@ function renderMissingMedia() {
           $('import-audio').click()
           return
         }
-        const chosen = await window.desktop.chooseImage()
-        if (!chosen) return
-        if (item.kind === 'background' && typeof project.background !== 'string') project.background.imagePath = chosen
-        if (item.kind === 'layer') {
-          const layer = project.layers.find(layer => layer.id === item.id)
-          if (layer?.type === 'image') layer.imagePath = chosen
-        }
-        missingMedia = missingMedia.filter(entry => entry !== item)
-        renderMissingMedia(); refreshInspector(); await syncAssets()
+        const changed = await editArtwork(chosen => {
+          if (item.kind === 'background' && typeof project.background !== 'string') project.background.imagePath = chosen
+          if (item.kind === 'layer') {
+            const layer = project.layers.find(layer => layer.id === item.id)
+            if (layer?.type === 'image') layer.imagePath = chosen
+          }
+          missingMedia = missingMedia.filter(entry => entry !== item)
+        })
+        if (!changed) return
         setStatus(`Relinked ${item.label}. Save the project to keep the new reference.`)
       } catch (error) { setStatus(String(error)) }
     })
@@ -810,16 +877,13 @@ $<HTMLSelectElement>('background-fit').addEventListener('change', event => {
 })
 $('background-choose-image').addEventListener('click', async () => {
   try {
-    const path = await window.desktop.chooseImage(); if (!path) return
-    upgradeProject(); background().imagePath = path; background().type = 'image'
-    refreshInspector(); await syncAssets()
+    await editArtwork(path => { upgradeProject(); background().imagePath = path; background().type = 'image' })
   } catch (error) { setStatus(String(error)) }
 })
 $('image-choose').addEventListener('click', async () => {
   const layer = selected(); if (!layer || layer.type !== 'image' || layer.locked) return
   try {
-    const path = await window.desktop.chooseImage(); if (!path) return
-    layer.imagePath = path; layer.visible = true; refreshInspector(); refreshLayers(); await syncAssets()
+    await editArtwork(path => { layer.imagePath = path; layer.visible = true })
   } catch (error) { setStatus(String(error)) }
 })
 for (const [id, property] of [['image-fit', 'fit'], ['image-rotation', 'rotation'], ['image-shadow', 'shadow']] as const) {
@@ -1425,6 +1489,9 @@ window.addEventListener('keydown', event => {
 })
 
 $('import-audio').addEventListener('click', async () => {
+  if (historyBusy || exportRunning || exportSubmitting) return
+  endHistoryGroup(); recordEdit()
+  historyBusy = true; $('editor-screen').inert = true; updateHistoryControls()
   try {
     const chosen = await window.desktop.chooseAudio()
     if (!chosen) return
@@ -1435,6 +1502,7 @@ $('import-audio').addEventListener('click', async () => {
     missingMedia = missingMedia.filter(item => item.kind !== 'audio')
     refreshInspector(); refreshAudio(); renderMissingMedia(); await refreshPreview()
   } catch (error) { setStatus(String(error)) }
+  finally { historyBusy = false; $('editor-screen').inert = false; recordEdit() }
 })
 $<HTMLSelectElement>('template-list').addEventListener('change', () => {
   ;($<HTMLButtonElement>('rename-template')).disabled = $<HTMLSelectElement>('template-list').value.startsWith('starter:')
@@ -1871,16 +1939,7 @@ $('template-manager-modal').addEventListener('keydown', event => {
 $('load-template').addEventListener('click', async () => {
   try {
     const id = $<HTMLSelectElement>('template-list').value
-    const loaded = await window.desktop.loadTemplate(id, project)
-    const activeTemplate = templates.find(entry => entry.id === id)
-    if (activeTemplate && !activeTemplate.builtIn) $<HTMLInputElement>('template-name').value = activeTemplate.name
-    resetSongPreview()
-    project = normalizeProject(loaded.project) as Project
-    missingMedia = loaded.missingMedia
-    selectedId = project.layers.at(-1)?.id || null
-    refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
-    if (metadata) await refreshPreview()
-    else setStatus('Layout loaded. Import audio to preview and export.')
+    await useLayout(id)
   } catch (error) { setStatus(String(error)) }
 })
 $('duplicate-template').addEventListener('click', async () => {
@@ -1959,6 +2018,7 @@ async function applyLoadedProject(loaded: Initial) {
   selectedId = project.layers.at(-1)?.id || null; resetSongPreview()
   frameIndex = project.previewFrame ?? 0
   missingMedia = loaded.missingMedia
+  endHistoryGroup(); history.reset(project)
   refreshInspector(); refreshLayers(); refreshAudio(); markProjectSaved(); renderMissingMedia(); await syncAssets()
   showEditor()
   if (metadata) await refreshPreview()
@@ -1982,8 +2042,27 @@ function showEditor() {
 }
 
 async function createProjectFromTemplate(id: string) {
+  if ($('project-manager-screen').hidden) return useLayout(id)
   const loaded = await window.desktop.newProjectFromTemplate(id)
   await applyLoadedProject(loaded)
+}
+async function useLayout(id: string) {
+  if (historyBusy || exportRunning || exportSubmitting) return
+  endHistoryGroup(); recordEdit()
+  historyBusy = true; $('editor-screen').inert = true; updateHistoryControls()
+  try {
+    const loaded = await window.desktop.loadTemplate(id, project)
+    const activeTemplate = templates.find(entry => entry.id === id)
+    if (activeTemplate && !activeTemplate.builtIn) $<HTMLInputElement>('template-name').value = activeTemplate.name
+    resetSongPreview()
+    project = normalizeProject(loaded.project) as Project
+    frameIndex = project.previewFrame ?? 0
+    missingMedia = loaded.missingMedia
+    selectedId = project.layers.at(-1)?.id || null
+    refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
+    if (metadata) await refreshPreview()
+    else setStatus('Layout loaded. Import audio to preview and export.')
+  } finally { historyBusy = false; $('editor-screen').inert = false; recordEdit() }
 }
 
 async function openRecent(targetPath: string) {
@@ -2095,6 +2174,7 @@ async function closeCurrentProject() {
   metadata = null
   missingMedia = []
   selectedId = null
+  endHistoryGroup(); history.reset(project)
   markProjectSaved()
   refreshInspector()
   refreshLayers()
@@ -2252,6 +2332,7 @@ window.desktop.onExport(event => {
     setStatus(event.event === 'finished' ? `${container} ready: ${event.output}`
       : event.event === 'cancelled' ? 'Export cancelled. No video was saved.'
       : `Export failed: ${event.message || ''}`)
+    updateHistoryControls()
   }
 })
 
@@ -2316,6 +2397,7 @@ async function start() {
   selectedId = project.layers.at(-1)?.id || null
   frameIndex = project.previewFrame ?? 0
   templates = initial.templates
+  history.reset(project)
   refreshTemplates(initial.templates, initial.preferences.lastTemplateId)
   ;($<HTMLSelectElement>('export-preset')).value = initial.preferences.exportPreset
   refreshExportResolution()
@@ -2402,6 +2484,7 @@ $('new-project').addEventListener('click', () => {
 $('manage-templates').addEventListener('click', () => $('open-template-manager').click())
 
 function updateExportDialog() {
+  updateHistoryControls()
   $('export-project-name').textContent = project.title || 'Untitled project'
   const size = exportDimensions(project, ($<HTMLSelectElement>('export-preset')).value)
   $('export-canvas-summary').textContent = `${project.width < project.height ? 'Portrait · 9:16' : 'Landscape · 16:9'} · ${size.width} × ${size.height} · 30 FPS`
@@ -2464,6 +2547,14 @@ for (const [id, close] of [['export-modal', closeExportDialog], ['about-modal', 
 window.addEventListener('keydown', event => {
   if (!(event.ctrlKey || event.metaKey) || event.altKey || document.querySelector('.modal-backdrop:not([hidden])') || $('editor-screen').hidden) return
   const command = event.key.toLowerCase()
+  if (command === 'z' || command === 'y') {
+    // Preserve the browser's native text undo while editing a field.
+    if ((event.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return
+    event.preventDefault()
+    void restoreEdit(command === 'y' || event.shiftKey ? 1 : -1)
+    return
+  }
+  if (historyBusy) return
   const id = command === 'n' ? 'new-project' : command === 'o' ? 'open-project'
     : command === 's' ? event.shiftKey ? 'save-project-as' : 'save-project'
     : command === 'w' ? 'close-project' : command === 'e' ? 'open-export' : ''

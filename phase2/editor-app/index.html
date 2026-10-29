@@ -81,6 +81,13 @@
         </div>
       </div>
       <div class="command-menu">
+        <button id="toolbar-edit" class="menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="edit-menu">Edit</button>
+        <div id="edit-menu" class="command-popup" role="menu" aria-label="Edit" hidden>
+          <button id="undo-project" role="menuitem" tabindex="-1" disabled>Undo<kbd>Ctrl+Z</kbd></button>
+          <button id="redo-project" role="menuitem" tabindex="-1" disabled>Redo<kbd>Ctrl+Y</kbd></button>
+        </div>
+      </div>
+      <div class="command-menu">
         <button id="toolbar-templates" class="menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="templates-menu">Templates</button>
         <div id="templates-menu" class="command-popup" role="menu" aria-label="Templates" hidden>
           <button id="save-template" role="menuitem" tabindex="-1">Save as template…</button>

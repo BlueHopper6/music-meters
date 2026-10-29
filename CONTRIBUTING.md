@@ -37,7 +37,11 @@ Use `enhancement` for feature requests; a separate `feature-request` label isn't
 
 Fork the repository, make a focused change on a `feature/` or `fix/` branch, and submit a pull request to the official project. Small fixes can go straight to a pull request; for larger changes, open an issue first so we can agree on the direction. Describe the resulting behavior and the checks you ran.
 
-Follow [the development guide](docs/development.md), the [Windows CI workflow](.github/workflows/windows-build.yml), and [the release checklist](docs/release-checklist.md) for the actual setup and verification commands. There is no root package.json. Code contributions must meet the project's engineering requirements:
+### Run and test locally
+
+Use [the development guide](docs/development.md) for first-time Windows setup, then follow [Run during development](docs/development.md#run-during-development) to launch the editor and [Test your changes](docs/development.md#test-your-changes) for the actual test commands and a manual checklist. `node phase2/run.cjs` rebuilds and opens the app; close and rerun it after source changes. There is no root package.json or `npm run dev` command.
+
+The [Windows CI workflow](.github/workflows/windows-build.yml) contains the full automated suite, and [the release checklist](docs/release-checklist.md) covers distribution checks. Code contributions must meet the project's engineering requirements:
 
 - Match the existing architecture and code conventions. Validate untrusted inputs, handle failures explicitly, and keep changes focused.
 - Preserve the pinned Prism source, saved-project compatibility, and consistent preview/export behavior. Explain any intentional compatibility change before implementation.

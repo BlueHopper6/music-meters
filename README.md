@@ -73,11 +73,23 @@ The application and setup are unsigned. Check the selected release's checksums a
 
 Saving a new project creates a project folder. Keep its JSON and sibling `.assets` folder together; audio remains a separate file reference. Templates reuse the layout with fresh song media. The [user guide](docs/user-guide.md) explains media handling, template behavior, preview history, and shortcuts.
 
+## Developing
+
+Want to change the app? Start with [Run and test locally](docs/development.md): it covers Windows setup, launching the editor, rebuilding after edits, and automated/manual checks. There is no root package.json or `npm run dev` command.
+
+After completing setup, run this from the repository root:
+
+```powershell
+node phase2/run.cjs
+```
+
+The launcher rebuilds the renderer and opens the development app. See the guide's [development session setup](docs/development.md#run-during-development) to keep test projects and preferences separate from your normal app profile.
+
 ## Documentation
 
 - [User guide](docs/user-guide.md) — meters, composition, playback, templates, and project files.
 - [Changelog](CHANGELOG.md) — release history and the complete 1.0.0 feature baseline.
-- [Build from source](docs/development.md) — Windows prerequisites, pinned Prism setup, and direct build commands.
+- [Run and test locally](docs/development.md) — Windows setup, the edit/run loop, automated tests, and development packages.
 - [Release checklist](docs/release-checklist.md) — verification and matching source delivery.
 - [Contributing](CONTRIBUTING.md) · [Report an issue](https://github.com/BlueHopper6/music-meters/issues).
 
