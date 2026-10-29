@@ -55,7 +55,14 @@ export function installVideoPreview(api: API, project: () => Project, available:
     showFrames(); refill()
     if (!audio.paused) clock = requestAnimationFrame(tick)
   }
-  function pause() { audio.pause(); cancelAnimationFrame(clock); controls() }
+  function pause() {
+    const wasPlaying = !audio.paused
+    audio.pause(); cancelAnimationFrame(clock)
+    // The pause event is asynchronous. Capture the audio clock before callers
+    // snapshot the project, without overwriting an already-paused seek target.
+    if (active && wasPlaying) showFrames()
+    controls()
+  }
   function reset(message = 'Play from the current position.') {
     ++generation; starting = false; active = false; key = ''; session = ''
     clearTimeout(seekTimer); fetching = false; queue = []; exhausted = false; lastFrame = -1
@@ -102,6 +109,11 @@ export function installVideoPreview(api: API, project: () => Project, available:
   }
   async function toggle() {
     if (!available() || starting) return
+    if (seekTimer !== undefined) {
+      clearTimeout(seekTimer); seekTimer = undefined
+      await begin(position(), true)
+      return
+    }
     if (!active) { await begin(position(), true); return }
     if (!audio.paused) pause()
     else if (audio.ended) await begin(0, true)
@@ -135,7 +147,7 @@ export function installVideoPreview(api: API, project: () => Project, available:
       ++generation; fetching = false
       pause(); setPosition(seconds)
       clearTimeout(seekTimer)
-      seekTimer = setTimeout(() => { void begin(seconds, resume) }, 70)
+      seekTimer = setTimeout(() => { seekTimer = undefined; void begin(seconds, resume) }, 70)
       return true
     },
   }

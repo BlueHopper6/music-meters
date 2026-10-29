@@ -36,6 +36,8 @@ let project = defaultProject()
 const allowedImages = new Set()
 let metadata = null
 let activeAudio = ''
+// Only picker/opened-project paths from this project session may be restored.
+const historyAudio = new Set([''])
 let projectPath = null
 let previewGeneration = 0
 let previewAudioRevision = 0
@@ -118,10 +120,11 @@ function sendExport(value) {
   if (win && !win.isDestroyed()) win.webContents.send('export-event', value)
 }
 
-function validateActiveProject(raw) {
+function validateActiveProject(raw, restoring = false) {
   const normalized = normalizeProject(raw)
   assertInstalledFonts(normalized)
-  if (normalized.audioPath !== activeAudio && normalized.audioPath !== project.audioPath) {
+  if (restoring ? !historyAudio.has(normalized.audioPath)
+    : normalized.audioPath !== activeAudio && normalized.audioPath !== project.audioPath) {
     throw new Error('Project audio does not match the imported file')
   }
   for (const input of imagePaths(normalized)) if (!allowedImages.has(input)) {
@@ -174,6 +177,7 @@ handle('new-blank-project', () => {
   activeAudio = ''
   metadata = null
   allowedImages.clear()
+  historyAudio.clear(); historyAudio.add('')
   return { project, metadata, projectPath, fonts: installedFonts(),
     templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: [] }
 })
@@ -184,6 +188,7 @@ handle('close-project', () => {
   activeAudio = ''
   metadata = null
   allowedImages.clear()
+  historyAudio.clear(); historyAudio.add('')
   return { project, metadata, projectPath, fonts: installedFonts(),
     templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: [] }
 })
@@ -198,6 +203,7 @@ handle('new-project-from-template', (_event, templateId) => {
   allowedImages.clear()
   for (const input of imagePaths(applied)) allowedImages.add(input)
   project = applied
+  historyAudio.clear(); historyAudio.add('')
   projectPath = null
   activeAudio = ''
   metadata = null
@@ -264,12 +270,25 @@ handle('choose-audio', async () => {
     selected = result.filePaths[0]
   }
   const chosen = audioInfo(selected)
+  historyAudio.add(chosen.path)
   activeAudio = chosen.path
   metadata = chosen.metadata
   previewAudioRevision++
   cancelPreview()
   project.audioPath = activeAudio
   return chosen
+})
+handle('restore-project', async (_event, raw) => {
+  if (exportJob) throw new Error('Wait for the export to finish')
+  await playbackVideo.cancel()
+  const next = validateActiveProject(raw, true)
+  const info = next.audioPath && fs.existsSync(next.audioPath) ? audioInfo(next.audioPath) : null
+  cancelPreview()
+  previewAudioRevision++
+  project = next
+  activeAudio = info?.path || ''
+  metadata = info?.metadata || null
+  return { project, metadata, missingMedia: missingMedia(project) }
 })
 handle('preview-at', async (_event, frame, raw) => {
   if (!metadata || !activeAudio) throw new Error('Import audio before previewing')
@@ -350,6 +369,7 @@ function loadProjectFromDisk(target) {
   previewAudioRevision++
   cancelPreview()
   project = value
+  historyAudio.clear(); historyAudio.add(''); historyAudio.add(value.audioPath)
   metadata = nextMetadata
   activeAudio = nextAudio
   projectPath = target
@@ -509,6 +529,7 @@ app.whenReady().then(() => {
     activeAudio = info.path
     metadata = info.metadata
     project.audioPath = activeAudio
+    historyAudio.add(activeAudio)
     previewAudioRevision++
   }
   win = new BrowserWindow({

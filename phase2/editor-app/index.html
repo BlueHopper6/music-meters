@@ -81,6 +81,13 @@
         </div>
       </div>
       <div class="command-menu">
+        <button id="toolbar-edit" class="menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="edit-menu">Edit</button>
+        <div id="edit-menu" class="command-popup" role="menu" aria-label="Edit" hidden>
+          <button id="undo-project" role="menuitem" tabindex="-1" disabled>Undo<kbd>Ctrl+Z</kbd></button>
+          <button id="redo-project" role="menuitem" tabindex="-1" disabled>Redo<kbd>Ctrl+Y</kbd></button>
+        </div>
+      </div>
+      <div class="command-menu">
         <button id="toolbar-templates" class="menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="templates-menu">Templates</button>
         <div id="templates-menu" class="command-popup" role="menu" aria-label="Templates" hidden>
           <button id="save-template" role="menuitem" tabindex="-1">Save as template…</button>
@@ -159,7 +166,7 @@
         <div id="snap-guide-x" class="snap-guide snap-guide-x" hidden></div>
         <div id="snap-guide-y" class="snap-guide snap-guide-y" hidden></div>
         <div id="selection" class="selection" hidden><span class="selection-label"></span><span class="resize-handle" data-handle="resize" title="Resize layer"></span></div>
-        <div id="preview-busy" class="preview-busy" role="status" hidden>Analyzing preview…</div>
+        <div id="preview-busy" class="preview-busy" role="status" hidden>Updating still…</div>
       </div><button id="exit-fullscreen-preview" type="button" class="exit-fullscreen-btn" title="Exit full screen (Esc)" hidden>Exit full screen · Esc</button></div>
       <div class="timeline">
         <div class="timeline-top"><div><span class="eyebrow">AUDIO PREVIEW</span><strong id="audio-name">No audio imported</strong></div><div class="audio-source-actions"><span id="audio-details">Choose a WAV, MP3, or FLAC file</span><button id="import-audio" type="button">Import audio</button></div></div>

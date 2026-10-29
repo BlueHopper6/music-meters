@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('desktop', {
   },
   initial: () => ipcRenderer.invoke('initial'),
   chooseAudio: () => ipcRenderer.invoke('choose-audio'),
+  restoreProject: project => ipcRenderer.invoke('restore-project', project),
   chooseImage: () => ipcRenderer.invoke('choose-image'),
   loadAssets: project => ipcRenderer.invoke('load-assets', project),
   previewAt: (frame, project) => ipcRenderer.invoke('preview-at', frame, project),

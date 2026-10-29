@@ -2,6 +2,19 @@
 
 User-facing release history, newest first. GitHub release notes provide the download announcement and exact package details; this file keeps the feature history with the source.
 
+## Unreleased
+
+### Added
+
+- Project undo/redo through the Edit menu and Ctrl+Z, Ctrl+Y, or Ctrl+Shift+Z, with grouped typing/dragging and up to 100 steps per session.
+
+### Fixed
+
+- Layout changes retain the live playback position after pausing. Template Manager no longer highlights a remembered dropdown selection as though it were the active layout.
+- Still updates after undo/redo and layout changes run without locking the editor. Starting playback cancels the pending still update.
+- Pressing Play immediately after seeking starts playback instead of being overridden by a delayed paused seek.
+- Switching layouts through the editor's Template Manager keeps imported audio, the project title, preview position, and save location. Starting a new project from the Project Manager still starts without audio.
+
 ## [1.0.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.0.0) — 2026-10-27
 
 This release establishes the first comprehensive changelog entry. Its feature inventory deliberately includes capabilities shipped in the earlier portable preview. That preview remains part of the release history; the sections below distinguish subsequent changes from the inherited baseline. Published October 27 in America/Indianapolis (October 28 UTC). See the [release notes](docs/releases/1.0.0.md) for exact downloads and validation.
