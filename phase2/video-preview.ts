@@ -131,9 +131,11 @@ export function installVideoPreview(api: API, project: () => Project, available:
     if (!audio.paused && document.querySelector('.modal-backdrop:not([hidden])')) pause()
   }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['hidden'] })
   document.addEventListener('keydown', event => {
+    const target = event.target as HTMLElement
+    const onTimeline = target.id === 'time-slider'
     if (event.code !== 'Space' || event.ctrlKey || event.altKey || event.metaKey || event.repeat
       || document.getElementById('editor-screen')!.hidden || document.querySelector('.modal-backdrop:not([hidden])')
-      || (event.target as HTMLElement).closest('input, textarea, select, button, [contenteditable="true"], [role="menu"]')) return
+      || (!onTimeline && target.closest('input, textarea, select, button, [contenteditable="true"], [role="menu"]'))) return
     event.preventDefault(); void toggle()
   })
   return {

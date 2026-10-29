@@ -851,7 +851,10 @@ body.stage-fullscreen .selection {
   background: linear-gradient(to right, var(--text-secondary) 0 var(--seek-progress), var(--border-control) var(--seek-progress) 100%); }
 #time-slider::-webkit-slider-thumb { appearance: none; width: 18px; height: 24px; margin-top: -10.5px;
   background: linear-gradient(to right, transparent 8px, var(--text-primary) 8px 10px, transparent 10px); }
-#time-slider:focus-visible { outline: 1px solid var(--text-secondary); outline-offset: 2px; border-radius: 3px; }
+#time-slider:focus { outline: none; box-shadow: none; }
+#time-slider:focus-visible::-webkit-slider-thumb {
+  background: linear-gradient(to right, transparent 6px, var(--text-primary) 6px 12px, transparent 12px);
+}
 #time-slider:disabled { opacity: .4; cursor: default; }
 .time-readout-group { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .preview-stale { color: #f8bb66; font-size: 11px; white-space: nowrap; }
