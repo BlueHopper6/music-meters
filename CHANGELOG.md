@@ -10,6 +10,7 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ### Fixed
 
+- Space toggles preview playback after clicking or dragging the timeline. Timeline focus uses a playhead cue for keyboard users instead of a white box around the seek bar.
 - Layout changes retain the live playback position after pausing. Template Manager no longer highlights a remembered dropdown selection as though it were the active layout.
 - Still updates after undo/redo and layout changes run without locking the editor. Starting playback cancels the pending still update.
 - Pressing Play immediately after seeking starts playback instead of being overridden by a delayed paused seek.

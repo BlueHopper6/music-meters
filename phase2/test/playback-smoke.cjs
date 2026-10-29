@@ -46,6 +46,62 @@ module.exports = async function playbackSmoke(win, playback) {
   await evaluate(`(() => { const el = document.getElementById('time-input'); el.value = '00:45.000'; el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); })()`)
   assert.equal(await evaluate('document.getElementById("time-display").textContent'), '00:30.000', 'Escape discards time entry')
   assert.equal(await evaluate('document.activeElement.id'), 'time-display')
+  async function press(keyCode, modifiers = []) {
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers })
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers })
+  }
+  async function timelinePointer(fraction, drag = false) {
+    const rect = await evaluate(`(() => { const r = document.getElementById('time-slider').getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height }; })()`)
+    const point = { x: Math.round(rect.x + rect.width * fraction), y: Math.round(rect.y + rect.height / 2) }
+    win.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 })
+    if (drag) win.webContents.sendInputEvent({ type: 'mouseMove', x: point.x + 12, y: point.y, button: 'left' })
+    win.webContents.sendInputEvent({ type: 'mouseUp', x: point.x + (drag ? 12 : 0), y: point.y, button: 'left', clickCount: 1 })
+    await wait('document.activeElement.id === "time-slider"', 'timeline gets pointer focus')
+    const expected = await evaluate('Number(document.getElementById("time-slider").value) / 30')
+    await wait(`Math.abs(document.getElementById('playback-audio').currentTime - ${expected}) < 0.1 && document.getElementById('playback-cancel').hidden`, 'pointer seek complete')
+    const appearance = await evaluate(`(() => { const style = getComputedStyle(document.getElementById('time-slider'));
+      return { outline: style.outlineStyle, shadow: style.boxShadow }; })()`)
+    assert.deepEqual(appearance, { outline: 'none', shadow: 'none' }, 'Pointer interaction must not draw a box around the timeline')
+  }
+  for (const drag of [false, true]) {
+    await timelinePointer(0.2, drag)
+    await press('Space')
+    await wait('!document.getElementById("playback-audio").paused', 'Space plays without leaving the timeline')
+    assert.equal(await evaluate('document.activeElement.id'), 'time-slider')
+    await press('Space')
+    await wait('document.getElementById("playback-audio").paused', 'Space pauses without leaving the timeline')
+    assert.equal(await evaluate('document.activeElement.id'), 'time-slider')
+  }
+  fs.writeFileSync(path.join(dir, 'timeline-pointer.png'), (await win.capturePage()).toPNG())
+  // Native Tab navigation retains a visible keyboard focus cue on the playhead.
+  win.focus(); win.webContents.focus()
+  await evaluate('document.getElementById("time-slider").focus()')
+  await press('Tab', ['shift'])
+  await wait('document.activeElement.id !== "time-slider"', 'Shift+Tab leaves the timeline')
+  await press('Tab')
+  await wait('document.activeElement.id === "time-slider" && document.getElementById("time-slider").matches(":focus-visible")', 'Tab returns with visible keyboard focus')
+  fs.writeFileSync(path.join(dir, 'timeline-keyboard.png'), (await win.capturePage()).toPNG())
+  await press('Space')
+  await wait('!document.getElementById("playback-audio").paused', 'keyboard-focused timeline supports Space')
+  await press('Space')
+  await wait('document.getElementById("playback-audio").paused', 'keyboard-focused timeline pauses')
+  // Text entry and focused buttons retain their own native Space behavior.
+  const originalTitle = await evaluate('document.getElementById("title").value')
+  await evaluate('document.getElementById("title").focus()')
+  await press('Space')
+  await delay(150)
+  assert.equal(await evaluate('document.getElementById("playback-audio").paused'), true)
+  await evaluate(`(() => { const el = document.getElementById('title'); el.value = ${JSON.stringify(originalTitle)};
+    el.dispatchEvent(new Event('input', { bubbles: true })); })()`)
+  await evaluate('document.getElementById("playback-play").focus()')
+  await press('Space')
+  await wait('!document.getElementById("playback-audio").paused', 'focused Play button toggles only once')
+  await press('Space')
+  await wait('document.getElementById("playback-audio").paused', 'focused Pause button toggles only once')
+  // Restore the existing exact-frame keyboard seek regression's starting point.
+  await seek(30)
+  await wait('Math.abs(document.getElementById("playback-audio").currentTime - 30) < 0.1 && document.getElementById("playback-cancel").hidden', 'return to 30 seconds')
   await evaluate('document.getElementById("time-slider").focus()')
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Right' })
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Right' })
