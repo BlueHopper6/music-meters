@@ -452,6 +452,18 @@
       <h3>License information</h3><p class="license-copy">MusicMeters software code and its included Prism code are GPL-3.0-only. You may share and modify the covered software under GPLv3. The separately owned MusicMeters logo and icons may remain in complete, unchanged official releases and in contribution forks and clearly marked review builds under the contribution permission. Independent modified products must rebrand unless separately authorized. The software comes without warranty. Full terms and copyright information are in MUSICMETERS-LICENSE.txt and LICENSE-NOTICES.md in the portable folder.</p>
     </div>
   </div>
+  <div id="project-action-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="project-action-title" aria-describedby="project-action-description" hidden>
+    <div class="modal-card">
+      <h2 id="project-action-title" class="modal-title">Manage project</h2>
+      <p id="project-action-description" class="modal-body"></p>
+      <div id="project-action-name-field" class="project-action-name-field">
+        <label for="project-action-name">Project name</label>
+        <input id="project-action-name" type="text" maxlength="200" autocomplete="off">
+      </div>
+      <p id="project-action-status" class="modal-body" role="status"></p>
+      <div class="modal-actions"><button id="project-action-cancel" type="button">Cancel</button><button id="project-action-confirm" type="button" class="primary">Continue</button></div>
+    </div>
+  </div>
   <div id="legacy-template-controls" hidden aria-hidden="true" style="display:none;">
     <select id="template-list" aria-label="Layout template"></select>
     <button id="load-template" type="button">Use layout</button>

@@ -6,6 +6,7 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ### Added
 
+- A three-dot menu on recent-project cards for Rename, Move to, Copy to, and confirmed Delete project. Rename updates the folder and filename; Delete recycles the project and recorded copied media while preserving originals. Copies include audio and artwork; moves verify the new files before removing the old project files and retain original audio tracks and unrelated content.
 - Project undo/redo through the Edit menu and Ctrl+Z, Ctrl+Y, or Ctrl+Shift+Z, with grouped typing/dragging and up to 100 steps per session.
 
 ### Fixed

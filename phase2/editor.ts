@@ -13,6 +13,7 @@ type Metadata = { channels: number; sampleRate: number; duration: number; totalF
 type TemplateEntry = { id: string; name: string; builtIn: boolean }
 type MissingMedia = { kind: 'audio' | 'background' | 'layer'; id?: string; label: string; path: string }
 type RecentProject = { path: string; name: string; lastOpened: number }
+type ProjectAction = 'rename' | 'move' | 'copy' | 'delete'
 type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null; fonts: string[];
   templates: TemplateEntry[]; preferences: { exportPreset: string; lastTemplateId: string; recentProjects?: RecentProject[] };
   missingMedia: MissingMedia[]; isStartupSession?: boolean; isAutomatedTest?: boolean }
@@ -50,6 +51,7 @@ type Desktop = {
   newProjectFromTemplate(id: string): Promise<Initial>
   closeProject(): Promise<Initial>
   getRecentProjects(): Promise<RecentProject[]>
+  manageProject(path: string, action: ProjectAction, name?: string): Promise<{ path: string; name: string } | null>
   listTemplates(): Promise<TemplateEntry[]>
   saveTemplate(name: string, project: Project, overwriteId?: string): Promise<TemplateEntry>
   loadTemplate(id: string, project: Project): Promise<{ project: Project; missingMedia: MissingMedia[] }>
@@ -2073,7 +2075,17 @@ async function openRecent(targetPath: string) {
   } catch (error) { setStatus(String(error)) }
 }
 
+let openProjectMenu: { trigger: HTMLButtonElement; menu: HTMLDivElement } | null = null
+function closeProjectMenu(restoreFocus = false) {
+  if (!openProjectMenu) return
+  const { trigger, menu } = openProjectMenu
+  menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); openProjectMenu = null
+  if (restoreFocus && trigger.isConnected) trigger.focus()
+}
+document.addEventListener('pointerdown', event => { if (!(event.target as HTMLElement).closest('.project-card-options')) closeProjectMenu() })
+window.addEventListener('blur', () => closeProjectMenu())
 function renderRecentProjects(list: RecentProject[]) {
+  closeProjectMenu()
   const grid = $('recent-projects-grid')
   const empty = $('recent-projects-empty')
   const count = $('recent-projects-count')
@@ -2086,9 +2098,10 @@ function renderRecentProjects(list: RecentProject[]) {
   }
   grid.hidden = false
   empty.hidden = true
-  for (const item of list) {
+  for (const [index, item] of list.entries()) {
     const card = document.createElement('div')
     card.className = 'project-card'
+    card.dataset.projectPath = item.path
     card.setAttribute('role', 'listitem')
     card.setAttribute('tabindex', '0')
 
@@ -2122,8 +2135,53 @@ function renderRecentProjects(list: RecentProject[]) {
     card.appendChild(thumb)
     card.appendChild(info)
 
+    const options = document.createElement('div')
+    options.className = 'project-card-options'
+    options.addEventListener('click', event => event.stopPropagation())
+    const trigger = document.createElement('button')
+    trigger.type = 'button'; trigger.className = 'project-options-trigger'; trigger.textContent = '⋯'
+    trigger.dataset.projectOptions = 'true'; trigger.setAttribute('aria-label', `Project options for ${item.name}`)
+    trigger.setAttribute('aria-haspopup', 'menu'); trigger.setAttribute('aria-expanded', 'false')
+    const actions = document.createElement('div')
+    actions.className = 'project-options-menu'; actions.id = `project-options-${index}`; actions.hidden = true
+    actions.setAttribute('role', 'menu'); actions.setAttribute('aria-label', `Options for ${item.name}`)
+    trigger.setAttribute('aria-controls', actions.id)
+    trigger.addEventListener('click', event => {
+      event.stopPropagation()
+      const wasOpen = openProjectMenu?.trigger === trigger
+      closeProjectMenu()
+      if (!wasOpen) { actions.hidden = false; trigger.setAttribute('aria-expanded', 'true'); openProjectMenu = { trigger, menu: actions }; actions.querySelector<HTMLButtonElement>('button')?.focus() }
+    })
+    for (const [action, label] of [['rename', 'Rename…'], ['move', 'Move to…'], ['copy', 'Copy to…'], ['delete', 'Delete project…']] as const) {
+      if (action === 'delete') { const separator = document.createElement('hr'); separator.setAttribute('role', 'separator'); actions.appendChild(separator) }
+      const button = document.createElement('button')
+      button.type = 'button'; button.textContent = label; button.dataset.projectAction = action
+      button.setAttribute('role', 'menuitem'); button.tabIndex = -1
+      if (action === 'delete') button.className = 'danger-button'
+      button.setAttribute('aria-label', `${label.replace('…', '')} ${item.name}`)
+      button.addEventListener('click', event => {
+        event.stopPropagation(); closeProjectMenu()
+        if (action === 'delete') void deleteRecentProject(item, trigger)
+        else openProjectAction(item, action, trigger)
+      })
+      actions.appendChild(button)
+    }
+    actions.addEventListener('keydown', event => {
+      const items = Array.from(actions.querySelectorAll<HTMLButtonElement>('button'))
+      const current = items.indexOf(document.activeElement as HTMLButtonElement)
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeProjectMenu(true) }
+      else if (event.key === 'Tab') closeProjectMenu(true)
+      else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+        event.preventDefault(); event.stopPropagation()
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+        items[next]?.focus()
+      }
+    })
+    options.append(trigger, actions); card.appendChild(options)
+
     card.addEventListener('click', () => openRecent(item.path))
     card.addEventListener('keydown', event => {
+      if (event.target !== card) return
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault()
         openRecent(item.path)
@@ -2139,6 +2197,91 @@ async function refreshRecentProjects() {
     renderRecentProjects(list)
   } catch (error) { setStatus(String(error)) }
 }
+
+let projectAction: { item: RecentProject; action: ProjectAction; focus: HTMLElement } | null = null
+let projectActionBusy = false
+function openProjectAction(item: RecentProject, action: Exclude<ProjectAction, 'delete'>, focus: HTMLElement) {
+  projectAction = { item, action, focus }
+  $('project-action-title').textContent = action === 'rename' ? 'Rename project' : action === 'move' ? 'Move project' : 'Copy project'
+  $('project-action-description').textContent = action === 'rename'
+    ? 'Rename the project, its JSON file, and its project folder. Audio and artwork references will stay connected.'
+    : action === 'copy'
+      ? 'Choose a new name and location. Audio and artwork are included in the copy; the original project and media are kept.'
+      : 'Choose a new location. Audio and artwork are copied and verified before the old project files are removed. Original audio tracks and unrelated files are kept.'
+  $('project-action-name-field').hidden = action !== 'rename'
+  ;($<HTMLInputElement>('project-action-name')).value = item.name
+  $('project-action-status').textContent = ''
+  $('project-action-confirm').textContent = action === 'rename' ? 'Rename' : 'Choose location…'
+  $('project-manager-screen').inert = true
+  $('project-action-modal').hidden = false
+  if (action === 'rename') { $('project-action-name').focus(); ($<HTMLInputElement>('project-action-name')).select() }
+  else $('project-action-confirm').focus()
+}
+function closeProjectAction() {
+  if (projectActionBusy) return
+  const focus = projectAction?.focus
+  projectAction = null
+  $('project-action-modal').hidden = true
+  $('project-manager-screen').inert = false
+  ;(focus?.isConnected ? focus : $('pm-new-blank')).focus()
+}
+$('project-action-cancel').addEventListener('click', closeProjectAction)
+$('project-action-confirm').addEventListener('click', async () => {
+  if (!projectAction || projectActionBusy) return
+  const { item, action } = projectAction
+  const name = $<HTMLInputElement>('project-action-name').value.trim()
+  if (action === 'rename' && (!name || name.length > 200 || /[\u0000-\u001f]/.test(name))) {
+    $('project-action-status').textContent = 'Enter a project name with 1–200 characters.'
+    $('project-action-name').focus(); return
+  }
+  projectActionBusy = true
+  for (const id of ['project-action-confirm', 'project-action-cancel', 'project-action-name']) ($<HTMLInputElement | HTMLButtonElement>(id)).disabled = true
+  $('project-action-status').textContent = action === 'rename' ? 'Renaming project…' : 'Copying project and media. Keep MusicMeters open until this finishes…'
+  let completed = false
+  try {
+    const result = await window.desktop.manageProject(item.path, action, name)
+    if (!result) { $('project-action-status').textContent = 'No changes made.'; return }
+    await refreshRecentProjects()
+    const updatedCard = Array.from($('recent-projects-grid').querySelectorAll<HTMLElement>('.project-card')).find(card => card.dataset.projectPath === result.path)
+    if (projectAction) projectAction.focus = updatedCard?.querySelector<HTMLElement>('[data-project-options]') || $('pm-new-blank')
+    setStatus(`${action === 'rename' ? 'Renamed' : action === 'move' ? 'Moved' : 'Copied'} project: ${result.name}`)
+    completed = true
+  } catch (error) {
+    await refreshRecentProjects()
+    $('project-action-status').textContent = String(error)
+  } finally {
+    projectActionBusy = false
+    for (const id of ['project-action-confirm', 'project-action-cancel', 'project-action-name']) ($<HTMLInputElement | HTMLButtonElement>(id)).disabled = false
+    if (completed) closeProjectAction()
+  }
+})
+async function deleteRecentProject(item: RecentProject, focus: HTMLElement) {
+  if (projectActionBusy) return
+  projectActionBusy = true; $('project-manager-screen').inert = true
+  setStatus('Waiting for project deletion confirmation…')
+  try {
+    const result = await window.desktop.manageProject(item.path, 'delete')
+    if (!result) { setStatus('Delete cancelled. No changes made.'); return }
+    await refreshRecentProjects()
+    setStatus(`Moved project and copied media to the Recycle Bin: ${result.name}`)
+  } catch (error) { await refreshRecentProjects(); setStatus(String(error)) }
+  finally {
+    projectActionBusy = false; $('project-manager-screen').inert = false
+    ;(focus.isConnected ? focus : $('pm-new-blank')).focus()
+  }
+}
+$('project-action-modal').addEventListener('click', event => { if (event.target === $('project-action-modal')) closeProjectAction() })
+$('project-action-modal').addEventListener('keydown', event => {
+  if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeProjectAction() }
+  else if (event.key === 'Enter' && event.target === $('project-action-name')) { event.preventDefault(); $('project-action-confirm').click() }
+  else if (event.key === 'Tab') {
+    const items = Array.from($('project-action-modal').querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)')).filter(item => item.getClientRects().length)
+    const first = items[0], last = items.at(-1)
+    if (!items.length) { event.preventDefault(); return }
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+  }
+})
 
 function openTemplatePicker() {
   const select = $<HTMLSelectElement>('template-picker-select')

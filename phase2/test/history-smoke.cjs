@@ -277,6 +277,13 @@ module.exports = async function historySmoke(win) {
     const cancelled = await evaluate(`window.desktop.saveProject(${JSON.stringify(secondSave.project)}, true)`)
     assert.equal(cancelled, null)
     assert.equal((await state()).projectPath, secondSave.projectPath)
+    await evaluate(`(() => { const el = document.getElementById('background-type'); el.value = 'image'; el.dispatchEvent(new Event('change', { bubbles: true })); })()`)
+    await click('background-choose-image'); await ready()
+    await click('save-project')
+    await wait('!document.title.endsWith("*")', 'save project-manager artwork fixture')
+    await click('close-project')
+    await wait('!document.getElementById("project-manager-screen").hidden', 'manager before saved-project operations')
+    await require('./project-manager-smoke.cjs')(win, secondSave.projectPath)
   } finally {
     dialog.showSaveDialog = saveDialog
     if (saveOverride !== undefined) process.env.PHASE2_TEST_SAVE_PATH = saveOverride

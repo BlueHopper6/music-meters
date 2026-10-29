@@ -24,6 +24,17 @@ Select any visualizer or text layer and open **Layer background** in the inspect
 
 The startup Project Manager offers **New blank project**, **New from template…**, **Open project…**, and recent projects. **Close project** returns to it. Opening or closing a project, creating another project, or quitting prompts you to save, discard, or cancel when there are unsaved edits. Saving a new project creates a dedicated `<project-name>` folder containing its JSON and any project artwork assets; selecting that same folder does not create another nested folder. Audio remains an external reference. Recent Projects uses the saved filename when the project title is still a placeholder. Projects also save the preview marker: an explicit Save records the current position, and reopening restores it within the available audio. Playback and seeking alone do not mark the project unsaved. Older files without a saved marker open at zero. Templates clear song positions; exports still render the full song.
 
+## Manage saved projects
+
+Open the **⋯** menu on a recent-project card in the Project Manager to manage it:
+
+- **Rename…** updates the project name, JSON filename, artwork folder, and project folder together, keeping media connected. Existing destination folders are never overwritten. For older projects saved outside a matching project folder, use **Move to…** first.
+- **Delete project…** asks for confirmation, then sends the project, copied artwork, and recorded audio copies to the Recycle Bin. Original media and unrelated files stay in place. Audio copies made before ownership records were introduced are kept conservatively.
+- **Copy to…** creates a separate project folder at the name and location you choose, including copies of its audio and artwork. Use a new name in the same parent folder to duplicate a project beside the original.
+- **Move to…** creates and verifies the new project and media before removing the old project JSON and its referenced artwork. Original audio tracks and unrelated files stay at their existing locations; folders containing those files are kept.
+
+Move and Copy require a new destination folder and never overwrite an existing project. Their copied audio/artwork references point inside the new project folder, so keep the whole folder together. If media is missing, open the project and relink it before moving or copying it. The recent-project cards update after the operation; canceling the location chooser leaves the project unchanged. Close an open project before using these actions.
+
 ## Window controls and portrait video
 
 The editor title bar groups project actions under **File**, layout actions under **Templates**, and about/license information under **Help**, with **Save** and **Export…** beside the window controls. Drag the project-title area to move the window. Ctrl+S saves, Ctrl+Shift+S saves as, Ctrl+O opens, Ctrl+N creates a blank project, and Ctrl+W closes the project with the usual unsaved-change guard. Menus support arrow keys and Escape.

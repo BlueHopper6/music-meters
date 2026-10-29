@@ -104,6 +104,8 @@ module.exports = async function startupSmoke(win) {
     await waitFor('document.getElementById("template-picker-select").matches(":open")', 'styled template options open')
   }
   await openStyledPicker()
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('#template-picker-select option:checked'), '::checkmark').display`), 'none')
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('#template-picker-select option:checked')).backgroundColor`), 'rgb(39, 39, 47)')
   await capture('template-picker-open-1000x700.png')
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Down' })
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Down' })

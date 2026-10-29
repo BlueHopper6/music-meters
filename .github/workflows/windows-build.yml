@@ -74,7 +74,7 @@ jobs:
           node phase2/test/run-startup-smoke.cjs --package artifacts/phase6/ci-package
           node phase2/test/run-portrait-smoke.cjs --package artifacts/phase6/ci-package artifacts/phase6/ci-portrait
           node --test phase2/test/playback-media.test.cjs phase2/test/timecode.test.cjs
-          node --test phase2/test/project-history.test.cjs
+          node --test phase2/test/project-history.test.cjs phase2/test/project-library.test.cjs
           node phase2/test/run-history-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-history
           node phase2/test/run-playback-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-playback
           node phase6/test/package-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-smoke
