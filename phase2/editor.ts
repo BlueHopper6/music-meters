@@ -138,7 +138,7 @@ async function restoreEdit(direction: -1 | 1) {
     if (!project.layers.some(layer => layer.id === selectedId)) selectedId = project.layers.at(-1)?.id || null
     history.move(direction)
     refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
-    if (metadata) await refreshPreview()
+    if (metadata) void refreshPreview()
     else setStatus(direction === -1 ? 'Edit undone.' : 'Edit redone.')
   } catch (error) { setStatus(String(error)) }
   finally { historyBusy = false; $('editor-screen').inert = false; updateHistoryControls() }
@@ -798,9 +798,9 @@ async function refreshPreview() {
   if (!metadata || !project.audioPath) { $('preview-stale').hidden = true; render(); return }
   const requestedFrame = frameIndex
   $('preview-stale').hidden = false
-  $('preview-busy').textContent = `Analyzing preview at ${(requestedFrame / 30).toFixed(2)} s…`
+  $('preview-busy').textContent = 'Updating still…'
   $('preview-busy').hidden = false
-  setStatus(`Analyzing audio through ${(requestedFrame / 30).toFixed(2)} s…`)
+  setStatus('Updating still…')
   try {
     const result = await window.desktop.previewAt(requestedFrame, project)
     if (request !== previewRequest || result.superseded) return
@@ -1500,7 +1500,7 @@ $('import-audio').addEventListener('click', async () => {
     project.audioPath = chosen.path; metadata = chosen.metadata
     suggestSongTitle(chosen.path, previousAudio)
     missingMedia = missingMedia.filter(item => item.kind !== 'audio')
-    refreshInspector(); refreshAudio(); renderMissingMedia(); await refreshPreview()
+    refreshInspector(); refreshAudio(); renderMissingMedia(); void refreshPreview()
   } catch (error) { setStatus(String(error)) }
   finally { historyBusy = false; $('editor-screen').inert = false; recordEdit() }
 })
@@ -1661,12 +1661,11 @@ function focusManagerAction(id: string, action: string) {
 function renderTemplateManager() {
   const builtinsHost = $('template-manager-builtins')
   const customHost = $('template-manager-custom')
-  const selectedTemplateId = $<HTMLSelectElement>('template-list').value
   builtinsHost.replaceChildren()
   customHost.replaceChildren()
   for (const entry of templates.filter(item => item.builtIn)) {
     const row = document.createElement('div')
-    row.className = `template-manager-row${entry.id === selectedTemplateId ? ' selected' : ''}`
+    row.className = 'template-manager-row'
     row.dataset.templateId = entry.id
     row.setAttribute('role', 'listitem')
     const info = document.createElement('div')
@@ -1718,7 +1717,7 @@ function renderTemplateManager() {
   }
   for (const entry of customEntries) {
     const row = document.createElement('div')
-    row.className = `template-manager-row${entry.id === selectedTemplateId ? ' selected' : ''}`
+    row.className = 'template-manager-row'
     row.dataset.templateId = entry.id
     row.setAttribute('role', 'listitem')
     if (managerEditingId === entry.id) {
@@ -2048,10 +2047,11 @@ async function createProjectFromTemplate(id: string) {
 }
 async function useLayout(id: string) {
   if (historyBusy || exportRunning || exportSubmitting) return
+  playback?.pause()
   endHistoryGroup(); recordEdit()
   historyBusy = true; $('editor-screen').inert = true; updateHistoryControls()
   try {
-    const loaded = await window.desktop.loadTemplate(id, project)
+    const loaded = await window.desktop.loadTemplate(id, { ...project, previewFrame: frameIndex })
     const activeTemplate = templates.find(entry => entry.id === id)
     if (activeTemplate && !activeTemplate.builtIn) $<HTMLInputElement>('template-name').value = activeTemplate.name
     resetSongPreview()
@@ -2060,7 +2060,7 @@ async function useLayout(id: string) {
     missingMedia = loaded.missingMedia
     selectedId = project.layers.at(-1)?.id || null
     refreshInspector(); refreshLayers(); refreshAudio(); renderMissingMedia(); await syncAssets()
-    if (metadata) await refreshPreview()
+    if (metadata) void refreshPreview()
     else setStatus('Layout loaded. Import audio to preview and export.')
   } finally { historyBusy = false; $('editor-screen').inert = false; recordEdit() }
 }
@@ -2473,6 +2473,7 @@ playback = installVideoPreview(window.desktop, () => project,
     if (previewTimer) clearTimeout(previewTimer)
     previewTimer = null; ++previewRequest
     void window.desktop.cancelPreview().catch(() => {})
+    if (!$('preview-busy').hidden) setStatus('Still update cancelled. Live preview is ready.')
     $('preview-busy').hidden = true
   })
 $('new-project').addEventListener('click', () => {

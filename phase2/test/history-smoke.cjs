@@ -12,7 +12,11 @@ module.exports = async function historySmoke(win) {
       if (await evaluate(source)) return
       await new Promise(resolve => setTimeout(resolve, 60))
     }
-    throw new Error(`Timed out: ${label}`)
+    const detail = await evaluate(`({ status: document.getElementById('status').textContent,
+      playback: document.getElementById('playback-status').textContent,
+      paused: document.getElementById('playback-audio').paused,
+      time: document.getElementById('playback-audio').currentTime })`)
+    throw new Error(`Timed out: ${label}: ${JSON.stringify(detail)}`)
   }
   const ready = () => wait('!document.getElementById("editor-screen").inert && document.getElementById("preview-busy").hidden', 'editor operation complete')
   const state = () => evaluate('window.desktop.initial()')
@@ -30,10 +34,19 @@ module.exports = async function historySmoke(win) {
     await ready()
   }
   async function useLayout(id) {
+    const wasPlaying = await evaluate('!document.getElementById("playback-audio").paused')
     await click('manage-templates')
     await wait('!document.getElementById("template-manager-modal").hidden', 'template manager')
+    assert.equal(await evaluate('document.querySelectorAll(".template-manager-row.selected").length'), 0, 'Remembered dropdown selection must not highlight an unused template')
+    const position = await evaluate('Number(document.getElementById("time-slider").value)')
+    if (wasPlaying) {
+      assert.equal(await evaluate('document.getElementById("playback-audio").paused'), true)
+      const clock = await evaluate('Math.floor(document.getElementById("playback-audio").currentTime * 30)')
+      assert.ok(Math.abs(position - clock) <= 1, 'Opening manager preserves the live audio clock')
+    }
     await evaluate(`Array.from(document.querySelectorAll('.template-manager-row')).find(row => row.dataset.templateId === ${JSON.stringify(id)}).querySelector('[data-action=use]').click()`)
     await ready()
+    assert.equal(Number(await evaluate('document.getElementById("time-slider").value')), position, 'Changing templates must preserve the latest live playhead')
   }
   await wait('document.getElementById("splash-screen").hidden && !document.getElementById("project-manager-screen").hidden', 'startup')
   await click('pm-new-blank'); await ready()
@@ -87,6 +100,12 @@ module.exports = async function historySmoke(win) {
   await useLayout('starter:Afterglow')
   assert.equal((await state()).project.width, 1280)
   assert.equal((await state()).project.audioPath, audio)
+  await evaluate(`(() => { const el = document.getElementById('time-slider'); el.value = '9'; el.dispatchEvent(new Event('input', { bubbles: true })); })()`)
+  await wait('document.getElementById("playback-cancel").hidden', 'seek before live template change')
+  await click('playback-play')
+  await wait('!document.getElementById("playback-audio").paused && document.getElementById("playback-audio").currentTime > 0.6', 'live playhead advances beyond saved marker')
+  await useLayout('starter:Social')
+  await useLayout('starter:Afterglow')
   const custom = await evaluate(`window.desktop.saveTemplate('History test', ${(JSON.stringify((await state()).project))})`)
   await useLayout(custom.id)
   assert.equal((await state()).project.audioPath, audio)
@@ -129,8 +148,29 @@ module.exports = async function historySmoke(win) {
   assert.equal(Number(await evaluate('document.getElementById("layer-x").value')), draggedX)
   await click('playback-muted'); await click('playback-play')
   await wait('!document.getElementById("playback-audio").paused && document.getElementById("playback-audio").currentTime > 0.1', 'audio plays after switching templates')
-  await undo()
-  assert.equal(await evaluate('document.getElementById("playback-audio").paused'), true, 'Undo stops stale playback')
+  // Observe the actual pending-still UI and immediately start live playback.
+  await evaluate(`(() => {
+    window.undoStillStates = [];
+    const busy = document.getElementById('preview-busy');
+    const observer = new MutationObserver(() => {
+      if (busy.hidden) return;
+      window.undoStillStates.push({ inert: document.getElementById('editor-screen').inert,
+        playDisabled: document.getElementById('playback-play').disabled,
+        paused: document.getElementById('playback-audio').paused, message: busy.textContent });
+      observer.disconnect(); document.getElementById('playback-play').click();
+    });
+    observer.observe(busy, { attributes: true, attributeFilter: ['hidden'] });
+  })()`)
+  await click('undo-project')
+  await wait('window.undoStillStates.length === 1', 'undo starts a nonblocking still update')
+  const pending = await evaluate('window.undoStillStates[0]')
+  assert.equal(pending.inert, false, 'Still analysis must not lock the editor')
+  assert.equal(pending.playDisabled, false, 'Play is available while the still updates')
+  assert.equal(pending.paused, true, 'Undo stops stale playback before starting a new session')
+  assert.equal(pending.message, 'Updating still…')
+  await wait('!document.getElementById("playback-audio").paused && document.getElementById("preview-busy").hidden', 'Play cancels the still and starts live preview')
+  assert.ok(!(await evaluate('document.getElementById("status").textContent')).startsWith('Updating still'))
+  await click('playback-play')
   const oldImport = process.env.PHASE2_TEST_IMPORT_PATH
   process.env.PHASE2_TEST_IMPORT_PATH = process.env.PHASE2_HISTORY_AUDIO_B
   await click('import-audio'); await ready()

@@ -10,6 +10,9 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ### Fixed
 
+- Layout changes retain the live playback position after pausing. Template Manager no longer highlights a remembered dropdown selection as though it were the active layout.
+- Still updates after undo/redo and layout changes run without locking the editor. Starting playback cancels the pending still update.
+- Pressing Play immediately after seeking starts playback instead of being overridden by a delayed paused seek.
 - Switching layouts through the editor's Template Manager keeps imported audio, the project title, preview position, and save location. Starting a new project from the Project Manager still starts without audio.
 
 ## [1.0.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.0.0) — 2026-10-27

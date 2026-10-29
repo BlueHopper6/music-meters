@@ -328,7 +328,7 @@ module.exports = async function startupSmoke(win) {
   assert.ok(previewStates.length > 0, 'Reopening audio must report preview analysis')
   assert.ok(previewStates.every(state => state.editorVisible && state.managerHidden),
     `Preview analysis must run in the editor, not the Project Manager: ${JSON.stringify(previewStates)}`)
-  assert.equal(previewStates[0].message, 'Analyzing preview at 4.00 s…')
+  assert.equal(previewStates[0].message, 'Updating still…')
   await evaluate('window.projectOpenPreviewObserver.disconnect()')
   assert.equal(await evaluate('document.title.endsWith(" *")'), false, 'Reopening at the saved marker must not make the project dirty')
 
