@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('desktop', {
   getRecentProjects: () => ipcRenderer.invoke('get-recent-projects'),
   manageProject: (path, action, name = '') => ipcRenderer.invoke('manage-project', path, action, name),
   listTemplates: () => ipcRenderer.invoke('list-templates'),
+  templatePreview: id => ipcRenderer.invoke('template-preview', id),
   saveTemplate: (name, project, overwriteId = '') => ipcRenderer.invoke('save-template', name, project, overwriteId),
   loadTemplate: (id, project) => ipcRenderer.invoke('load-template', id, project),
   duplicateTemplate: (id, name = '') => ipcRenderer.invoke('duplicate-template', id, name),

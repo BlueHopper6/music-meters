@@ -356,10 +356,9 @@
         <h2 id="template-picker-title" class="modal-title">New from Template</h2>
         <button id="template-picker-close" type="button" class="modal-close-btn" aria-label="Close template picker">✕</button>
       </div>
-      <p class="modal-body">Select a layout template to start your new project with.</p>
+      <p class="modal-body">Choose a layout. Previews show the starting layout with sample artwork.</p>
       <div class="template-picker-body">
-        <label for="template-picker-select">Available templates</label>
-        <select id="template-picker-select" class="template-picker-select"></select>
+        <div id="template-picker-options" class="template-picker-grid" role="radiogroup" aria-label="Available templates"></div>
       </div>
       <div class="modal-actions">
         <button id="template-picker-cancel" type="button">Cancel</button>

@@ -157,7 +157,7 @@ button.danger-button:hover:not(:disabled) {
 .modal-title { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .modal-body { margin: 0 0 16px; font-size: 12px; line-height: 1.5; color: var(--text-secondary); overflow-wrap: anywhere; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.template-manager-card { width: min(560px, 100%); max-height: min(620px, calc(100vh - 48px)); display: flex; flex-direction: column; gap: 12px; }
+.template-manager-card { width: min(800px, 100%); max-height: min(620px, calc(100vh - 48px)); display: flex; flex-direction: column; gap: 12px; }
 .template-manager-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); }
 .template-manager-subtitle { margin: 4px 0 0; font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
 .template-manager-sections { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding-right: 2px; }
@@ -1383,58 +1383,23 @@ body.stage-fullscreen .selection {
   overflow: hidden;
 }
 
-.template-picker-card {
-  max-width: 460px;
-}
-
-.template-picker-body {
-  margin: 16px 0 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.template-picker-select {
-  width: 100%;
-  padding: 8px 12px;
-  font-size: 13px;
-  background: var(--bg-well);
-  border: 1px solid var(--border-control);
-  color: var(--text-primary);
-  border-radius: 4px;
-}
-
-@supports (appearance: base-select) {
-  .template-picker-select,
-  .template-picker-select::picker(select) { appearance: base-select; }
-  .template-picker-select { min-height: 38px; cursor: pointer; }
-  .template-picker-select::picker-icon { color: var(--text-secondary); }
-  .template-picker-select::picker(select) {
-    margin-top: 5px;
-    padding: 4px;
-    max-height: min(320px, 50vh);
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) var(--bg-panel);
-    color: var(--text-primary);
-    background: var(--bg-panel);
-    border: 1px solid var(--border-strong);
-    border-radius: 5px;
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
-    font: inherit;
-  }
-  .template-picker-select option {
-    padding: 8px 10px;
-    min-height: 34px;
-    border-radius: 3px;
-    gap: 8px;
-    cursor: pointer;
-  }
-  .template-picker-select option:hover,
-  .template-picker-select option:focus-visible { background: var(--bg-hover); outline: none; }
-  .template-picker-select option:checked { background: var(--bg-active); }
-  .template-picker-select option::checkmark { display: none; }
-}
+/* Fixed preview frames keep portrait and landscape templates easy to compare. */
+.template-picker-card { width: min(920px, 100%); max-height: calc(100dvh - 88px); display: flex; flex-direction: column; }
+.template-picker-body { margin: 12px 0 20px; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.template-picker-grid { margin: 0; padding: 3px; border: 0; min-width: 0; min-height: 0; overflow-y: auto;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); grid-auto-rows: max-content; align-content: start; gap: 12px;
+  scrollbar-width: thin; }
+.template-choice { position: relative; min-width: 0; display: flex; flex-direction: column; cursor: pointer;
+  border: 1px solid var(--border-control); border-radius: 5px; background: var(--bg-well); overflow: hidden; }
+.template-choice:hover { border-color: var(--border-strong); background: var(--bg-hover); }
+.template-choice:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.template-choice:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.template-choice input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.template-thumbnail { display: block; flex-shrink: 0; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #080a0d; }
+.template-choice-caption { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 12px; font-size: 13px; color: var(--text-primary); }
+.template-choice-caption > span:first-child { overflow-wrap: anywhere; }
+.template-choice-caption .template-badge { flex-shrink: 0; }
 
 /* Integrated draggable chrome with app-owned caption buttons. */
 body { padding-top: 40px; }
@@ -1520,3 +1485,12 @@ body.stage-fullscreen .stage-shell { top: 40px; }
 .playback-controls label { display: flex; align-items: center; gap: 4px; font-size: 11px; }
 #playback-status { flex: 1; min-width: 140px; font-size: 11px; color: var(--text-muted); }
 .timeline-top strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.template-manager-thumbnail { width: 140px; height: 80px; flex: 0 0 auto; object-fit: contain; background: #080a0d; border-radius: 3px; }
+.template-manager-row-with-preview .template-manager-info { flex-direction: column; align-items: flex-start; }
+.template-manager-row-with-preview .template-manager-name { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 680px) {
+  .template-manager-row-with-preview { display: grid; grid-template-columns: 112px minmax(0, 1fr); }
+  .template-manager-thumbnail { width: 112px; height: 64px; grid-row: span 2; }
+  .template-manager-row-with-preview .template-manager-row-actions { grid-column: 2; flex-wrap: wrap; }
+}
