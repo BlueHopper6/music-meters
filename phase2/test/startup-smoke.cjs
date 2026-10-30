@@ -51,6 +51,18 @@ module.exports = async function startupSmoke(win) {
   win.unmaximize()
   win.setContentSize(1000, 700)
 
+  const ringSource = require('../template-thumbnail.cjs').circleArtwork('#579ae4')
+  const ringSample = await evaluate(`(async () => {
+    const image = new Image(); image.src = ${JSON.stringify(ringSource)}; await image.decode();
+    const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 640;
+    const context = canvas.getContext('2d'); context.drawImage(image, 0, 0);
+    return { png: canvas.toDataURL('image/png'), center: Array.from(context.getImageData(320, 320, 1, 1).data),
+      rim: Array.from(context.getImageData(525, 320, 1, 1).data) };
+  })()` )
+  assert.deepEqual(ringSample.center, [8, 15, 31, 255], 'Ring center must stay dark')
+  assert.ok(ringSample.rim[0] > 100 && ringSample.rim[2] > 180, 'Thin ring must remain luminous')
+  fs.writeFileSync(path.join(process.env.PHASE2_STARTUP_SMOKE_DIR, 'sample-ring-artwork.png'), Buffer.from(ringSample.png.split(',')[1], 'base64'))
+
   console.log('Step 1: Checking Project Manager visibility')
   await waitFor('!document.getElementById("project-manager-screen").hidden', 'project manager visible')
   assert.equal(await evaluate('document.getElementById("editor-screen").hidden'), true)
@@ -77,6 +89,8 @@ module.exports = async function startupSmoke(win) {
   console.log('Step 3: Testing Template Manager')
   await click('open-template-manager')
   await waitFor('!document.getElementById("template-manager-modal").hidden', 'open template manager modal')
+  await waitFor(`Array.from(document.querySelectorAll('#template-manager-builtins .template-manager-thumbnail')).every(img => img.complete && img.naturalWidth > 0)`, 'manager thumbnails loaded')
+  assert.equal(await evaluate('document.querySelectorAll("#template-manager-builtins .template-manager-thumbnail").length'), require('../templates.cjs').BUILTINS.length)
   await capture('template-manager-1000x700.png')
   const modalZ = await evaluate('parseInt(window.getComputedStyle(document.getElementById("template-manager-modal")).zIndex, 10)')
   const pmZ = await evaluate('parseInt(window.getComputedStyle(document.getElementById("project-manager-screen")).zIndex, 10)')
@@ -95,38 +109,45 @@ module.exports = async function startupSmoke(win) {
   console.log('Step 4: Testing New from Template')
   await click('pm-new-template')
   await waitFor('!document.getElementById("template-picker-modal").hidden', 'open template picker modal')
-  const templateOptions = await evaluate('Array.from(document.querySelectorAll("#template-picker-select option"), o => o.value)')
+  const templateOptions = await evaluate('Array.from(document.querySelectorAll("#template-picker-options input"), o => o.value)')
   assert.ok(templateOptions.includes('starter:Observatory'))
-
-  const pickerStyle = await evaluate(`(() => { const el = document.getElementById('template-picker-select');
-    const picker = getComputedStyle(el, '::picker(select)'); return { appearance: getComputedStyle(el).appearance,
-      background: picker.backgroundColor, border: picker.borderTopStyle }; })()`)
-  assert.deepEqual(pickerStyle, { appearance: 'base-select', background: 'rgb(17, 17, 20)', border: 'solid' })
-  win.focus(); win.webContents.focus()
-  async function openStyledPicker() {
-    const point = await evaluate(`(() => { const r = document.getElementById('template-picker-select').getBoundingClientRect();
-      return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()`)
-    win.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 })
-    win.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 })
-    await waitFor('document.getElementById("template-picker-select").matches(":open")', 'styled template options open')
+  await waitFor('Array.from(document.querySelectorAll(".template-thumbnail")).every(img => img.complete && img.naturalWidth > 0)', 'all thumbnails loaded')
+  assert.equal(await evaluate('document.querySelectorAll(".template-thumbnail").length'), templateOptions.length)
+  const assertPickerFits = async () => {
+    assert.equal(await evaluate(`(() => {
+      const grid = document.getElementById('template-picker-options');
+      const box = grid.getBoundingClientRect();
+      const footer = document.querySelector('#template-picker-modal .modal-actions').getBoundingClientRect();
+      return box.bottom <= footer.top && footer.bottom <= innerHeight && grid.scrollWidth <= grid.clientWidth
+        && Array.from(grid.children).every(card => card.querySelector('.template-choice-caption').getBoundingClientRect().bottom <= card.getBoundingClientRect().bottom);
+    })()`), true, 'Preview grid must scroll within the dialog, with actions visible')
   }
-  await openStyledPicker()
-  assert.equal(await evaluate(`getComputedStyle(document.querySelector('#template-picker-select option:checked'), '::checkmark').display`), 'none')
-  assert.equal(await evaluate(`getComputedStyle(document.querySelector('#template-picker-select option:checked')).backgroundColor`), 'rgb(39, 39, 47)')
-  await capture('template-picker-open-1000x700.png')
-  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Down' })
-  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Down' })
-  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Enter' })
-  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Enter' })
-  await waitFor('!document.getElementById("template-picker-select").matches(":open")', 'keyboard selection closes picker')
-  assert.equal(await evaluate('document.getElementById("template-picker-select").value'), templateOptions[1])
-  await openStyledPicker()
+  await assertPickerFits()
+  await capture('template-thumbnails-1000x700.png')
+  win.setMinimumSize(600, 500)
+  win.setContentSize(700, 600)
+  await delay(150)
+  await assertPickerFits()
+  await evaluate(`document.getElementById('template-picker-options').scrollTop = 10000`)
+  assert.equal(await evaluate(`(() => {
+    const grid = document.getElementById('template-picker-options');
+    return grid.lastElementChild.getBoundingClientRect().bottom <= grid.getBoundingClientRect().bottom;
+  })()`), true, 'Last template must be reachable by scrolling')
+  await capture('template-thumbnails-700x600-bottom.png')
+  win.setContentSize(1000, 700)
+  win.setMinimumSize(1000, 700)
+  await delay(150)
+  await evaluate(`document.querySelector('#template-picker-options input:checked').focus()`)
+  win.focus(); win.webContents.focus()
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Right' })
+  win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Right' })
+  await waitFor(`document.querySelector('#template-picker-options input:checked').value === ${JSON.stringify(templateOptions[1])}`, 'keyboard template selection')
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' })
-  await waitFor('!document.getElementById("template-picker-select").matches(":open")', 'Escape closes template options')
-  assert.equal(await evaluate('document.getElementById("template-picker-modal").hidden'), false)
-
-  await evaluate('(() => { const sel = document.getElementById("template-picker-select"); sel.value = "starter:Observatory"; return true })()')
+  await waitFor('document.getElementById("template-picker-modal").hidden', 'Escape dismisses template picker')
+  assert.equal(await evaluate('document.activeElement.id'), 'pm-new-template')
+  await click('pm-new-template')
+  await evaluate(`Array.from(document.querySelectorAll('#template-picker-options input')).find(input => input.value === 'starter:Observatory').click()`)
   await click('template-picker-create')
   await waitFor('document.getElementById("template-picker-modal").hidden', 'template picker closed')
   await waitFor('!document.getElementById("editor-screen").hidden', 'editor visible after template selection')
@@ -184,6 +205,9 @@ module.exports = async function startupSmoke(win) {
   assert.equal(await evaluate('document.activeElement.id'), 'open-export')
   await click('toolbar-templates'); await click('manage-templates')
   await waitFor('!document.getElementById("template-manager-modal").hidden', 'editor template menu')
+  await waitFor(`Array.from(document.querySelectorAll('#template-manager-builtins .template-manager-thumbnail')).every(img => img.complete && img.naturalWidth > 0)`, 'editor template thumbnails loaded')
+  assert.equal(await evaluate('document.querySelectorAll("#template-manager-builtins .template-manager-thumbnail").length'), require('../templates.cjs').BUILTINS.length)
+  await capture('editor-template-thumbnails.png')
   await click('template-manager-close')
   assert.equal(await evaluate('document.activeElement.id'), 'toolbar-templates')
   await click('toolbar-help'); await click('show-license')
@@ -200,13 +224,35 @@ module.exports = async function startupSmoke(win) {
     await waitFor('!document.getElementById("project-manager-screen").hidden', 'factory picker project manager')
     await click('pm-new-template')
     await waitFor('!document.getElementById("template-picker-modal").hidden', 'factory picker')
-    await evaluate(`document.getElementById('template-picker-select').value = ${JSON.stringify(`starter:${name}`)}`)
+    await waitFor('Array.from(document.querySelectorAll(".template-thumbnail")).every(img => img.complete && img.naturalWidth > 0)', 'real rendered factory thumbnails')
+    const thumbnail = await evaluate(`Array.from(document.querySelectorAll('.template-choice')).find(card => card.querySelector('input').value === ${JSON.stringify(`starter:${name}`)}).querySelector('img').src`)
+    await evaluate(`Array.from(document.querySelectorAll('#template-picker-options input')).find(input => input.value === ${JSON.stringify(`starter:${name}`)}).click()`)
     await click('template-picker-create')
     await waitFor('!document.getElementById("editor-screen").hidden && document.getElementById("template-picker-modal").hidden', name)
     const initial = await evaluate('window.desktop.initial()')
     const expected = require('../templates.cjs').starter(name)
     assert.deepEqual(initial.project.layers, expected.layers)
     assert.equal(initial.missingMedia.length, 0)
+    const parity = await evaluate(`(async () => {
+      const image = new Image(); image.src = ${JSON.stringify(thumbnail)}; await image.decode();
+      const stage = document.getElementById('stage');
+      const actual = document.createElement('canvas'); actual.width = image.naturalWidth; actual.height = image.naturalHeight;
+      const ctx = actual.getContext('2d'); ctx.drawImage(stage, 0, 0, actual.width, actual.height);
+      const opened = ctx.getImageData(0, 0, actual.width, actual.height).data;
+      ctx.clearRect(0, 0, actual.width, actual.height); ctx.drawImage(image, 0, 0);
+      const preview = ctx.getImageData(0, 0, actual.width, actual.height).data;
+      const project = ${JSON.stringify(expected)};
+      const art = project.layers.filter(layer => layer.type === 'image');
+      let different = 0, compared = 0;
+      for (let y = 0; y < actual.height; y++) for (let x = 0; x < actual.width; x++) {
+        const px = x * project.width / actual.width, py = y * project.height / actual.height;
+        if (art.some(layer => px >= layer.x - 8 && px <= layer.x + layer.w + 8 && py >= layer.y - 8 && py <= layer.y + layer.h + 8)) continue;
+        const offset = (y * actual.width + x) * 4; compared++;
+        if ([0, 1, 2, 3].some(channel => Math.abs(opened[offset + channel] - preview[offset + channel]) > 2)) different++;
+      }
+      return { different, compared };
+    })()`)
+    assert.equal(parity.different, 0, `${name}: thumbnail must match the opened canvas outside sample artwork (${JSON.stringify(parity)})`)
     await click('import-audio')
     await waitFor('document.getElementById("status").textContent.includes("Real Prism")', `${name} audio import`)
     await evaluate(`(() => { const time = document.getElementById('time-input'); time.value = '4';
@@ -283,7 +329,7 @@ module.exports = async function startupSmoke(win) {
     // Leave a clean template open for the remaining startup workflow checks.
     await click('pm-new-template')
     await waitFor('!document.getElementById("template-picker-modal").hidden', 'return factory picker')
-    await evaluate('document.getElementById("template-picker-select").value = "starter:Observatory"')
+    await evaluate(`Array.from(document.querySelectorAll('#template-picker-options input')).find(input => input.value === 'starter:Observatory').click()`)
     await click('template-picker-create')
     await waitFor('!document.getElementById("editor-screen").hidden', 'clean template restored')
   }
@@ -466,6 +512,10 @@ module.exports = async function startupSmoke(win) {
   await click('template-manager-close')
 
   // Custom caption close must take the same dirty-guard path as OS close.
+  await click('pm-new-template')
+  await waitFor('!document.getElementById("template-picker-modal").hidden', 'custom thumbnail picker')
+  await waitFor(`Array.from(document.querySelectorAll('.template-choice')).some(card => card.textContent.includes('Startup Smoke Layout') && card.querySelector('img').naturalWidth > 0)`, 'saved custom template thumbnail')
+  await click('template-picker-cancel')
   await click('pm-new-blank')
   await waitFor('!document.getElementById("editor-screen").hidden', 'blank editor for caption close')
   await evaluate(`(() => { const input = document.getElementById('title'); input.value = 'Unsaved caption close';

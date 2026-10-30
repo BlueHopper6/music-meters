@@ -1,3 +1,4 @@
+import { renderTemplateThumbnail, clearTemplateThumbnails } from './template-thumbnail'
 import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type VectorscopeLayer, type SpectrumLayer,
   type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer, type LoudnessLayer, type WaterfallLayer,
   type ImageLayer, type TextLayer, type Background } from './composition'
@@ -53,6 +54,7 @@ type Desktop = {
   getRecentProjects(): Promise<RecentProject[]>
   manageProject(path: string, action: ProjectAction, name?: string): Promise<{ path: string; name: string } | null>
   listTemplates(): Promise<TemplateEntry[]>
+  templatePreview(id: string): Promise<{ project: Project; assets: Record<string, string> }>
   saveTemplate(name: string, project: Project, overwriteId?: string): Promise<TemplateEntry>
   loadTemplate(id: string, project: Project): Promise<{ project: Project; missingMedia: MissingMedia[] }>
   duplicateTemplate(id: string, name?: string): Promise<TemplateEntry>
@@ -740,6 +742,7 @@ function renderMissingMedia() {
   }
 }
 function refreshTemplates(entries: TemplateEntry[], preferred = '') {
+  clearTemplateThumbnails()
   templates = entries
   const list = $<HTMLSelectElement>('template-list')
   const previous = preferred || list.value
@@ -1660,6 +1663,14 @@ function focusManagerAction(id: string, action: string) {
     .find(item => item.dataset.templateId === id)
   row?.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)?.focus()
 }
+function createTemplatePreview(id: string, className: string): HTMLImageElement {
+  const preview = document.createElement('img')
+  preview.className = className; preview.alt = ''; preview.draggable = false
+  void renderTemplateThumbnail(id, key => window.desktop.templatePreview(key))
+    .then(url => { preview.src = url })
+    .catch(() => { preview.alt = 'Preview unavailable' })
+  return preview
+}
 function renderTemplateManager() {
   const builtinsHost = $('template-manager-builtins')
   const customHost = $('template-manager-custom')
@@ -1706,7 +1717,8 @@ function renderTemplateManager() {
       } catch (error) { setManagerStatus(String(error)) }
     })
     actions.append(useBtn, dupBtn)
-    row.append(info, actions)
+    row.classList.add('template-manager-row-with-preview')
+    row.append(createTemplatePreview(entry.id, 'template-manager-thumbnail'), info, actions)
     builtinsHost.append(row)
   }
   const customEntries = templates.filter(item => !item.builtIn)
@@ -1883,7 +1895,8 @@ function renderTemplateManager() {
         renderTemplateManager()
       })
       actions.append(useBtn, dupBtn, renameBtn, deleteBtn)
-      row.append(info, actions)
+      row.classList.add('template-manager-row-with-preview')
+      row.append(createTemplatePreview(entry.id, 'template-manager-thumbnail'), info, actions)
       customHost.append(row)
     }
   }
@@ -2302,16 +2315,29 @@ $('project-action-modal').addEventListener('keydown', event => {
 })
 
 function openTemplatePicker() {
-  const select = $<HTMLSelectElement>('template-picker-select')
-  select.innerHTML = ''
-  for (const tmpl of templates) {
-    const option = document.createElement('option')
-    option.value = tmpl.id
-    option.textContent = tmpl.name + (tmpl.builtIn ? ' (Starter)' : ' (Custom)')
-    select.appendChild(option)
+  const grid = $('template-picker-options')
+  grid.replaceChildren()
+  for (const [index, tmpl] of templates.entries()) {
+    const card = document.createElement('label')
+    card.className = 'template-choice'
+    const radio = document.createElement('input')
+    radio.type = 'radio'; radio.name = 'template-choice'; radio.value = tmpl.id
+    radio.checked = index === 0
+    const preview = createTemplatePreview(tmpl.id, 'template-thumbnail')
+    const caption = document.createElement('span')
+    caption.className = 'template-choice-caption'
+    const name = document.createElement('span')
+    name.textContent = tmpl.name
+    const badge = document.createElement('span')
+    badge.className = 'template-badge'; badge.textContent = tmpl.builtIn ? 'Starter' : 'Custom'
+    caption.append(name, badge)
+    card.append(radio, preview, caption)
+    grid.append(card)
   }
+  $<HTMLButtonElement>('template-picker-create').disabled = templates.length === 0
   $<HTMLDivElement>('template-picker-modal').hidden = false
-  select.focus()
+  grid.scrollTop = 0
+  ;(grid.querySelector<HTMLInputElement>('input:checked') || $('template-picker-cancel')).focus()
 }
 
 function closeTemplatePicker() {
@@ -2415,9 +2441,20 @@ $('pm-new-blank').addEventListener('click', async () => {
 $('pm-new-template').addEventListener('click', () => openTemplatePicker())
 $('template-picker-close').addEventListener('click', () => closeTemplatePicker())
 $('template-picker-cancel').addEventListener('click', () => closeTemplatePicker())
+$('template-picker-modal').addEventListener('click', event => {
+  if (event.target === $('template-picker-modal')) closeTemplatePicker()
+})
+$('template-picker-modal').addEventListener('keydown', event => {
+  if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeTemplatePicker() }
+  else if (event.key === 'Tab') {
+    const items = Array.from($('template-picker-modal').querySelectorAll<HTMLElement>('button:not(:disabled), input:checked'))
+    const first = items[0], last = items.at(-1)
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+  }
+})
 $('template-picker-create').addEventListener('click', async () => {
-  const select = $<HTMLSelectElement>('template-picker-select')
-  const tmplId = select.value
+  const tmplId = document.querySelector<HTMLInputElement>('#template-picker-options input:checked')?.value
   if (!tmplId) return
   closeTemplatePicker()
   try {

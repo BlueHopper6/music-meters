@@ -222,6 +222,11 @@ handle('new-project-from-template', (_event, templateId) => {
     templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project) }
 })
 handle('list-templates', () => listTemplates(userData()))
+handle('template-preview', (_event, id) => {
+  if (typeof id !== 'string' || id.length > 120) throw new Error('Invalid template ID')
+  const { layout } = readTemplate(userData(), id)
+  return { project: layout, assets: assetData(layout, false) }
+})
 handle('save-template', (_event, name, raw, overwriteId = '') => {
   const value = validateActiveProject(raw)
   const entry = saveTemplate(userData(), name, value, overwriteId)
