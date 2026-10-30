@@ -4,22 +4,31 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ## Unreleased
 
+Target: **1.1.0**. Not yet published.
+
 ### Added
 
-- A three-dot menu on recent-project cards for Rename, Move to, Copy to, and confirmed Delete project. Rename updates the folder and filename; Delete recycles the project and recorded copied media while preserving originals. Move and Copy keep a reference to the original song without copying or moving it, while images stay with the project. Moves verify the new project files before removing the old ones and retain unrelated content.
-- Project undo/redo through the Edit menu and Ctrl+Z, Ctrl+Y, or Ctrl+Shift+Z, with grouped typing/dragging and up to 100 steps per session.
+- Template thumbnails in **New from Template** and **Manage templates**, including while editing. Previews use the actual starting layout with theme-colored glowing circle artwork in image slots; created projects keep their original content. Keyboard selection and scrolling remain available. ([PR #14](https://github.com/BlueHopper6/music-meters/pull/14))
+- Project undo/redo through the Edit menu and Ctrl+Z, Ctrl+Y, or Ctrl+Shift+Z, with grouped typing/dragging and up to 100 steps per session. Undoing a layout change preserves the current playback position. ([PR #11](https://github.com/BlueHopper6/music-meters/pull/11))
+- A three-dot menu on recent-project cards for Rename, Move to, Copy to, and confirmed Delete project. Rename updates the folder and filename. Move and Copy carry images while keeping the original song linked in place. Delete uses the Recycle Bin for project-owned files and preserves original media and unrelated content. ([PR #13](https://github.com/BlueHopper6/music-meters/pull/13))
+
+### Changed
+
+- MusicMeters opens maximized with normal window controls. ([PR #13](https://github.com/BlueHopper6/music-meters/pull/13))
+- Bug reports, feature suggestions, and questions have simpler optional issue templates and clearer contributing and local-development guidance. ([PR #9](https://github.com/BlueHopper6/music-meters/pull/9), [PR #11](https://github.com/BlueHopper6/music-meters/pull/11))
 
 ### Fixed
 
-- Recent Projects hides unavailable files after external moves or deletions; actions on a project that disappears show a clear message instead of a filesystem error.
+- Switching layouts in the editor keeps imported audio, the project title, preview position, and save location. Starting a new project still starts without audio. Addresses [issue #10](https://github.com/BlueHopper6/music-meters/issues/10), opened by [@Bhagip0003](https://github.com/Bhagip0003), in [PR #11](https://github.com/BlueHopper6/music-meters/pull/11).
+- Still updates after undo/redo and layout changes run without locking the editor; starting playback cancels the pending update. Template Manager no longer highlights a remembered choice as though it were the active layout. ([PR #11](https://github.com/BlueHopper6/music-meters/pull/11))
+- Space plays/pauses after clicking or dragging the timeline. Keyboard focus uses a playhead cue instead of a surrounding white box. ([PR #12](https://github.com/BlueHopper6/music-meters/pull/12))
+- Seeking retires the previous playback session so delayed pause events and queued frames cannot reset the new position. ([PR #11](https://github.com/BlueHopper6/music-meters/pull/11), [PR #13](https://github.com/BlueHopper6/music-meters/pull/13))
+- First-save and Save As filename suggestions use the entered project name, with Windows filename sanitization. ([PR #13](https://github.com/BlueHopper6/music-meters/pull/13))
+- Recent Projects hides unavailable files after external moves/deletions. Project-action failures use clearer messages, including when a project disappears or a destination already exists. ([PR #13](https://github.com/BlueHopper6/music-meters/pull/13))
 
-- First-save and Save As filename suggestions use the entered project name rather than the imported audio filename, with Windows filename sanitization.
-- The New from Template dropdown and its open options list now match the app's dark styling while retaining native keyboard navigation.
-- Space toggles preview playback after clicking or dragging the timeline. Timeline focus uses a playhead cue for keyboard users instead of a white box around the seek bar.
-- Layout changes retain the live playback position after pausing. Template Manager no longer highlights a remembered dropdown selection as though it were the active layout.
-- Still updates after undo/redo and layout changes run without locking the editor. Starting playback cancels the pending still update.
-- Pressing Play immediately after seeking starts playback instead of being overridden by a delayed paused seek.
-- Switching layouts through the editor's Template Manager keeps imported audio, the project title, preview position, and save location. Starting a new project from the Project Manager still starts without audio.
+### Thanks
+
+Thank you to [@Bhagip0003](https://github.com/Bhagip0003) for suggesting audio preservation when switching templates in [issue #10](https://github.com/BlueHopper6/music-meters/issues/10), implemented in [PR #11](https://github.com/BlueHopper6/music-meters/pull/11).
 
 ## [1.0.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.0.0) — 2026-10-27
 

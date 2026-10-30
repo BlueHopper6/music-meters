@@ -49,7 +49,7 @@ Each meter has its own settings, colors, and placement.
 - **MKV:** H.264 video with supported MP3, FLAC, or WAV/PCM audio copied without re-encoding. MP3 remains lossy.
 - Track export progress, cancel an export, and keep existing videos safe from silent overwrites.
 
-These features are included in [MusicMeters 1.0.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.0.0). See the [changelog](CHANGELOG.md) for the release history.
+The published download is [MusicMeters 1.0.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.0.0). Current source prepares 1.1.0 with template previews, audio-preserving layout changes, undo/redo, and project-management improvements. See the [changelog](CHANGELOG.md) for the release history.
 
 ## Download
 
