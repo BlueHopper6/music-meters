@@ -49,11 +49,11 @@ Each meter has its own settings, colors, and placement.
 - **MKV:** H.264 video with supported MP3, FLAC, or WAV/PCM audio copied without re-encoding. MP3 remains lossy.
 - Track export progress, cancel an export, and keep existing videos safe from silent overwrites.
 
-The published download is [MusicMeters 1.0.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.0.0). Current source prepares 1.1.0 with template previews, audio-preserving layout changes, undo/redo, and project-management improvements. See the [changelog](CHANGELOG.md) for the release history.
+The latest release is [MusicMeters 1.1.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.1.0), with template previews, audio-preserving layout changes, undo/redo, and project-management improvements. See the [changelog](CHANGELOG.md) for the release history.
 
 ## Download
 
-MusicMeters targets **Windows x64**. Download the setup EXE or portable ZIP from [MusicMeters 1.0.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.0.0) and check its requirements and checksums. Linux and macOS builds have not been validated.
+MusicMeters targets **Windows x64**. Download the setup EXE or portable ZIP from [MusicMeters 1.1.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.1.0) and check its requirements and checksums. Linux and macOS builds have not been validated.
 
 1. Install the FFmpeg command-line tools and put both `ffmpeg` and `ffprobe` on your Windows `PATH`. Check `ffmpeg -version` and `ffprobe -version` in a new terminal.
 2. For the **setup EXE**, run it to install MusicMeters for your Windows account, then open **MusicMeters** from the Start menu. Setup adds an uninstall entry and preserves the existing templates/preferences location.
