@@ -2,7 +2,7 @@
 module.exports = {
   name: 'music-visualizer', // Existing Electron user-data directory; do not rename.
   productName: 'MusicMeters',
-  version: '1.0.0',
+  version: '1.1.0',
   appId: 'com.bluehopper6.musicmeters',
   executable: 'MusicMeters.exe',
 }
