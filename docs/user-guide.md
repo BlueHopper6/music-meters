@@ -1,6 +1,6 @@
 # MusicMeters user guide
 
-Detailed controls for MusicMeters 1.0.0. The earlier portable preview contains fewer features; see the [changelog](../CHANGELOG.md). For downloads and first steps, see the [README](../README.md).
+Detailed controls for MusicMeters 1.1.0. The earlier portable preview contains fewer features; see the [changelog](../CHANGELOG.md). For downloads and first steps, see the [README](../README.md).
 
 ## Audio and meters
 
