@@ -4,6 +4,7 @@ const { spawn } = require('node:child_process')
 const { Worker } = require('node:worker_threads')
 const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
+const { prepareStoredMedia, writeAtomic } = require('../media-storage.cjs')
 const { jobPath } = require('../runtime.cjs')
 const { resolveProjectAudio, projectAudioReference } = require('../project-audio.cjs')
 const { defaultProject, compositionProject, normalizeProject } = require('../project.cjs')
@@ -41,6 +42,16 @@ let win
 let forceQuit = false
 let project = defaultProject()
 const allowedImages = new Set()
+
+async function chooseStorage(input, kind) {
+  // Existing automated smokes preserve their historical import behavior.
+  if ((isAutomatedTest || process.env.PHASE2_STARTUP_SMOKE === '1') && !process.env.MUSICMETERS_STORAGE_SMOKE) return kind === 'image' ? 'copy' : 'link'
+  const answer = await dialog.showMessageBox(win, { type:'question', title:'Store imported media',
+    message:`How should this ${kind} be stored?`,
+    detail:`${basename(input)}\n\nCopy into project: keep a separate original-quality copy when you save. Uses more disk space.\n\nLink original: use this file where it is. Moving or deleting it will require relinking.`,
+    buttons:['Copy into project', 'Link original', 'Cancel'], defaultId:0, cancelId:2, noLink:true })
+  return ['copy','link',null][answer.response]
+}
 let metadata = null
 let activeAudio = ''
 // Only picker/opened-project paths from this project session may be restored.
@@ -65,7 +76,7 @@ const editorDocument = join(__dirname, 'index.html')
 function handle(channel, callback) {
   ipcMain.handle(channel, (event, ...args) => {
     assertTrustedSender(event, win?.webContents, editorDocument)
-    if (projectManagementRunning && ['new-blank-project', 'new-project-from-template', 'close-project', 'open-project', 'open-project-path', 'save-project', 'choose-audio'].includes(channel)) {
+    if (projectManagementRunning && ['new-blank-project', 'new-project-from-template', 'close-project', 'open-project', 'open-project-path', 'save-project', 'choose-audio', 'choose-video', 'choose-image', 'restore-project', 'media-info', 'load-template', 'render-video'].includes(channel)) {
       throw new Error('Wait for the project operation to finish')
     }
     return callback(event, ...args)
@@ -174,8 +185,10 @@ handle('choose-video', async () => {
       filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'] }] })
   if (result.canceled) return null
   const input = resolve(result.filePaths[0]), info = probeVideo(input)
+  const storage = await chooseStorage(input, 'video')
+  if (!storage) return null
   allowedVideos.add(input)
-  return { path: input, ...info }
+  return { path: input, storage, ...info }
 })
 handle('load-videos', async (_event, raw) => {
   const value = validateActiveProject(raw), video = videoOf(value)
@@ -186,6 +199,7 @@ handle('load-videos', async (_event, raw) => {
 handle('cancel-media-preparation', () => { ++playbackRequest; cancelPreview(); mediaCache.cancel(); videoCache.cancel(); return playbackVideo.cancel() })
 
 const isAutomatedTest = Boolean(
+  process.env.MUSICMETERS_STORAGE_SMOKE ||
   process.env.MUSICMETERS_MEDIA_SMOKE ||
   process.env.PHASE2_TEST_INPUT ||
   process.env.PHASE2_TEST_PROJECT_PATH ||
@@ -315,8 +329,10 @@ handle('choose-image', async () => {
   }
   const absolute = resolve(selected)
   readImage(absolute)
+  const storage = await chooseStorage(absolute, 'image')
+  if (!storage) return null
   allowedImages.add(absolute)
-  return absolute
+  return { path: absolute, storage }
 })
 handle('load-assets', (_event, raw) => {
   const value = validateActiveProject(raw)
@@ -334,13 +350,15 @@ handle('choose-audio', async () => {
     selected = result.filePaths[0]
   }
   const chosen = audioInfo(selected)
+  const storage = await chooseStorage(chosen.path, 'audio')
+  if (!storage) return null
   historyAudio.add(chosen.path)
   activeAudio = chosen.path
   metadata = chosen.metadata
   previewAudioRevision++
   cancelPreview()
   project.audioPath = activeAudio
-  return chosen
+  return { ...chosen, storage }
 })
 handle('restore-project', async (_event, raw) => {
   if (exportJob) throw new Error('Wait for the export to finish')
@@ -405,16 +423,30 @@ handle('save-project', async (_event, raw, asNew = false) => {
     }
   }
   if (extname(target).toLowerCase() !== '.json') throw new Error('Project file must end in .json')
-  const reference = activeAudio || value.audioPath
-  const document = { ...saveVideoReferences(saveArtwork(value, target), target), audioPath: undefined,
-    audioRelativePath: projectAudioReference(target, reference) }
-  fs.mkdirSync(dirname(target), { recursive: true })
-  fs.writeFileSync(target, JSON.stringify(document, null, 2) + '\n', { flag: 'w' })
-  project = normalizeProject(resolveVideoReferences(resolveArtwork({ ...document, audioPath: reference }, target), target))
-  for (const input of imagePaths(project)) allowedImages.add(input)
-  projectPath = target
-  recordRecentProject(userData(), target, project.title)
-  return { path: target, project, missingMedia: missingMedia(project) }
+  projectManagementRunning = true
+  let savedSuccessfully = false
+  try {
+    const prepared = await prepareStoredMedia(value, target)
+    const reference = prepared.audioPath
+    const document = { ...saveVideoReferences(saveArtwork(prepared, target, false), target), audioPath: undefined,
+      audioRelativePath: projectAudioReference(target, reference) }
+    writeAtomic(target, JSON.stringify(document, null, 2) + '\n')
+    project = normalizeProject(resolveVideoReferences(resolveArtwork({ ...document, audioPath: reference }, target), target))
+    for (const input of imagePaths(project)) allowedImages.add(input)
+    allowedVideos.add(videoOf(project)?.videoPath || '')
+    activeAudio = reference; historyAudio.add(reference)
+    projectPath = target
+    recordRecentProject(userData(), target, project.title)
+    savedSuccessfully = true
+    return { path: target, project, missingMedia: missingMedia(project) }
+  } finally {
+    projectManagementRunning = false
+    if (quitAfterProjectManagement) {
+      quitAfterProjectManagement = false
+      if (savedSuccessfully) app.quit()
+      else win.close() // A failed save still needs the normal unsaved guard.
+    }
+  }
 })
 function loadProjectFromDisk(target) {
   if (fs.statSync(target).size > 1024 * 1024) throw new Error('Project file is too large')
@@ -688,9 +720,10 @@ app.whenReady().then(() => {
     win.webContents.send('app-close-requested')
   })
   return win.loadFile(editorDocument).then(async () => {
-    if (process.env.MUSICMETERS_MEDIA_SMOKE === '1' || process.env.PHASE2_PLAYBACK_SMOKE === '1' || process.env.PHASE2_PORTRAIT_SMOKE === '1' || process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
+    if (process.env.MUSICMETERS_STORAGE_SMOKE === '1' || process.env.MUSICMETERS_MEDIA_SMOKE === '1' || process.env.PHASE2_PLAYBACK_SMOKE === '1' || process.env.PHASE2_PORTRAIT_SMOKE === '1' || process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
-        if (process.env.MUSICMETERS_MEDIA_SMOKE === '1') await require('../test/media-quality-smoke.cjs')(win)
+        if (process.env.MUSICMETERS_STORAGE_SMOKE === '1') await require('../test/media-storage-smoke.cjs')(win)
+        else if (process.env.MUSICMETERS_MEDIA_SMOKE === '1') await require('../test/media-quality-smoke.cjs')(win)
         else if (process.env.PHASE2_PLAYBACK_SMOKE === '1') await require('../test/playback-smoke.cjs')(win, playbackVideo)
         else if (process.env.PHASE2_PORTRAIT_SMOKE === '1') await require('../test/portrait-smoke.cjs')(win)
         else if (process.env.PHASE2_STARTUP_SMOKE === '1') await require('../test/startup-smoke.cjs')(win)

@@ -2,7 +2,8 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { createHash, randomUUID } = require('node:crypto')
 const { normalizeProject } = require('./project.cjs')
-const { imagePaths, readImage, resolveArtwork } = require('./assets.cjs')
+const { imagePaths, readImage, resolveArtwork, saveArtwork } = require('./assets.cjs')
+const { prepareStoredMedia, renameLocal } = require('./media-storage.cjs')
 const { projectSaveName } = require('./project-path.cjs')
 const { resolveProjectAudio, projectAudioReference } = require('./project-audio.cjs')
 const { saveVideoReferences, resolveVideoReferences } = require('./project-media.cjs')
@@ -51,7 +52,7 @@ function writeAtomic(file, bytes) {
   try {
     within(path.dirname(file), temporary)
     fs.writeFileSync(temporary, bytes, { flag: 'wx' })
-    assertLocal(file); fs.renameSync(temporary, file)
+    assertLocal(file); renameLocal(temporary, file)
   } finally {
     if (fs.existsSync(temporary)) { within(path.dirname(file), temporary); fs.unlinkSync(temporary) }
   }
@@ -84,20 +85,27 @@ function renameLibraryProject(source, title) {
   if (oldAssets !== newAssets && !samePath(path.join(root, oldAssets), path.join(root, newAssets)) && fs.existsSync(path.join(root, newAssets))) throw new Error('An artwork folder with that name already exists')
   const next = structuredClone(snapshot.stored)
   next.title = title.trim()
+  const movedReference = original => {
+    const relative = path.relative(root, original)
+    if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) return original
+    return path.join(destination, relative.startsWith(oldAssets + path.sep) ? newAssets + relative.slice(oldAssets.length) : relative)
+  }
   if (next.version === 2) {
-    const rewrite = ref => ref ? newAssets + '/' + ref.slice(oldAssets.length + 1) : ''
-    next.background.imagePath = rewrite(next.background.imagePath)
-    for (const layer of next.layers) if (layer.type === 'image') layer.imagePath = rewrite(layer.imagePath)
+    const rewrite = (ref, storage) => !ref ? '' : storage === 'link'
+      ? projectAudioReference(target, movedReference(resolveProjectAudio(source, ref))) : newAssets + '/' + ref.slice(oldAssets.length + 1)
+    next.background.imagePath = rewrite(next.background.imagePath, next.background.storage)
+    for (const layer of next.layers) if (layer.type === 'image') layer.imagePath = rewrite(layer.imagePath, layer.storage)
   }
   const audio = snapshot.project.audioPath
   const relativeAudio = audio ? path.relative(root, audio) : ''
   const audioInside = audio && relativeAudio !== '..' && !relativeAudio.startsWith('..' + path.sep) && !path.isAbsolute(relativeAudio)
-  next.audioRelativePath = projectAudioReference(target, audioInside ? path.join(destination, relativeAudio) : audio)
+  const movedRelative = relative => relative.startsWith(oldAssets + path.sep) ? newAssets + relative.slice(oldAssets.length) : relative
+  next.audioRelativePath = projectAudioReference(target, audioInside ? path.join(destination, movedRelative(relativeAudio)) : audio)
   for (const layer of next.layers) if (layer.type === 'video') {
     const original = snapshot.project.layers.find(item => item.id === layer.id).videoPath
     const relative = original ? path.relative(root, original) : ''
     const inside = original && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)
-    layer.videoRelativePath = projectAudioReference(target, inside ? path.join(destination, relative) : original)
+    layer.videoRelativePath = projectAudioReference(target, inside ? path.join(destination, movedRelative(relative)) : original)
   }
   const manifestPath = path.join(root, OWNED_MEDIA)
   const manifest = fs.existsSync(manifestPath) ? readOwnedMedia(snapshot) : null
@@ -108,23 +116,23 @@ function renameLibraryProject(source, title) {
   let currentRoot = root, fileRenamed = false, assetsRenamed = false
   try {
     assertUnchanged(source, snapshot.bytes)
-    fs.renameSync(root, temporary); currentRoot = temporary
+    renameLocal(root, temporary); currentRoot = temporary
     if (fs.existsSync(path.join(temporary, oldAssets)) && oldAssets !== newAssets) {
-      fs.renameSync(path.join(temporary, oldAssets), path.join(temporary, newAssets)); assetsRenamed = true
+      renameLocal(path.join(temporary, oldAssets), path.join(temporary, newAssets)); assetsRenamed = true
     }
-    if (path.basename(source) !== filename) { fs.renameSync(path.join(temporary, path.basename(source)), path.join(temporary, filename)); fileRenamed = true }
+    if (path.basename(source) !== filename) { renameLocal(path.join(temporary, path.basename(source)), path.join(temporary, filename)); fileRenamed = true }
     writeAtomic(path.join(temporary, filename), JSON.stringify(next, null, 2) + '\n')
     if (manifest) writeAtomic(path.join(temporary, OWNED_MEDIA), JSON.stringify({ ...manifest, project: filename }, null, 2) + '\n')
-    fs.renameSync(temporary, destination); currentRoot = destination
+    renameLocal(temporary, destination); currentRoot = destination
   } catch (error) {
     if (currentRoot === temporary) {
       try {
-        if (fileRenamed) fs.renameSync(path.join(temporary, filename), path.join(temporary, path.basename(source)))
-        if (assetsRenamed) fs.renameSync(path.join(temporary, newAssets), path.join(temporary, oldAssets))
+        if (fileRenamed) renameLocal(path.join(temporary, filename), path.join(temporary, path.basename(source)))
+        if (assetsRenamed) renameLocal(path.join(temporary, newAssets), path.join(temporary, oldAssets))
         writeAtomic(path.join(temporary, path.basename(source)), snapshot.bytes)
         if (manifestBytes) writeAtomic(path.join(temporary, OWNED_MEDIA), manifestBytes)
         if (fs.existsSync(root)) throw new Error('Original folder was recreated elsewhere')
-        fs.renameSync(temporary, root)
+        renameLocal(temporary, root)
       } catch (rollback) { throw new Error(`Rename could not be restored automatically. Project files are preserved at ${temporary}. ${rollback.message}`) }
     }
     throw error
@@ -148,21 +156,13 @@ function readOwnedMedia(snapshot) {
 async function fileDigest(file) {
   assertLocal(file)
   const hash = createHash('sha256')
-  for await (const chunk of fs.createReadStream(file)) hash.update(chunk)
+  const stream = fs.createReadStream(file)
+  try { for await (const chunk of stream) hash.update(chunk) }
+  finally {
+    stream.destroy()
+    if (!stream.closed) await new Promise(resolve => stream.once('close', resolve))
+  }
   return hash.digest('hex')
-}
-
-function removeCreated(root, files, directories) {
-  for (const file of files.reverse()) {
-    within(root, file)
-    try { fs.unlinkSync(file) } catch (error) { if (error.code !== 'ENOENT') throw error }
-  }
-  for (const dir of directories.reverse()) {
-    within(root, dir)
-    try { fs.rmdirSync(dir) } catch (error) { if (error.code !== 'ENOENT') throw error }
-  }
-  assertLocal(root)
-  fs.rmdirSync(root)
 }
 
 async function copyLibraryProject(source, target, title, onCopied = () => {}) {
@@ -174,54 +174,53 @@ async function copyLibraryProject(source, target, title, onCopied = () => {}) {
   if (path.extname(target).toLowerCase() !== '.json') throw new Error('Project file must end in .json')
   assertLocal(path.dirname(root))
   const originals = [{ path: source, bytes: snapshot.bytes }]
-  const artwork = new Map()
-  const references = new Set(imagePaths(snapshot.project))
-  if (snapshot.project.version === 2 && snapshot.project.background.imagePath) references.add(snapshot.project.background.imagePath)
-  let artworkBytes = 0
-  let bytesNeeded = BigInt(snapshot.bytes.length)
-  for (const input of references) {
-    within(path.dirname(source), input)
-    const image = readImage(input)
-    bytesNeeded += BigInt(image.bytes.length)
-    artworkBytes += image.bytes.length
-    if (artworkBytes > 24 * 1024 * 1024) throw new Error('Project artwork exceeds 24 MB')
-    artwork.set(input, image)
-    originals.push({ path: input, bytes: image.bytes })
+  const linked = new Set()
+  if (snapshot.project.audioStorage !== 'copy') linked.add(snapshot.project.audioPath)
+  if (snapshot.project.version === 2) {
+    if (snapshot.project.background.storage === 'link') linked.add(snapshot.project.background.imagePath)
+    for (const layer of snapshot.project.layers) {
+      if (layer.type==='image' && layer.storage==='link') linked.add(layer.imagePath)
+      if (layer.type==='video' && layer.storage!=='copy') linked.add(layer.videoPath)
+    }
   }
-  const audio = snapshot.project.audioPath
-  const space = fs.statfsSync(path.dirname(root), { bigint: true })
+  let bytesNeeded = BigInt(snapshot.bytes.length)
+  const artworkReferences = new Set(imagePaths(snapshot.project))
+  if (snapshot.project.version === 2 && snapshot.project.background.imagePath) artworkReferences.add(snapshot.project.background.imagePath)
+  for (const input of artworkReferences) if (!linked.has(input)) bytesNeeded += BigInt(readImage(input).bytes.length)
+  const space = fs.statfsSync(path.dirname(root), { bigint:true })
   if (space.bavail * space.bsize < bytesNeeded + 8n * 1024n * 1024n) throw new Error('Not enough free space at the destination')
-  const files = [], directories = []
+
   fs.mkdirSync(root) // Exclusive claim: never merge into an existing folder.
   try {
-    const next = structuredClone(snapshot.project)
+    const next = await prepareStoredMedia(snapshot.project, target)
     next.title = title.trim()
-    const assets = path.basename(target, path.extname(target)) + '.assets'
-    const rewritten = new Map()
-    for (const [input, image] of artwork) {
-      const dir = path.join(root, assets)
-      if (!directories.includes(dir)) { within(root, dir); fs.mkdirSync(dir); directories.push(dir) }
-      const filename = digest(image.bytes) + image.extension
-      const destination = path.join(dir, filename)
-      if (!files.includes(destination)) {
-        within(root, destination); fs.writeFileSync(destination, image.bytes, { flag: 'wx' }); files.push(destination)
-        if (digest(fs.readFileSync(destination)) !== digest(image.bytes)) throw new Error('Artwork copy verification failed')
-      }
-      rewritten.set(input, assets + '/' + filename)
-    }
-    if (next.version === 2) {
-      next.background.imagePath = rewritten.get(next.background.imagePath) || ''
-      for (const layer of next.layers) if (layer.type === 'image') layer.imagePath = rewritten.get(layer.imagePath) || ''
-    }
-    const document = { ...saveVideoReferences(next, target), audioPath: undefined, audioRelativePath: projectAudioReference(target, audio) }
-    within(root, target); fs.writeFileSync(target, JSON.stringify(document, null, 2) + '\n', { flag: 'wx' }); files.push(target)
+    const artwork = saveArtwork(next, target, false)
+    const document = { ...saveVideoReferences(artwork, target), audioPath: undefined,
+      audioRelativePath: projectAudioReference(target, next.audioPath) }
+    within(root,target); fs.writeFileSync(target, JSON.stringify(document,null,2)+'\n',{flag:'wx'})
     const reopened = readLibraryProject(target)
     if (reopened.project.title !== title.trim()) throw new Error('Project copy verification failed')
-    for (const original of originals) assertUnchanged(original.path, original.bytes)
+    const originalAssets = path.join(path.dirname(source),path.basename(source,'.json')+'.assets')
+    const collect = async (input, copied) => {
+      if (linked.has(input)) return
+      if (!input || path.dirname(input) !== originalAssets || !/^[a-f0-9]{64}\.[a-z0-9]+$/i.test(path.basename(input))) return
+      within(path.dirname(source),input)
+      const hash = await fileDigest(input)
+      if (hash !== path.basename(input).slice(0,64)) throw new Error('Owned project media changed; original kept')
+      if (!originals.some(x=>x.path===input)) originals.push({path:input,hash,backup:copied})
+    }
+    const originalImages = imagePaths(snapshot.project), copiedImages = imagePaths(reopened.project)
+    for (let i=0;i<originalImages.length;i++) {
+      const original = originalImages[i]
+      if (copiedImages[i] !== original) await collect(original,copiedImages[i])
+    }
+    if (snapshot.project.audioStorage === 'copy') await collect(snapshot.project.audioPath,reopened.project.audioPath)
+    for (const layer of snapshot.project.layers) if (layer.type==='video' && layer.storage==='copy') await collect(layer.videoPath,reopened.project.layers.find(x=>x.id===layer.id).videoPath)
+    assertUnchanged(source,snapshot.bytes)
   } catch (error) {
-    try { removeCreated(root, files, directories) }
-    catch { throw new Error(`Copy failed; partial files remain at ${root}. Original project was kept. ${error.message}`) }
-    throw error
+    // Preserve any incomplete copy for inspection; never risk an original or
+    // unrelated file by recursively cleaning a failed save/copy.
+    throw new Error('Copy failed; partial files remain at '+root+'. Original project was kept. '+error.message)
   }
   // Register the verified destination before any source removal is attempted.
   try { await onCopied({ path: target, name: title.trim() }) }
@@ -229,9 +228,19 @@ async function copyLibraryProject(source, target, title, onCopied = () => {}) {
   return { path: target, name: title.trim(), originals, source }
 }
 
+function mediaDigestSync(file) {
+  assertLocal(file)
+  const fd=fs.openSync(file,'r'), hash=createHash('sha256'), buffer=Buffer.alloc(1024*1024)
+  try { for (;;) { const size=fs.readSync(fd,buffer,0,buffer.length,null); if(!size)break; hash.update(buffer.subarray(0,size)) } return hash.digest('hex') }
+  finally {fs.closeSync(fd)}
+}
+function checkOriginal(original) {
+  if (original.bytes) assertUnchanged(original.path,original.bytes)
+  else if (mediaDigestSync(original.path)!==original.hash || mediaDigestSync(original.backup)!==original.hash) throw new Error('Project media changed. Original was kept.')
+}
 function removeOriginalProject(copy) {
   const root = path.dirname(copy.source)
-  for (const original of copy.originals) { within(root, original.path); assertUnchanged(original.path, original.bytes) }
+  for (const original of copy.originals) { within(root, original.path); checkOriginal(original) }
   const removed = []
   try {
     for (const original of [...copy.originals].reverse()) {
@@ -240,8 +249,8 @@ function removeOriginalProject(copy) {
   } catch (error) {
     for (const original of removed.reverse()) {
       within(root, original.path)
-      if (fs.existsSync(original.path)) assertUnchanged(original.path, original.bytes)
-      else fs.writeFileSync(original.path, original.bytes, { flag: 'wx' })
+      if (fs.existsSync(original.path)) checkOriginal(original)
+      else if (original.bytes) fs.writeFileSync(original.path, original.bytes, { flag: 'wx' }); else fs.copyFileSync(original.backup,original.path,fs.constants.COPYFILE_EXCL)
     }
     throw new Error(`The project was copied to ${copy.path}, but the original could not be removed and was restored. ${error.message}`)
   }
@@ -265,13 +274,30 @@ async function deleteLibraryProject(source, trash) {
   const snapshot = readLibraryProject(source), root = path.dirname(source)
   const files = new Set([source])
   const assets = path.join(root, path.basename(source, '.json') + '.assets')
+  const owned = new Set()
+  if (snapshot.project.audioStorage === 'copy') owned.add(snapshot.project.audioPath)
+  if (snapshot.project.version === 2) {
+    if (snapshot.project.background.storage !== 'link') owned.add(snapshot.project.background.imagePath)
+    for (const layer of snapshot.project.layers) {
+      if (layer.type === 'image' && layer.storage !== 'link') owned.add(layer.imagePath)
+      if (layer.type === 'video' && layer.storage === 'copy') owned.add(layer.videoPath)
+    }
+  }
+  if (snapshot.project.audioStorage !== 'copy') owned.delete(snapshot.project.audioPath)
+  if (snapshot.project.version === 2) {
+    if (snapshot.project.background.storage==='link') owned.delete(snapshot.project.background.imagePath)
+    for (const layer of snapshot.project.layers) {
+      if (layer.type==='image' && layer.storage==='link') owned.delete(layer.imagePath)
+      if (layer.type==='video' && layer.storage!=='copy') owned.delete(layer.videoPath)
+    }
+  }
   if (fs.existsSync(assets)) {
     within(root, assets)
     for (const entry of fs.readdirSync(assets, { withFileTypes: true })) {
-      if (/^[a-f0-9]{64}\.(png|jpe?g|webp)$/i.test(entry.name)) {
+      if (/^[a-f0-9]{64}\.(png|jpe?g|webp|wav|mp3|flac|mp4|mov|mkv|webm|avi|m4v)$/i.test(entry.name) && owned.has(path.join(assets,entry.name))) {
         const file = path.join(assets, entry.name); within(root, file)
         if (!entry.isFile()) throw new Error('Copied artwork is not a regular file')
-        files.add(file)
+        if (await fileDigest(file) === entry.name.slice(0,64)) files.add(file)
       }
     }
   }
@@ -281,7 +307,7 @@ async function deleteLibraryProject(source, trash) {
     files.add(manifestPath)
     for (const entry of manifest.files) {
       const file = path.join(root, entry.path)
-      if (fs.existsSync(file)) { within(root, file); if (!fs.statSync(file).isFile()) throw new Error('Copied media is not a regular file'); files.add(file) }
+      if (fs.existsSync(file)) { within(root, file); if (!fs.statSync(file).isFile()) throw new Error('Copied media is not a regular file'); if (file === snapshot.project.audioPath && await fileDigest(file) === entry.sha256) files.add(file) }
     }
   }
   const fingerprints = new Map()
@@ -300,12 +326,21 @@ async function deleteLibraryProject(source, trash) {
       if (await fileDigest(file) !== fingerprints.get(file)) throw new Error('Project changed on disk. Nothing was deleted.')
       const destination = path.join(payload, path.relative(root, file))
       within(staging, destination); createParent(path.dirname(destination))
-      fs.renameSync(file, destination); moved.push({ file, destination })
+      renameLocal(file, destination); moved.push({ file, destination })
     }
     const stagedProject = path.join(payload, path.basename(source))
     const next = { ...snapshot.stored }
     const stagedLayers = saveVideoReferences(snapshot.project, stagedProject).layers
-    next.layers = next.layers.map(layer => layer.type === 'video' ? stagedLayers.find(item => item.id === layer.id) : layer)
+    next.layers = next.layers.map(layer => layer.type === 'video' && !files.has(snapshot.project.layers.find(item=>item.id===layer.id).videoPath) ? stagedLayers.find(item => item.id === layer.id) : layer)
+    if (next.version === 2) {
+      if (snapshot.project.background.imagePath && !files.has(snapshot.project.background.imagePath)) {
+        next.background.storage = 'link'; next.background.imagePath = projectAudioReference(stagedProject,snapshot.project.background.imagePath)
+      }
+      for (const layer of next.layers) if (layer.type==='image') {
+        const original = snapshot.project.layers.find(item=>item.id===layer.id).imagePath
+        if (original && !files.has(original)) { layer.storage='link'; layer.imagePath=projectAudioReference(stagedProject,original) }
+      }
+    }
     const audioOwned = files.has(snapshot.project.audioPath)
     if (snapshot.project.audioPath && !audioOwned) next.audioRelativePath = projectAudioReference(stagedProject, snapshot.project.audioPath)
     writeAtomic(stagedProject, JSON.stringify(next, null, 2) + '\n')
@@ -319,7 +354,7 @@ async function deleteLibraryProject(source, trash) {
       for (const entry of moved.reverse()) {
         within(root, entry.file); within(staging, entry.destination)
         if (fs.existsSync(entry.file)) throw new Error('An original path was recreated during deletion')
-        fs.renameSync(entry.destination, entry.file)
+        renameLocal(entry.destination, entry.file)
       }
       for (const dir of [...createdDirs].sort((a, b) => b.length - a.length)) { within(staging, dir); fs.rmdirSync(dir) }
       assertLocal(staging); fs.rmdirSync(staging)

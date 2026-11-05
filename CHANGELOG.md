@@ -6,6 +6,8 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ### Added
 
+- Copy or link images, audio, and video on import; keep original-quality copies with projects or save space with external links. Save As and project management preserve each choice.
+
 - Ctrl+Q quits with the unsaved-changes guard; Ctrl+F toggles full-screen preview.
 - Compatible MP4 exports now target up to 384 kb/s AAC stereo (192 kb/s mono), retaining lower targets for low sample rates.
 

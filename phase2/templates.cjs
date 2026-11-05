@@ -51,6 +51,7 @@ function layoutFromProject(raw) {
   const layout = normalizeProject(raw)
   if (layout.version !== 2) throw new Error('Upgrade this older project to composition graphics before saving a template')
   layout.audioPath = ''
+  delete layout.audioStorage
   layout.title = ''
   layout.previewFrame = 0
   for (const layer of layout.layers) {
@@ -170,7 +171,7 @@ function applyTemplate(layout, current) {
   // Layout changes retain the current video's media, just as they retain audio.
   const video = song.layers.find(layer => layer.type === 'video')
   const slot = validated.layers.find(layer => layer.type === 'video')
-  if (slot && video) slot.videoPath = video.videoPath
+  if (slot && video) { slot.videoPath = video.videoPath; slot.storage = video.storage }
   if (!slot && video) {
     if (validated.layers.length >= 32) throw new Error('This template has no room for the current video layer')
     const preserved = { ...video, id: 'retained-video' }
@@ -178,7 +179,7 @@ function applyTemplate(layout, current) {
     const { fitLayer } = require('./project.cjs')
     validated.layers.unshift(fitLayer(preserved, song.width, song.height, validated.width, validated.height))
   }
-  return normalizeProject({ ...validated, mixer: song.mixer, audioPath: song.audioPath, title: song.title, previewFrame: song.previewFrame })
+  return normalizeProject({ ...validated, mixer: song.mixer, audioPath: song.audioPath, audioStorage: song.audioStorage, title: song.title, previewFrame: song.previewFrame })
 }
 
 function titleSuggestion(audioPath) {
