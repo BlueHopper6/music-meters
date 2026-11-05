@@ -77,6 +77,8 @@ jobs:
           node --test phase2/test/project-history.test.cjs phase2/test/project-library.test.cjs phase2/test/project-audio.test.cjs phase2/test/recent-projects.test.cjs
           node --test phase2/test/project-media.test.cjs phase2/test/video-frames.test.cjs phase2/test/media-storage.test.cjs
           node phase6/test/run-media-storage.cjs artifacts/phase6/ci-package artifacts/phase6/ci-media-storage
+          node --test phase2/test/meter-style.test.cjs
+          node phase6/test/run-meter-style.cjs artifacts/phase6/ci-package artifacts/phase6/ci-meter-style
           node phase6/test/run-media-quality.cjs artifacts/phase6/ci-package artifacts/phase6/ci-media-quality
           node phase2/test/run-history-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-history
           node phase2/test/run-playback-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-playback

@@ -1,4 +1,5 @@
 import { Vectorscope, type VectorscopeMode } from '../upstream/prism/src/renderer/visualizers/Vectorscope'
+import { nativeAppearance } from './meter-style.cjs'
 import { SpectrumAnalyzer } from '../upstream/prism/src/renderer/visualizers/SpectrumAnalyzer'
 import { Oscilloscope } from '../upstream/prism/src/renderer/visualizers/Oscilloscope'
 import { Spectrogram } from '../upstream/prism/src/renderer/visualizers/Spectrogram'
@@ -13,10 +14,17 @@ import { normalizeProject } from './project.cjs'
 import { vectorscopeCorrelations } from '../phase3/vectorscope-correlation.cjs'
 import { gradientPixels } from './gradient.cjs'
 
+export type MeterAppearance = {
+  lineWidth?: number; gridColor?: string; gridOpacity?: number; labelColor?: string; labelOpacity?: number
+  secondaryColor?: string; fillMode?: 'none' | 'gradient' | 'heat'; fillLowColor?: string; fillMidColor?: string
+  fillHighColor?: string; fillOpacity?: number; scopeFillColor?: string; scopeFillOpacity?: number
+  phaseRiskColor?: string; showGrid?: boolean
+}
 type BaseLayer = {
   id: string; name: string; x: number; y: number; w: number; h: number
   visible: boolean; locked: boolean; aspectLocked: boolean; rotation: number; opacity: number; color: string
   backgroundEnabled?: boolean; backgroundColor?: string; backgroundOpacity?: number
+  appearance?: MeterAppearance
 }
 export type VectorscopeLayer = BaseLayer & { type: 'vectorscope'; mode: VectorscopeMode;
   zoomDb: number; multiband: boolean; showGrid: boolean; showCorrelation: boolean;
@@ -455,21 +463,24 @@ export class Composition {
     const surface = document.createElement('canvas')
     surface.width = width
     surface.height = height
+    const appearance = nativeAppearance(layer)
+    const traceWidth = layer.appearance?.lineWidth === undefined ? 1.5
+      : layer.appearance.lineWidth * width / layer.w / (window.devicePixelRatio || 1)
     if (layer.type === 'vectorscope') {
       return { canvas: surface, type: layer.type, signature,
         painter: new Vectorscope(surface, { dataSource: this.source, nativeAnalyzer: this.vectorscopeSnapshot,
-          displayPoints: 1024, persistence: 0, lineColor: layer.color, lineWidth: 1.5,
+          displayPoints: 1024, persistence: 0, lineColor: layer.color, lineWidth: traceWidth,
           mode: layer.mode, zoomDb: layer.zoomDb, multiband: layer.multiband,
           showGrid: layer.showGrid, bandColors: { low: layer.bandLowColor,
-            mid: layer.bandMidColor, high: layer.bandHighColor } }) }
+            mid: layer.bandMidColor, high: layer.bandHighColor }, ...appearance }) }
     }
     if (layer.type === 'oscilloscope') {
       const snapshot = new OscilloscopeSnapshot()
       return { canvas: surface, type: layer.type, signature, snapshot,
         painter: new Oscilloscope(surface, { dataSource: this.source, nativeAnalyzer: snapshot,
           pitchLock: layer.pitchLock, underfillEnabled: layer.underfillEnabled,
-          showGrid: layer.showGrid, lineColor: layer.color, lineWidth: 1.5,
-          backgroundColor: 'transparent' }) }
+          showGrid: layer.showGrid, lineColor: layer.color, lineWidth: traceWidth,
+          backgroundColor: 'transparent', ...appearance }) }
     }
     if (layer.type === 'spectrogram') {
       const snapshot = new SpectrogramSnapshot()
@@ -484,7 +495,7 @@ export class Composition {
           scrollSpeed: layer.scrollSpeed, contrast: layer.contrast,
           tiltDbPerOctave: layer.tiltDbPerOctave, clarityMode: layer.clarityMode,
           colorScheme: layer.colorScheme, showGrid: layer.showGrid,
-          lineColor: layer.color, backgroundColor: 'transparent' }) }
+          lineColor: layer.color, backgroundColor: 'transparent', ...appearance }) }
     }
     if (layer.type === 'waveform') {
       const snapshot = new WaveformSnapshot()
@@ -496,7 +507,7 @@ export class Composition {
         painter: new Waveform(surface, { dataSource: source, nativeAnalyzer: snapshot,
           mode: layer.mode, scrollSpeed: layer.scrollSpeed, multiband: layer.multiband,
           lineColor: layer.color, bandColors: { low: layer.bandLowColor,
-            mid: layer.bandMidColor, high: layer.bandHighColor }, backgroundColor: 'transparent' }) }
+            mid: layer.bandMidColor, high: layer.bandHighColor }, backgroundColor: 'transparent', ...appearance }) }
     }
     if (layer.type === 'vu') {
       const snapshot = new VuSnapshot()
@@ -507,7 +518,7 @@ export class Composition {
           needleChannels: layer.needleChannels, referenceDb: layer.referenceDb,
           lineColor: layer.color, peakColor: layer.peakColor,
           needleLeftColor: layer.needleLeftColor, needleRightColor: layer.needleRightColor,
-          needleCombinedColor: layer.needleCombinedColor, backgroundColor: 'transparent' }) }
+          needleCombinedColor: layer.needleCombinedColor, backgroundColor: 'transparent', ...appearance }) }
     }
     if (layer.type === 'loudness') {
       const snapshot = new LoudnessSnapshot()
@@ -515,7 +526,7 @@ export class Composition {
       return { canvas: surface, type: layer.type, signature, snapshot,
         painter: new LUFSMeter(surface, { dataSource: source, nativeAnalyzer: snapshot,
           mode: 'bar', readout: layer.readout, lineColor: layer.color,
-          targetColor: layer.targetColor, backgroundColor: 'transparent' }) }
+          targetColor: layer.targetColor, backgroundColor: 'transparent', ...appearance }) }
     }
     if (layer.type === 'waterfall') {
       const snapshot = new WaterfallSnapshot()
@@ -525,7 +536,7 @@ export class Composition {
           fftSize: layer.fftSize, scaleMode: layer.scaleMode, frequencyRangeMode: layer.frequencyRangeMode,
           historySeconds: layer.historySeconds, density: layer.density, colorMode: layer.colorMode,
           smoothing: layer.smoothing, tiltDbPerOctave: layer.tiltDbPerOctave, showGrid: layer.showGrid,
-          lineColor: layer.color, backgroundColor: 'transparent' }) }
+          lineColor: layer.color, backgroundColor: 'transparent', ...appearance }) }
     }
     const snapshot = new SpectrumSnapshot()
     return { canvas: surface, type: layer.type, signature, snapshot,
@@ -534,8 +545,8 @@ export class Composition {
         minFrequency: layer.minFrequency, maxFrequency: layer.maxFrequency,
         minDecibels: layer.minDecibels, maxDecibels: layer.maxDecibels,
         showSideLine: layer.showSideLine, lineColor: layer.color,
-        secondaryLineColor: '#ed89f5', lineWidth: 1.5, fillGradient: false,
-        backgroundColor: 'transparent' }) }
+        secondaryLineColor: '#ed89f5', lineWidth: traceWidth, fillGradient: false,
+        backgroundColor: 'transparent', ...appearance }) }
   }
 
   render(raw: Project, analysis: AnalysisFrame, frameIndex: number, sampleRate: number): void {
@@ -584,30 +595,31 @@ export class Composition {
         context.save(); context.scale(sx, sy); this.drawGraphic(layer, frameIndex); context.restore()
         continue
       }
-      const signature = layer.type === 'vectorscope' ? JSON.stringify([layer.type, layer.color,
+      const styleSignature = JSON.stringify([layer.appearance, layer.appearance?.lineWidth === undefined ? 0 : sx])
+      const signature = layer.type === 'vectorscope' ? JSON.stringify([layer.type, styleSignature, layer.color,
         layer.mode, layer.zoomDb, layer.multiband, layer.showGrid, layer.showCorrelation,
         layer.bandLowColor, layer.bandMidColor, layer.bandHighColor])
         : layer.type === 'oscilloscope'
-          ? JSON.stringify([layer.type, layer.color, layer.pitchLock, layer.underfillEnabled, layer.showGrid])
+          ? JSON.stringify([layer.type, styleSignature, layer.color, layer.pitchLock, layer.underfillEnabled, layer.showGrid])
           : layer.type === 'spectrogram'
-            ? JSON.stringify([layer.type, layer.color, layer.fftSize, layer.scaleMode, layer.orientation,
+            ? JSON.stringify([layer.type, styleSignature, layer.color, layer.fftSize, layer.scaleMode, layer.orientation,
               layer.minFrequency, layer.maxFrequency, layer.minDecibels, layer.maxDecibels,
               layer.scrollSpeed, layer.contrast, layer.tiltDbPerOctave, layer.clarityMode,
               layer.colorScheme, layer.showGrid])
           : layer.type === 'waveform'
-            ? JSON.stringify([layer.type, layer.color, layer.mode, layer.scrollSpeed, layer.multiband,
+            ? JSON.stringify([layer.type, styleSignature, layer.color, layer.mode, layer.scrollSpeed, layer.multiband,
               layer.bandLowColor, layer.bandMidColor, layer.bandHighColor])
           : layer.type === 'vu'
-            ? JSON.stringify([layer.type, layer.color, layer.mode, layer.orientation,
+            ? JSON.stringify([layer.type, styleSignature, layer.color, layer.mode, layer.orientation,
               layer.needleChannels, layer.referenceDb, layer.peakColor,
               layer.needleLeftColor, layer.needleRightColor, layer.needleCombinedColor])
           : layer.type === 'loudness'
-            ? JSON.stringify([layer.type, layer.color, layer.readout, layer.targetColor])
+            ? JSON.stringify([layer.type, styleSignature, layer.color, layer.readout, layer.targetColor])
           : layer.type === 'waterfall'
-            ? JSON.stringify([layer.type, layer.color, layer.fftSize, layer.scaleMode,
+            ? JSON.stringify([layer.type, styleSignature, layer.color, layer.fftSize, layer.scaleMode,
               layer.frequencyRangeMode, layer.historySeconds, layer.density, layer.colorMode,
               layer.smoothing, layer.tiltDbPerOctave, layer.showGrid])
-          : JSON.stringify([layer.type, layer.color, layer.fftSize, layer.smoothing, layer.scaleType,
+          : JSON.stringify([layer.type, styleSignature, layer.color, layer.fftSize, layer.smoothing, layer.scaleType,
             layer.minFrequency, layer.maxFrequency, layer.minDecibels, layer.maxDecibels, layer.showSideLine])
       const width = Math.max(1, Math.round(layer.w * sx))
       const height = Math.max(1, Math.round(layer.h * sy))
