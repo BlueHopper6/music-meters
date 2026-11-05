@@ -9,6 +9,8 @@ import { installVideoPreview, type LiveFrame } from './video-preview'
 import type { PlaybackStart } from './video-preview'
 import { formatTimecode, parseTimecode, frameAtTime } from './timecode.cjs'
 import { ProjectHistory } from './project-history.cjs'
+import { applyPalette, normalizeAppearance, appearanceDefaults } from './meter-style.cjs'
+import type { MeterAppearance } from './composition'
 import { videoLayer, normalizeMixer } from './project.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number; codecName: string }
@@ -607,7 +609,75 @@ function openFontPreview() {
   focused?.focus({ preventScroll: true })
   if (focused) menu.scrollTop += focused.getBoundingClientRect().top - menu.getBoundingClientRect().top - 4
 }
+function refreshMeterStyle() {
+  const layer = selected()
+  const meter = layer && !['image','text','video'].includes(layer.type) ? layer : null
+  $('meter-style-options').hidden = !meter
+  if (!meter) return
+  const a = meter.appearance || {}
+  $('meter-trace-row').hidden = !['vectorscope','spectrum','oscilloscope'].includes(meter.type)
+  $('meter-label-row').hidden = ['spectrum','oscilloscope'].includes(meter.type)
+  $('meter-phase-row').hidden = meter.type !== 'vectorscope'
+  $('meter-spectrum-style').hidden = meter.type !== 'spectrum'
+  $('meter-heat-style').hidden = !['spectrum','spectrogram','waterfall'].includes(meter.type)
+  $('meter-heat-hint').hidden = meter.type === 'spectrum'
+  $('meter-scope-fill').hidden = meter.type !== 'oscilloscope'
+  $('meter-fill-opacity-row').hidden = a.fillMode !== 'gradient'
+  ;($<HTMLSelectElement>('meter-palette')).value = ''
+  const defaults = appearanceDefaults(meter)
+  for (const [id,value] of [
+    ['meter-trace-width', a.lineWidth ?? defaults.lineWidth], ['meter-grid-color', a.gridColor ?? defaults.gridColor],
+    ['meter-grid-opacity', (a.gridOpacity ?? defaults.gridOpacity)*100], ['meter-label-color', a.labelColor ?? defaults.labelColor],
+    ['meter-label-opacity', (a.labelOpacity ?? defaults.labelOpacity)*100], ['meter-phase-color', a.phaseRiskColor ?? defaults.phaseRiskColor],
+    ['meter-side-color', a.secondaryColor ?? '#ed89f5'], ['meter-fill-mode', a.fillMode ?? 'none'],
+    ['meter-fill-opacity', (a.fillOpacity ?? 0.5)*100], ['meter-fill-low', a.fillLowColor ?? '#0f0721'],
+    ['meter-fill-mid', a.fillMidColor ?? '#a31a79'], ['meter-fill-high', a.fillHighColor ?? '#fff1d1'],
+    ['meter-scope-color', a.scopeFillColor ?? '#f5f8fc'], ['meter-scope-opacity', (a.scopeFillOpacity ?? 0.18)*100],
+  ] as const) $<HTMLInputElement>(id).value = String(value)
+  ;($<HTMLInputElement>('meter-spectrum-grid')).checked = a.showGrid ?? true
+  for (const input of $('meter-style-options').querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>('input,select,button')) input.disabled = meter.locked
+}
+function refreshStyledMeter() {
+  repaint()
+  const layer = selected()
+  if (layer && ['spectrogram','waveform','waterfall'].includes(layer.type)) { markPreviewStale(); void refreshPreview() }
+}
+$('meter-palette').addEventListener('change', event => {
+  const layer = selected(), id = (event.target as HTMLSelectElement).value
+  if (!layer || layer.locked || historyBusy || !id) return
+  try { Object.assign(layer, applyPalette(layer,id)); refreshStyledMeter() }
+  catch (error) { setStatus(String(error)) }
+})
+$('meter-style-reset').addEventListener('click', () => {
+  const layer = selected()
+  if (!layer || layer.locked || historyBusy || ['image','text','video'].includes(layer.type)) return
+  const factories = { vectorscope:vectorscopeLayer, spectrum:spectrumLayer, oscilloscope:oscilloscopeLayer,
+    spectrogram:spectrogramLayer, waveform:waveformLayer, vu:vuLayer, loudness:loudnessLayer, waterfall:waterfallLayer }
+  const defaults = factories[layer.type as keyof typeof factories]() as unknown as Record<string,unknown>
+  const target = layer as unknown as Record<string,unknown>
+  for (const key of ['color','bandLowColor','bandMidColor','bandHighColor','peakColor','needleLeftColor','needleRightColor','needleCombinedColor','targetColor']) if (key in defaults) target[key] = defaults[key]
+  delete layer.appearance
+  refreshStyledMeter()
+})
+for (const [id,key,percent] of [
+  ['meter-trace-width','lineWidth',false], ['meter-grid-color','gridColor',false], ['meter-grid-opacity','gridOpacity',true],
+  ['meter-label-color','labelColor',false], ['meter-label-opacity','labelOpacity',true], ['meter-phase-color','phaseRiskColor',false],
+  ['meter-side-color','secondaryColor',false], ['meter-fill-mode','fillMode',false], ['meter-fill-opacity','fillOpacity',true],
+  ['meter-fill-low','fillLowColor',false], ['meter-fill-mid','fillMidColor',false], ['meter-fill-high','fillHighColor',false],
+  ['meter-scope-color','scopeFillColor',false], ['meter-scope-opacity','scopeFillOpacity',true], ['meter-spectrum-grid','showGrid',false],
+] as const) {
+  const input = $<HTMLInputElement>(id)
+  input.addEventListener('change', () => {
+    const layer = selected()
+    if (!layer || layer.locked || historyBusy || ['image','text','video'].includes(layer.type)) return
+    if (!input.value.trim() || !input.validity.valid) { refreshMeterStyle(); return }
+    const value = input.type === 'checkbox' ? input.checked : input.type === 'number' ? Number(input.value)/(percent ? 100 : 1) : input.value
+    try { layer.appearance = normalizeAppearance({...layer.appearance,[key]:value}) as MeterAppearance; refreshStyledMeter() }
+    catch (error) { refreshMeterStyle(); setStatus(String(error)) }
+  })
+}
 function refreshInspector() {
+  refreshMeterStyle()
   ;($<HTMLInputElement>('title')).value = project.title
   const bg = typeof project.background === 'string' ? null : project.background
   ;($<HTMLSelectElement>('background-type')).value = bg?.type ?? 'solid'
