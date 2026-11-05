@@ -9,13 +9,16 @@ const { probeVideo, runFFmpeg, assertCachePath } = require('./project-media.cjs'
 class VideoFrames {
   constructor(layer, duration, maxDimension = 3840) {
     this.layer = layer; this.index = 0; this.pending = Buffer.alloc(0)
+    this.requestedDuration = duration
     const info = probeVideo(layer.videoPath)
     this.duration = info.duration
     this.child = spawn('ffmpeg', ['-nostdin', '-v', 'error',
       ...(layer.endBehavior === 'loop' ? ['-stream_loop', '-1'] : []),
       '-protocol_whitelist', 'file,pipe', '-i', layer.videoPath, '-map', `0:${info.streamIndex}`, '-an',
       '-vf', `fps=30,scale=w='min(iw,${maxDimension})':h='min(ih,${maxDimension})':force_original_aspect_ratio=decrease,setsar=1,tpad=stop_mode=clone:stop_duration=${duration}`,
-      '-t', String(duration), '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'],
+      // Match the composition's ceiling exactly, including fractional final
+      // frames. A duration cut can round down while the renderer rounds up.
+      '-frames:v', String(Math.ceil(duration * 30)), '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'],
     { stdio: ['ignore', 'pipe', 'pipe'], shell: false, windowsHide: true })
     this.iterator = this.child.stdout[Symbol.asyncIterator]()
     let errors = ''
@@ -44,7 +47,7 @@ class VideoFrames {
         }
       }
       const next = await this.iterator.next()
-      if (next.done) { await this.done; throw new Error('Video decoder ended before the composition') }
+      if (next.done) { await this.done; throw new Error(`Video decoder ended before composition frame ${this.index} (requested ${this.requestedDuration}s; source ${this.duration}s)`) }
       this.pending = Buffer.concat([this.pending, next.value])
       if (this.pending.length > 128 * 1024 * 1024) throw new Error('Decoded video frame exceeded its buffer limit')
     }

@@ -15,7 +15,7 @@ function parse(args) {
   const options = {}
   for (let i = 0; i < args.length; i += 2) {
     if (!['--project', '--output', '--preset', '--audio-mode', '--cancel-after-frames'].includes(args[i]) || !args[i + 1]) {
-      throw new Error('Usage: node phase2/export.cjs --project <JSON> --output <MP4|MOV|MKV> [--audio-mode aac|pcm|flac|master|copy] [--preset 720p|1080p|1440p|2160p]')
+      throw new Error('Usage: node phase2/export.cjs --project <JSON> --output <MP4|MKV> [--audio-mode aac|flac|master|copy] [--preset 720p|1080p|1440p|2160p]')
     }
     options[args[i].slice(2)] = args[i + 1]
   }

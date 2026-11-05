@@ -857,6 +857,12 @@ body.stage-fullscreen .selection {
 }
 #time-slider:disabled { opacity: .4; cursor: default; }
 .time-readout-group { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.fullscreen-transport { position: absolute; bottom: 16px; left: 24px; right: 24px; z-index: 115;
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border-strong);
+  border-radius: 7px; background: rgba(12, 12, 15, .9); box-shadow: 0 4px 18px rgba(0, 0, 0, .45); }
+.fullscreen-time { font: 11px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fullscreen-seek-host { flex: 1; min-width: 50px; }
+.fullscreen-transport label { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
 .preview-stale { color: #f8bb66; font-size: 11px; white-space: nowrap; }
 .preview-stale[hidden] { display: none; }
 .timecode-group { display: flex; align-items: center; gap: 5px; font-family: var(--font-mono);
@@ -955,6 +961,25 @@ body.stage-fullscreen .selection {
   padding: 2px 3px;
   cursor: pointer;
 }
+
+.volume-control { display: flex; align-items: center; gap: 10px; margin: -4px 0 10px; }
+.property-group .volume-control input[type="range"] { appearance: none; flex: 1; min-width: 0; width: 0;
+  height: 28px; margin: 0; border: 0; background: transparent; padding: 0; cursor: pointer; }
+.volume-control input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--text-primary) 0 var(--volume-progress, 50%), var(--border-strong) var(--volume-progress, 50%) 100%); }
+.volume-control input[type="range"]::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px;
+  margin-top: -4px; border-radius: 50%; background: var(--text-primary); border: 2px solid var(--bg-panel); }
+.volume-control input[type="range"]:focus-visible { outline: 1px solid var(--border-strong); outline-offset: 3px; }
+.volume-value { display: flex; align-items: center; flex: 0 0 72px; gap: 4px; color: var(--text-secondary); }
+.property-group .volume-value input[type="number"] { margin: 0; width: 56px; padding: 4px 5px; text-align: right; }
+.volume-value span { font: 11px var(--font-mono); }
+.template-name-field { display: flex; flex-direction: column; gap: 8px; margin: 20px 0; }
+.template-name-field label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.template-name-field input { width: 100%; height: 38px; padding: 9px 11px; font: 13px var(--font-sans);
+  color: var(--text-primary); background: var(--bg-well); border: 1px solid var(--border-control); border-radius: 6px; }
+.template-name-field input::placeholder { color: var(--text-muted); }
+.template-name-field input:focus { outline: 0; border-color: var(--text-secondary); box-shadow: none; }
+.template-name-field span { color: var(--text-muted); font-size: 11px; }
 
 .number-grid {
   display: grid;

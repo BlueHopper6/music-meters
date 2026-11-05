@@ -41,7 +41,7 @@
         <button id="pm-new-template" type="button">New from template…</button>
         <button id="pm-open-project" type="button">Open project…</button>
         <button id="open-template-manager" type="button" class="pm-manage-btn" title="Browse, rename, duplicate, or delete templates">Manage templates…</button>
-        <button id="pm-quit" type="button">Quit MusicMeters</button>
+        <button id="pm-quit" type="button" title="Quit MusicMeters (Ctrl+Q)">Quit MusicMeters</button>
       </div>
     </header>
     <div class="pm-body">
@@ -77,7 +77,7 @@
           <hr>
           <button id="close-project" role="menuitem" tabindex="-1">Close project<kbd>Ctrl+W</kbd></button>
           <hr>
-          <button id="quit-app" role="menuitem" tabindex="-1">Quit MusicMeters</button>
+          <button id="quit-app" role="menuitem" tabindex="-1" title="Quit MusicMeters (Ctrl+Q)">Quit MusicMeters</button>
         </div>
       </div>
       <div class="command-menu">
@@ -153,7 +153,7 @@
           <span id="stage-resolution" class="resolution" title="Layer coordinates use the 1280 × 720 logical layout space; export scales to the selected resolution">Layout 1280 × 720 · Export 1920 × 1080 · 16:9</span>
           <label class="stage-option"><input id="snap-enabled" type="checkbox"> Snap</label>
           <label class="stage-option">Grid <select id="snap-grid" aria-label="Snap grid spacing"><option value="0">Off</option><option value="16">16 px</option><option value="32">32 px</option><option value="64">64 px</option></select></label>
-          <button id="fullscreen-preview" type="button" class="fullscreen-toggle-btn" aria-pressed="false" title="Preview still in full screen">
+          <button id="fullscreen-preview" type="button" class="fullscreen-toggle-btn" aria-pressed="false" title="Full screen preview (Ctrl+F)">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M2.5 6V2.5H6M10 2.5H13.5V6M13.5 10V13.5H10M6 13.5H2.5V10"/>
             </svg>
@@ -168,7 +168,14 @@
         <div id="snap-guide-y" class="snap-guide snap-guide-y" hidden></div>
         <div id="selection" class="selection" hidden><span class="selection-label"></span><span class="resize-handle" data-handle="resize" title="Resize layer"></span></div>
         <div id="preview-busy" class="preview-busy" role="status" hidden>Updating still…</div>
-      </div><button id="exit-fullscreen-preview" type="button" class="exit-fullscreen-btn" title="Exit full screen (Esc)" hidden>Exit full screen · Esc</button></div>
+      </div><button id="exit-fullscreen-preview" type="button" class="exit-fullscreen-btn" title="Exit full screen (Esc)" hidden>Exit full screen · Esc</button>
+        <div id="fullscreen-transport" class="fullscreen-transport" role="group" aria-label="Full screen playback" hidden>
+          <button id="fullscreen-play" type="button" aria-label="Play preview">Play</button>
+          <span id="fullscreen-time" class="fullscreen-time">00:00.000 / 00:00.000</span>
+          <div id="fullscreen-seek-host" class="fullscreen-seek-host"></div>
+          <label><input id="fullscreen-muted" type="checkbox"> Mute</label>
+        </div>
+      </div>
       <div class="timeline">
         <div class="timeline-top"><div><span class="eyebrow">MEDIA PREVIEW</span><strong id="audio-name">No media imported</strong></div><div class="audio-source-actions"><span id="audio-details">Import audio or video</span><button id="import-video" type="button">Import video</button><button id="import-audio" type="button">Import audio</button></div></div>
         <button id="cancel-media" type="button" hidden>Cancel media preparation</button>
@@ -222,11 +229,14 @@
         </div>
       </section>
       <section class="property-group" id="audio-mixer"><h3>Soundtrack &amp; meters</h3>
-        <label>Video audio (%)<input id="mix-video-volume" type="number" min="0" max="200" step="1" value="100"></label>
+        <label for="mix-video-volume-slider">Video audio</label>
+        <div class="volume-control"><input id="mix-video-volume-slider" type="range" min="0" max="200" step="1" value="100" aria-label="Video audio volume" title="Applies when you release the slider"><div class="volume-value"><input id="mix-video-volume" type="number" min="0" max="200" step="1" value="100" aria-label="Video audio volume percent"><span aria-hidden="true">%</span></div></div>
         <label><input id="mix-video-muted" type="checkbox"> Mute video audio</label>
-        <label>Imported audio (%)<input id="mix-audio-volume" type="number" min="0" max="200" step="1" value="100"></label>
+        <label for="mix-audio-volume-slider">Imported audio</label>
+        <div class="volume-control"><input id="mix-audio-volume-slider" type="range" min="0" max="200" step="1" value="100" aria-label="Imported audio volume" title="Applies when you release the slider"><div class="volume-value"><input id="mix-audio-volume" type="number" min="0" max="200" step="1" value="100" aria-label="Imported audio volume percent"><span aria-hidden="true">%</span></div></div>
         <label><input id="mix-audio-muted" type="checkbox"> Mute imported audio</label>
-        <label>Master output (%)<input id="mix-master-volume" type="number" min="0" max="200" step="1" value="100"></label>
+        <label for="mix-master-volume-slider">Master output</label>
+        <div class="volume-control"><input id="mix-master-volume-slider" type="range" min="0" max="200" step="1" value="100" aria-label="Master output volume" title="Applies when you release the slider"><div class="volume-value"><input id="mix-master-volume" type="number" min="0" max="200" step="1" value="100" aria-label="Master output volume percent"><span aria-hidden="true">%</span></div></div>
         <label>Meters listen to<select id="meter-source"><option value="mix">Final mix</option><option value="video">Video audio</option><option value="audio">Imported audio</option></select></label>
         <label>Meter input gain (dB)<input id="meter-gain" type="number" min="-24" max="24" step="1" value="0" title="Source modes analyze the original source independently of soundtrack volume and mute. This changes meters only."></label>
         <label>Project length<select id="media-duration"><option value="longest">Longest source</option><option value="video">Video length</option><option value="audio">Imported audio length</option></select></label>
@@ -439,9 +449,10 @@
         <button id="save-template-close" type="button" class="modal-close-btn" aria-label="Close">✕</button>
       </div>
       <p class="modal-body">Save the current visualizer layers and styling as a reusable layout template.</p>
-      <div style="margin: 16px 0;">
-        <label for="template-name" style="display:block; font-size:12px; margin-bottom:6px; color:var(--text-secondary);">Template name</label>
-        <input id="template-name" type="text" maxlength="80" placeholder="My layout template" style="width: 100%; box-sizing: border-box; background: var(--bg-well); border: 1px solid var(--border-control); color: var(--text-primary); padding: 8px 10px; border-radius: 4px;">
+      <div class="template-name-field">
+        <label for="template-name">Template name</label>
+        <input id="template-name" type="text" maxlength="80" placeholder="My layout template" autocomplete="off" spellcheck="false" aria-describedby="template-name-hint">
+        <span id="template-name-hint">Up to 80 characters. Your song media stays out of the template.</span>
       </div>
       <div class="modal-actions">
         <button id="save-template-cancel" type="button">Cancel</button>
@@ -455,7 +466,7 @@
       <div class="export-project-summary"><strong id="export-project-name"></strong><span id="export-canvas-summary"></span></div>
       <div class="export-fields">
         <label>Resolution<select id="export-preset" aria-label="Export size"><option value="1080p">1080p</option><option value="720p">720p</option><option value="1440p">1440p</option><option value="2160p">2160p · 4K</option></select></label>
-        <label>Format &amp; audio<select id="audio-mode" aria-label="Video container and audio export"><option value="aac">MP4 · AAC up to 320 kb/s</option><option value="pcm">MOV · 24-bit PCM audio</option><option value="flac">MKV · 24-bit FLAC audio</option><option value="master">MKV · Lossless RGB + float PCM master</option><option value="copy">MKV · Source audio copy (no re-encode)</option></select></label>
+        <label>Format &amp; audio<select id="audio-mode" aria-label="Video container and audio export"><option value="aac">MP4 · AAC up to 384 kb/s</option><option value="flac">MKV · 24-bit FLAC audio</option><option value="master">MKV · Lossless RGB + float PCM master</option><option value="copy">MKV · Source audio copy (no re-encode)</option></select></label>
       </div>
       <p id="export-audio-note" class="export-note"></p>
       <label class="export-destination-label" for="export-destination">Save to</label>

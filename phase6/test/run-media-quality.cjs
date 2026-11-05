@@ -32,7 +32,7 @@ async function main() {
   const decode = file => run('ffmpeg', ['-v', 'error', '-i', file, '-map', '0:a:0', '-c:a', 'pcm_f32le', '-f', 'f32le', 'pipe:1'])
   const original = decode(expected.outputPath), results = []
   const hash = bytes => createHash('sha256').update(bytes).digest('hex')
-  for (const [mode, extension, codec] of [['master', 'mkv', 'pcm_f32le'], ['flac', 'mkv', 'flac'], ['pcm', 'mov', 'pcm_s24le'], ['aac', 'mp4', 'aac']]) {
+  for (const [mode, extension, codec] of [['master', 'mkv', 'pcm_f32le'], ['flac', 'mkv', 'flac'], ['aac', 'mp4', 'aac']]) {
     const output = path.join(dir, `export-${mode}.${extension}`)
     const probe = JSON.parse(run('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', output]))
     const audio = probe.streams.find(s => s.codec_type === 'audio'), picture = probe.streams.find(s => s.codec_type === 'video')
@@ -56,11 +56,11 @@ async function main() {
     }
     results.push({ mode, codec, sampleRate: audio.sample_rate, maxError, pixelHash })
   }
-  for (const name of ['video-only.mov', 'silent-4k-portrait.mov']) {
+  for (const name of ['video-only.mkv', 'silent-4k-portrait.mkv']) {
     const output = path.join(dir, name)
     const probe = JSON.parse(run('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', output]))
     const audio = probe.streams.find(s => s.codec_type === 'audio'), video = probe.streams.find(s => s.codec_type === 'video')
-    assert.equal(audio.codec_name, 'pcm_s24le')
+    assert.equal(audio.codec_name, 'flac')
     run('ffmpeg', ['-v', 'error', '-xerror', '-i', output, '-f', 'null', '-'])
     if (name.startsWith('silent')) {
       assert.equal(video.width, 2160); assert.equal(video.height, 3840)
@@ -72,19 +72,19 @@ async function main() {
   // A processed integer soundtrack must fail before silently clipping.
   const hot = path.join(dir, 'hot.wav')
   run('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.1', '-af', 'volume=6', '-c:a', 'pcm_s24le', hot])
-  const clippedOutput = path.join(dir, 'overload.mov'), clippedLog = path.join(dir, 'overload.log')
+  const clippedOutput = path.join(dir, 'overload.mkv'), clippedLog = path.join(dir, 'overload.log')
   const clippedFd = fs.openSync(clippedLog, 'wx')
   const overload = spawn(executable, [], { env: { ...process.env, TEMP: path.join(dir, 'temp'), TMP: path.join(dir, 'temp'),
     MUSICMETERS_EXPORT_PROFILE: path.join(dir, 'overload-profile'), PHASE2_JOB: JSON.stringify({
       project: { ...project, layers: [], audioPath: hot, mixer: { ...project.mixer, audioVolume: 2, masterVolume: 2, durationMode: 'audio' } },
-      output: clippedOutput, preset: '720p', audioMode: 'pcm', cancelFile: path.join(dir, 'overload.cancel') }) },
+      output: clippedOutput, preset: '720p', audioMode: 'flac', cancelFile: path.join(dir, 'overload.cancel') }) },
     stdio: ['ignore', clippedFd, clippedFd], shell: false, windowsHide: true })
   const overloadCode = await new Promise((resolve, reject) => { overload.once('error', reject); overload.once('close', resolve) })
   fs.closeSync(clippedFd)
   assert.equal(overloadCode, 1)
   assert.match(fs.readFileSync(clippedLog, 'utf8'), /exceeds full scale/)
   assert.equal(fs.existsSync(clippedOutput), false)
-  assert.equal(fs.readdirSync(dir).some(name => name.startsWith('overload.mov.partial')), false)
+  assert.equal(fs.readdirSync(dir).some(name => name.startsWith('overload.mkv.partial')), false)
   results.push({ mode: 'overload', rejectedBeforeClipping: true })
   await cache.close()
   fs.writeFileSync(path.join(dir, 'verification.json'), JSON.stringify(results, null, 2))
