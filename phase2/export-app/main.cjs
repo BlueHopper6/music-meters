@@ -64,7 +64,6 @@ function startEncoder(temp, input, totalFrames, audioMode, metadata) {
   const audioArgs = audioMode === 'copy' ? ['-c:a', 'copy']
     : audioMode === 'flac' ? ['-af', 'aresample=osf=s32:output_sample_bits=24:dither_method=triangular', '-c:a', 'flac', '-sample_fmt', 's32', '-bits_per_raw_sample', '24', '-compression_level', '8']
     : audioMode === 'master' ? ['-c:a', 'pcm_f32le']
-    : audioMode === 'pcm' ? ['-af', 'aresample=osf=s32:output_sample_bits=24:dither_method=triangular', '-c:a', 'pcm_s24le', '-movflags', '+faststart']
     : ['-c:a', 'aac', '-b:a', audioBitrate, '-movflags', '+faststart']
   const videoArgs = audioMode === 'master'
     ? ['-c:v', 'ffv1', '-level', '3', '-coder', '1', '-context', '1', '-g', '1', '-slicecrc', '1', '-pix_fmt', 'bgr0']

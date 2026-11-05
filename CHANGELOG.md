@@ -6,15 +6,20 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ### Added
 
+- Ctrl+Q quits with the unsaved-changes guard; Ctrl+F toggles full-screen preview.
+- Compatible MP4 exports now target up to 384 kb/s AAC stereo (192 kb/s mono), retaining lower targets for low sample rates.
+
 - One local video layer with normal layer ordering, transforms, cover/contain fitting, and freeze/loop/hide picture endings. Video audio plays once; silent video is supported. Video stays linked to its original file when saving, copying, or moving projects.
 - Independent video-audio, imported-audio, and master levels; source mutes; final-mix/video/imported-audio meter input selection; and meter-only input gain for source modes. Project length can follow the video, imported audio, or longest source.
-- MOV with uncompressed 24-bit PCM audio, MKV with 24-bit FLAC audio, and a large MKV master with lossless RGB video and 32-bit float PCM audio. Source-audio copy remains available for an eligible unchanged single soundtrack.
+- MKV with 24-bit FLAC audio and a large MKV master with lossless RGB video and 32-bit float PCM audio. Source-audio copy remains available for an eligible unchanged single soundtrack.
+- Volume sliders with editable percentages for video audio, imported audio, and master output; full-screen preview playback controls with the same seek line and time readout as the editor.
 - 1440p and 2160p/4K exports at 30 FPS and adjustable gradient texture to help reduce visible banding. Upload services may still remove texture and introduce compression artifacts.
 
 ### Changed
 
 - H.264 exports use a slower, higher-quality encoder setting and explicit SDR color metadata. Imported video uses a smaller proxy for preview; export decodes the original file.
 - Edited soundtracks use floating-point intermediates and preserve the highest input sample rate. Mixed-soundtrack overload is reported; integer/lossy exports reject an overloaded mix instead of silently clipping it.
+- The Save as Template name field matches the editor theme and has a clear keyboard focus indicator.
 
 ## [1.1.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.1.0) — 2026-10-29
 

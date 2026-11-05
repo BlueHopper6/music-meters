@@ -47,7 +47,7 @@ Each meter has its own settings, colors, and placement.
 
 ### Export locally
 
-- **MP4:** H.264 video with lossy AAC audio targeting up to 320 kb/s; mono and low-sample-rate sources use lower targets.
+- **MP4:** H.264 video with lossy AAC audio targeting up to 384 kb/s; mono and low-sample-rate sources use lower targets.
 - **MKV:** H.264 video with supported MP3, FLAC, or WAV/PCM audio copied without re-encoding. MP3 remains lossy.
 - Track export progress, cancel an export, and keep existing videos safe from silent overwrites.
 

@@ -19,7 +19,7 @@ module.exports = async function audioCopyEditorSmoke(win) {
   await waitFor('document.getElementById("status").textContent.includes("Real Prism")', 'initial still')
   win.showInactive()
   assert.equal(await evaluate('document.getElementById("audio-mode").value'), 'aac')
-  assert.equal(await evaluate('document.querySelector("#audio-mode option[value=\\"aac\\"]").textContent'), 'MP4 · AAC up to 320 kb/s')
+  assert.equal(await evaluate('document.querySelector("#audio-mode option[value=\\"aac\\"]").textContent'), 'MP4 · AAC up to 384 kb/s')
   assert.equal(await evaluate('document.querySelector("#audio-mode option[value=\\"copy\\"]").textContent'), 'MKV · Source audio copy (no re-encode)')
   assert.equal(await evaluate('document.getElementById("stage-resolution").textContent'), 'Layout 1280 × 720 · Export 1920 × 1080 · 16:9')
   await evaluate(`(() => { const mode = document.getElementById('audio-mode');

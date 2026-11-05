@@ -9,6 +9,7 @@ const { probeVideo, runFFmpeg, assertCachePath } = require('./project-media.cjs'
 class VideoFrames {
   constructor(layer, duration, maxDimension = 3840) {
     this.layer = layer; this.index = 0; this.pending = Buffer.alloc(0)
+    this.requestedDuration = duration
     const info = probeVideo(layer.videoPath)
     this.duration = info.duration
     this.child = spawn('ffmpeg', ['-nostdin', '-v', 'error',
@@ -44,7 +45,7 @@ class VideoFrames {
         }
       }
       const next = await this.iterator.next()
-      if (next.done) { await this.done; throw new Error('Video decoder ended before the composition') }
+      if (next.done) { await this.done; throw new Error(`Video decoder ended before composition frame ${this.index} (requested ${this.requestedDuration}s; source ${this.duration}s)`) }
       this.pending = Buffer.concat([this.pending, next.value])
       if (this.pending.length > 128 * 1024 * 1024) throw new Error('Decoded video frame exceeded its buffer limit')
     }

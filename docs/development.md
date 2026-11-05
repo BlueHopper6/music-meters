@@ -108,7 +108,7 @@ Work files and export analysis caches use the current user's temp directory. Tes
 
 ### Packaged regression tests
 
-For video import, soundtrack routing, and export-quality changes, also run `node --test phase2/test/project-media.test.cjs` and `node phase6/test/run-media-quality.cjs <package-dir> <new-output-dir>`. The latter uses synthetic 24 FPS video and 96 kHz audio, exercises the packaged editor, and verifies lossless master pixels/samples and 24-bit PCM/FLAC sample error. It does not upload to YouTube or establish perceptual listening quality.
+For video import, soundtrack routing, and export-quality changes, also run `node --test phase2/test/project-media.test.cjs` and `node phase6/test/run-media-quality.cjs <package-dir> <new-output-dir>`. The latter uses synthetic 24 FPS video and 96 kHz audio, exercises volume sliders/precise inputs, full-screen seeking, template naming, and the packaged editor, and verifies lossless master pixels/samples and 24-bit FLAC sample error. It does not upload to YouTube or establish perceptual listening quality.
 
 After installing packaging tools and creating the development package above, run the packaged checks relevant to the change. Each command below uses an isolated test profile; choose output paths that do not already exist on each run:
 

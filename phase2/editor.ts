@@ -206,6 +206,22 @@ async function syncAssets() {
 }
 const hasMedia = () => Boolean(project.audioPath || project.layers.some(layer => layer.type === 'video' && layer.videoPath))
 function mixer(): Mixer { return normalizeMixer(project.mixer) as Mixer }
+const volumeControls = ['mix-video-volume', 'mix-audio-volume', 'mix-master-volume'] as const
+function syncVolumeControl(id: typeof volumeControls[number]) {
+  const input = $<HTMLInputElement>(id), slider = $<HTMLInputElement>(`${id}-slider`)
+  const value = Number(input.value)
+  slider.value = input.value
+  slider.setAttribute('aria-valuetext', `${value}%`)
+  slider.style.setProperty('--volume-progress', `${value / 2}%`)
+}
+for (const id of volumeControls) {
+  const slider = $<HTMLInputElement>(`${id}-slider`)
+  slider.addEventListener('input', () => { $<HTMLInputElement>(id).value = slider.value; syncVolumeControl(id) })
+  slider.addEventListener('change', () => {
+    $<HTMLInputElement>(id).value = slider.value
+    $<HTMLInputElement>(id).dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
 async function updateMedia() {
   metadata = await window.desktop.mediaInfo(project)
   refreshAudio(); refreshInspector(); markPreviewStale(); render()
@@ -223,6 +239,7 @@ for (const [id, property] of [['mix-video-volume', 'videoVolume'], ['mix-audio-v
   $(id).addEventListener('change', async event => {
     if (historyBusy || exportRunning || exportSubmitting) return
     const input = event.target as HTMLInputElement
+    if (property.endsWith('Volume') && !input.value.trim()) { refreshInspector(); return }
     const previous = project.mixer
     const next = { ...mixer(), [property]: property.endsWith('Muted') ? input.checked
       : property.endsWith('Volume') ? Number(input.value) / 100 : property === 'meterGainDb' ? Number(input.value) : input.value }
@@ -610,6 +627,7 @@ function refreshInspector() {
   }
   ;($<HTMLInputElement>('mix-video-muted')).checked = mix.videoMuted
   ;($<HTMLInputElement>('mix-audio-muted')).checked = mix.audioMuted
+  for (const id of volumeControls) syncVolumeControl(id)
   ;($<HTMLInputElement>('meter-gain')).disabled = mix.meterSource === 'mix'
   $('text-options').hidden = layer?.type !== 'text'
   $('layer-rotation-row').hidden = layer?.type === 'image' || layer?.type === 'text'
@@ -881,6 +899,7 @@ function syncTimeReadout() {
   $('time-display').textContent = display
   $('time-display').setAttribute('aria-label', `Current time ${display}. Edit timecode`)
   $('time-duration').textContent = formatTimecode(metadata?.duration || 0)
+  syncFullscreenTransport()
   if (document.activeElement !== input) input.value = (frameIndex / 30).toFixed(3)
 }
 function repaint() { project = normalizeProject(project) as Project; render(); refreshInspector(); refreshLayers() }
@@ -1568,9 +1587,33 @@ timeInput.addEventListener('keydown', event => {
   }
 })
 $('refresh-still').addEventListener('click', () => { playback?.reset(); void refreshPreview() })
+const seekControls = $('time-slider').parentElement!
+const seekAnchor = document.createComment('timeline-seek')
+seekControls.before(seekAnchor)
+function syncFullscreenTransport() {
+  const play = $<HTMLButtonElement>('playback-play'), fullscreenPlay = $<HTMLButtonElement>('fullscreen-play')
+  const playing = play.getAttribute('aria-pressed') === 'true'
+  fullscreenPlay.textContent = playing ? 'Pause' : 'Play'
+  fullscreenPlay.setAttribute('aria-label', playing ? 'Pause preview' : 'Play preview')
+  fullscreenPlay.setAttribute('aria-pressed', String(playing))
+  fullscreenPlay.disabled = play.disabled
+  $('fullscreen-time').textContent = `${formatTimecode(frameIndex / 30)} / ${formatTimecode(metadata?.duration || 0)}`
+  ;($<HTMLInputElement>('fullscreen-muted')).checked = $<HTMLInputElement>('playback-muted').checked
+}
+new MutationObserver(syncFullscreenTransport).observe($('playback-play'), { attributes: true, attributeFilter: ['aria-pressed', 'disabled'] })
+$('fullscreen-play').addEventListener('click', () => $('playback-play').click())
+$('fullscreen-muted').addEventListener('change', () => {
+  $<HTMLInputElement>('playback-muted').checked = $<HTMLInputElement>('fullscreen-muted').checked
+  $('playback-muted').dispatchEvent(new Event('change', { bubbles: true }))
+})
+$('playback-muted').addEventListener('change', syncFullscreenTransport)
 function setStageFullscreen(active: boolean) {
   document.body.classList.toggle('stage-fullscreen', active)
   $('exit-fullscreen-preview').hidden = !active
+  $('fullscreen-transport').hidden = !active
+  if (active) $('fullscreen-seek-host').append(seekControls)
+  else seekAnchor.parentNode!.insertBefore(seekControls, seekAnchor.nextSibling)
+  syncFullscreenTransport()
   $('fullscreen-preview').setAttribute('aria-pressed', String(active))
   if (active) {
     document.documentElement.requestFullscreen?.().catch(() => {})
@@ -1636,7 +1679,7 @@ $<HTMLSelectElement>('export-preset').addEventListener('change', async event => 
 })
 $<HTMLSelectElement>('audio-mode').addEventListener('change', event => {
   const mode = (event.target as HTMLSelectElement).value
-  $('render-mp4').textContent = mode === 'aac' ? 'Export MP4' : mode === 'pcm' ? 'Export MOV' : 'Export MKV'
+  $('render-mp4').textContent = mode === 'aac' ? 'Export MP4' : 'Export MKV'
   exportDestination = ''
   ;($<HTMLInputElement>('export-destination')).value = ''
   updateExportDialog()
@@ -2148,6 +2191,7 @@ async function applyLoadedProject(loaded: Initial) {
 }
 
 function showProjectManager() {
+  if (document.body.classList.contains('stage-fullscreen')) setStageFullscreen(false)
   playback?.reset()
   const managerStatus = $('project-manager-status')
   managerStatus.textContent = ''
@@ -2634,7 +2678,7 @@ window.desktop.onExport(event => {
     ;($<HTMLSelectElement>('audio-mode')).disabled = false
     $('cancel-render').hidden = true
     $('export-running-label').hidden = true
-    const container = String(event.output).toLowerCase().endsWith('.mkv') ? 'MKV' : String(event.output).toLowerCase().endsWith('.mov') ? 'MOV' : 'MP4'
+    const container = String(event.output).toLowerCase().endsWith('.mkv') ? 'MKV' : 'MP4'
     setStatus(event.event === 'finished' ? `${container} ready: ${event.output}`
       : event.event === 'cancelled' ? 'Export cancelled. No video was saved.'
       : `Export failed: ${event.message || ''}`)
@@ -2802,9 +2846,7 @@ function updateExportDialog() {
       ? 'Lossless RGB video from the rendered canvas and uncompressed 32-bit float audio. Very large files; intended for archiving or further editing. Does not restore detail missing from source media.'
     : ($<HTMLSelectElement>('audio-mode')).value === 'flac'
       ? 'High-quality H.264 video with 24-bit FLAC audio. No lossy audio compression; volume changes and mixing are rendered into the soundtrack.'
-    : ($<HTMLSelectElement>('audio-mode')).value === 'pcm'
-      ? 'High-quality H.264 video with uncompressed 24-bit PCM audio. A larger upload/editing file that avoids AAC conversion. Upload services may recompress it.'
-    : 'High-quality H.264 video with lossy AAC audio up to 320 kb/s. Choose PCM, FLAC, or a lossless master to avoid lossy audio encoding.'
+    : 'High-quality H.264 video with lossy AAC audio up to 384 kb/s. Choose MKV with FLAC or a lossless master to avoid lossy audio encoding.'
   ;($<HTMLButtonElement>('render-mp4')).disabled = !metadata || exportRunning || exportSubmitting
   ;($<HTMLButtonElement>('choose-export-destination')).disabled = !metadata || exportRunning || exportSubmitting
   ;($<HTMLSelectElement>('export-preset')).disabled = exportRunning || exportSubmitting
@@ -2859,6 +2901,19 @@ for (const [id, close] of [['export-modal', closeExportDialog], ['about-modal', 
   })
 }
 window.addEventListener('keydown', event => {
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && !event.repeat) {
+    const command = event.key.toLowerCase()
+    if (command === 'q') {
+      event.preventDefault()
+      if (!document.querySelector('.modal-backdrop:not([hidden])')) $('quit-app').click()
+      return
+    }
+    if (command === 'f' && !$('editor-screen').hidden) {
+      event.preventDefault()
+      if (!document.querySelector('.modal-backdrop:not([hidden])')) $('fullscreen-preview').click()
+      return
+    }
+  }
   if (!(event.ctrlKey || event.metaKey) || event.altKey || document.querySelector('.modal-backdrop:not([hidden])') || $('editor-screen').hidden) return
   const command = event.key.toLowerCase()
   if (command === 'z' || command === 'y') {

@@ -3,20 +3,23 @@ const assert = require('node:assert/strict')
 const { outputFormat, aacBitrate, validateOutputPath, validateAudioCopy } = require('../audio-output.cjs')
 
 test('outputFormat and validateOutputPath enforce MP4/AAC and MKV/copy contracts', () => {
-  assert.deepEqual(outputFormat(), { extension: '.mp4', container: 'MP4', audio: 'AAC up to 320 kb/s' })
-  assert.deepEqual(outputFormat('aac'), { extension: '.mp4', container: 'MP4', audio: 'AAC up to 320 kb/s' })
+  assert.deepEqual(outputFormat(), { extension: '.mp4', container: 'MP4', audio: 'AAC up to 384 kb/s' })
+  assert.deepEqual(outputFormat('aac'), { extension: '.mp4', container: 'MP4', audio: 'AAC up to 384 kb/s' })
   assert.deepEqual(outputFormat('copy'), { extension: '.mkv', container: 'MKV', audio: 'source audio stream copy' })
   assert.throws(() => outputFormat('opus'), /Unsupported audio export option/)
+  assert.throws(() => outputFormat('pcm'), /Unsupported audio export option/)
+  assert.equal(outputFormat('flac').extension, '.mkv')
+  assert.equal(outputFormat('master').extension, '.mkv')
   assert.equal(validateOutputPath('C:/out/video.MP4', 'aac').container, 'MP4')
   assert.equal(validateOutputPath('C:/out/video.MKV', 'copy').container, 'MKV')
   assert.throws(() => validateOutputPath('C:/out/video.mkv', 'aac'), /MP4 output must end in \.mp4/)
   assert.throws(() => validateOutputPath('C:/out/video.mp4', 'copy'), /MKV output must end in \.mkv/)
 })
 
-test('aacBitrate requests 320k for standard stereo and explicit lower targets for mono and low-rate inputs', () => {
+test('aacBitrate requests 384k for standard stereo and explicit lower targets for mono and low-rate inputs', () => {
   for (const sampleRate of [44100, 48000, 88200, 96000, 192000]) {
-    assert.equal(aacBitrate({ channels: 2, sampleRate }), '320k')
-    assert.equal(aacBitrate({ channels: 1, sampleRate }), '160k')
+    assert.equal(aacBitrate({ channels: 2, sampleRate }), '384k')
+    assert.equal(aacBitrate({ channels: 1, sampleRate }), '192k')
   }
   assert.equal(aacBitrate({ channels: 2, sampleRate: 32000 }), '256k')
   assert.equal(aacBitrate({ channels: 1, sampleRate: 32000 }), '128k')
