@@ -26,6 +26,8 @@ For a finished composition, choose **Artwork / logo** or **Text** in the Add lay
 
 ## Video layers and audio routing
 
+Copied audio and video retain their original filenames in the editor, including after reopening or Save As. Replacing copied audio can still update an automatically suggested song title. Source filenames stay out of reusable templates.
+
 These controls are in development source after 1.1.0; published 1.1.0 binaries do not include them.
 
 Choose **Import video** or **Add layer → Video**. One local MP4, MOV, MKV, WebM, AVI, or M4V video is supported, subject to the installed FFmpeg's decoders. Arrange it anywhere among the other layers; an opaque video covers layers beneath it. Position, size, rotation, visibility, opacity, locking, and cover/contain fitting work like other layers. Replace or relink it through the video picker. Choose Copy to keep a project-owned copy when saving, or Link to keep using the source at its original location. Copies preserve original file bytes. Linked sources must remain available. Projects containing a video layer require this version or newer.

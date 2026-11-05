@@ -51,6 +51,35 @@ module.exports=async function(win){
   finally {fs.promises.copyFile=copyFile;win.close=closeWindow}
   assert.equal(deferred,true);assert.equal(guardCalls,1,'failed save must return to close guard instead of quitting')
   assert.deepEqual(fs.readFileSync(process.env.PHASE2_TEST_PROJECT_PATH),previous)
-  console.log(JSON.stringify({event:'media-storage-pass',prompts:count,copy:true,link:true,cancel:true,saveAs:true,failedSaveCloseGuard:true}))
+  async function wait(source,label){
+    const deadline=Date.now()+45000
+    while(Date.now()<deadline){if(await evaluate(source))return;await new Promise(resolve=>setTimeout(resolve,80))}
+    throw new Error(label+': '+await evaluate('document.getElementById("status").textContent'))
+  }
+  const click=id=>evaluate(`document.getElementById(${JSON.stringify(id)}).click()`)
+  response=0
+  await click('import-audio')
+  await wait('document.getElementById("status").textContent.includes("Real Prism") && document.getElementById("title").value==="song"','first source name')
+  process.env.PHASE2_TEST_PROJECT_PATH=path.join(dir,'names','names.json')
+  await click('save-project')
+  await wait('!document.getElementById("editor-screen").inert && document.getElementById("status").textContent.startsWith("Saved project:")','named save')
+  await click('open-project')
+  await wait('document.getElementById("status").textContent.includes("Real Prism") && document.getElementById("audio-name").textContent==="song.wav"','copied name after reopening')
+  process.env.PHASE2_TEST_IMPORT_PATH=path.join(dir,'next-song.wav')
+  await click('import-audio')
+  await wait('document.getElementById("status").textContent.includes("Real Prism") && document.getElementById("title").value==="next song"','automatic title after replacing copied audio')
+  await click('import-video')
+  await wait('document.getElementById("status").textContent.includes("Real Prism") && document.getElementById("video-name").textContent==="clip.mp4" && document.getElementById("cancel-media").hidden','video source name')
+  await click('save-project')
+  await wait('!document.getElementById("editor-screen").inert && document.getElementById("status").textContent.startsWith("Saved project:")','video name saved')
+  const named=JSON.parse(fs.readFileSync(process.env.PHASE2_TEST_PROJECT_PATH))
+  assert.equal(named.audioName,'next-song.wav')
+  const video=named.layers.find(layer=>layer.type==='video');assert.equal(video.sourceName,'clip.mp4')
+  await click('open-project')
+  await wait('document.getElementById("status").textContent.includes("Real Prism") && document.getElementById("audio-name").textContent==="next-song.wav"','reopen named media')
+  await evaluate(`document.querySelector(${JSON.stringify('.layer-item[data-id="'+video.id+'"]')}).click()`)
+  assert.equal(await evaluate('document.getElementById("video-name").textContent'),'clip.mp4')
+  assert.equal(count,12)
+  console.log(JSON.stringify({event:'media-storage-pass',prompts:count,copy:true,link:true,cancel:true,saveAs:true,failedSaveCloseGuard:true,sourceNames:true,automaticTitle:true}))
   app.quit()
 }

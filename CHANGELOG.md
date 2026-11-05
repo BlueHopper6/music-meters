@@ -20,6 +20,7 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ### Changed
 
+- Copied audio and video retain their source filenames for display; replacing copied audio keeps automatic song-title suggestions working.
 - H.264 exports use a slower, higher-quality encoder setting and explicit SDR color metadata. Imported video uses a smaller proxy for preview; export decodes the original file.
 - Edited soundtracks use floating-point intermediates and preserve the highest input sample rate. Mixed-soundtrack overload is reported; integer/lossy exports reject an overloaded mix instead of silently clipping it.
 - The Save as Template name field matches the editor theme and has a clear keyboard focus indicator.
