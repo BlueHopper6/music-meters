@@ -54,6 +54,7 @@ function layoutFromProject(raw) {
   layout.title = ''
   layout.previewFrame = 0
   for (const layer of layout.layers) {
+    if (layer.type === 'video') layer.videoPath = ''
     if (layer.type === 'image') layer.imagePath = ''
     if (layer.type === 'text') layer.text = ''
   }
@@ -75,7 +76,7 @@ function readTemplate(userData, id) {
   }
   const layout = normalizeProject(resolveArtwork(stored.layout, target))
   if (layout.version !== 2 || layout.audioPath || layout.title || layout.layers.some(layer =>
-    layer.type === 'image' && layer.imagePath || layer.type === 'text' && layer.text)) {
+    layer.type === 'image' && layer.imagePath || layer.type === 'video' && layer.videoPath || layer.type === 'text' && layer.text)) {
     throw new Error('Template contains song media or metadata')
   }
   return { id, name: stored.name, layout }
@@ -166,7 +167,18 @@ function applyTemplate(layout, current) {
   for (const layer of validated.layers) if (layer.type === 'text' && /^song title$/i.test(layer.name)) {
     layer.text = song.title === 'Untitled track' && song.audioPath ? titleSuggestion(song.audioPath) : song.title
   }
-  return normalizeProject({ ...validated, audioPath: song.audioPath, title: song.title, previewFrame: song.previewFrame })
+  // Layout changes retain the current video's media, just as they retain audio.
+  const video = song.layers.find(layer => layer.type === 'video')
+  const slot = validated.layers.find(layer => layer.type === 'video')
+  if (slot && video) slot.videoPath = video.videoPath
+  if (!slot && video) {
+    if (validated.layers.length >= 32) throw new Error('This template has no room for the current video layer')
+    const preserved = { ...video, id: 'retained-video' }
+    while (validated.layers.some(layer => layer.id === preserved.id)) preserved.id += '-1'
+    const { fitLayer } = require('./project.cjs')
+    validated.layers.unshift(fitLayer(preserved, song.width, song.height, validated.width, validated.height))
+  }
+  return normalizeProject({ ...validated, mixer: song.mixer, audioPath: song.audioPath, title: song.title, previewFrame: song.previewFrame })
 }
 
 function titleSuggestion(audioPath) {

@@ -3,6 +3,9 @@ const { extname } = require('node:path')
 const FORMATS = Object.freeze({
   aac: { extension: '.mp4', container: 'MP4', audio: 'AAC up to 320 kb/s' },
   copy: { extension: '.mkv', container: 'MKV', audio: 'source audio stream copy' },
+  flac: { extension: '.mkv', container: 'MKV', audio: '24-bit FLAC mix' },
+  master: { extension: '.mkv', container: 'MKV', audio: '32-bit float PCM; lossless RGB video' },
+  pcm: { extension: '.mov', container: 'MOV', audio: '24-bit PCM; high-quality H.264 video' },
 })
 
 const WAV_PCM = new Set(['pcm_u8', 'pcm_s16le', 'pcm_s24le', 'pcm_s32le',
@@ -25,6 +28,7 @@ function validateAudioCopy(input, metadata) {
   const extension = extname(input).toLowerCase()
   const codec = metadata.codecName
   if ((extension === '.mp3' && codec === 'mp3')
+      || (['.mp4', '.mov', '.mkv', '.webm', '.m4v', '.avi'].includes(extension) && ['aac', 'mp3', 'flac', 'opus', 'vorbis', ...WAV_PCM].includes(codec))
       || (extension === '.flac' && codec === 'flac')
       || (extension === '.wav' && WAV_PCM.has(codec))) return
   throw new Error(`Cannot copy ${codec || 'unknown'} audio from ${extension || 'this file'} into MKV. Use compatible MP4/AAC instead.`)

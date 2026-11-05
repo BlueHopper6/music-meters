@@ -11,6 +11,7 @@ import type { SpectrumNativeAnalyzer, OscilloscopeNativeAnalyzer, SpectrogramNat
 import type { SpectrogramNativeOptions, SpectrogramNativeResult, VUMeterNativeSnapshot, LUFSMeterNativeSnapshot } from '../upstream/prism/src/renderer/audio/native/visualizer-dsp'
 import { normalizeProject } from './project.cjs'
 import { vectorscopeCorrelations } from '../phase3/vectorscope-correlation.cjs'
+import { gradientPixels } from './gradient.cjs'
 
 type BaseLayer = {
   id: string; name: string; x: number; y: number; w: number; h: number
@@ -45,14 +46,17 @@ export type WaterfallLayer = BaseLayer & { type: 'waterfall'; fftSize: number; s
   frequencyRangeMode: 'extended' | 'audible'; historySeconds: number; density: 'sparse' | 'balanced' | 'dense'
   colorMode: 'theme' | 'heat'; smoothing: number; tiltDbPerOctave: number; showGrid: boolean }
 export type ImageLayer = BaseLayer & { type: 'image'; imagePath: string; fit: 'cover' | 'contain'; rotation: number; shadow: number }
+export type VideoLayer = BaseLayer & { type: 'video'; videoPath: string; fit: 'cover' | 'contain'; shadow: number; endBehavior: 'freeze' | 'loop' | 'hide' }
 export type TextLayer = BaseLayer & { type: 'text'; text: string; fontFamily: string; fontSize: number;
   fontWeight: 'normal' | 'bold'; align: 'left' | 'center' | 'right'; rotation: number; shadow: number }
-export type Layer = VectorscopeLayer | SpectrumLayer | OscilloscopeLayer | SpectrogramLayer | WaveformLayer | VuLayer | LoudnessLayer | WaterfallLayer | ImageLayer | TextLayer
-type MeterLayer = Exclude<Layer, ImageLayer | TextLayer>
-export type Background = { type: 'solid' | 'gradient' | 'image'; color: string; color2: string; imagePath: string; fit: 'cover' | 'contain' }
+export type Layer = VectorscopeLayer | SpectrumLayer | OscilloscopeLayer | SpectrogramLayer | WaveformLayer | VuLayer | LoudnessLayer | WaterfallLayer | ImageLayer | TextLayer | VideoLayer
+type MeterLayer = Exclude<Layer, ImageLayer | TextLayer | VideoLayer>
+export type Background = { type: 'solid' | 'gradient' | 'image'; color: string; color2: string; imagePath: string; fit: 'cover' | 'contain'; dither?: number }
+export type Mixer = { videoVolume: number; audioVolume: number; masterVolume: number; videoMuted: boolean; audioMuted: boolean;
+  meterSource: 'mix' | 'video' | 'audio'; meterGainDb: number; durationMode: 'longest' | 'video' | 'audio' }
 export type Project = {
   version: number; width: number; height: number; fps: number; title: string
-  background: string | Background; audioPath: string; previewFrame?: number; layers: Layer[]
+  background: string | Background; audioPath: string; previewFrame?: number; layers: Layer[]; mixer?: Mixer
 }
 export type Points = { x: Float32Array; y: Float32Array }
 export type VectorscopeFrame = Points & { multiband: Float32Array }
@@ -288,6 +292,9 @@ export class Composition {
   private context: CanvasRenderingContext2D
   private meters = new Map<string, Meter>()
   private images = new Map<string, HTMLImageElement>()
+  private videos = new Map<string, HTMLVideoElement>()
+  private videoFrame: HTMLImageElement | null = null
+  private gradient: { key: string; canvas: HTMLCanvasElement } | null = null
   private analysis: AnalysisFrame = { vectorscope: { x: new Float32Array(0), y: new Float32Array(0), multiband: new Float32Array(0) },
     spectra: {}, oscilloscopes: {}, spectrograms: {}, waveforms: {}, vus: {}, loudness: {}, waterfalls: {} }
   private sampleRate = 48000
@@ -339,12 +346,67 @@ export class Composition {
     this.images = next
   }
 
-  private drawImageBox(image: HTMLImageElement, x: number, y: number, w: number, h: number, fit: 'cover' | 'contain'): void {
+  async setVideos(data: Record<string, string>): Promise<void> {
+    for (const [input, video] of this.videos) if (!data[input] || video.src !== data[input]) {
+      video.pause(); video.removeAttribute('src'); video.load(); this.videos.delete(input)
+    }
+    for (const [input, url] of Object.entries(data)) {
+      if (this.videos.has(input)) continue
+      if (!/^musicmeters-preview:\/\/video\/[a-f0-9-]{36}$/.test(url)) throw new Error('Invalid video capability')
+      const video = document.createElement('video'); video.muted = true; video.preload = 'auto'; video.playsInline = true
+      await new Promise<void>((resolve, reject) => {
+        const cleanup = () => { clearTimeout(timer); video.removeEventListener('loadeddata', loaded); video.removeEventListener('error', failed) }
+        const loaded = () => { cleanup(); resolve() }
+        const failed = () => { cleanup(); reject(new Error('Video preview could not load')) }
+        const timer = setTimeout(() => { cleanup(); reject(new Error('Video preview load timed out')) }, 15000)
+        video.addEventListener('loadeddata', loaded); video.addEventListener('error', failed); video.src = url
+      })
+      this.videos.set(input, video)
+    }
+  }
+
+  syncVideo(project: Project, seconds: number, playing: boolean): void {
+    const layer = project.layers.find(layer => layer.type === 'video') as VideoLayer | undefined
+    for (const [input, video] of this.videos) {
+      if (!layer || layer.videoPath !== input || !playing) { video.pause(); continue }
+      const target = layer.endBehavior === 'loop' ? seconds % video.duration : Math.min(seconds, Math.max(0, video.duration - 1 / 30))
+      if (Math.abs(video.currentTime - target) > 0.08) video.currentTime = target
+      video.loop = layer.endBehavior === 'loop'
+      if (video.paused && target < video.duration - 1 / 30) void video.play().catch(() => {})
+    }
+  }
+
+  async seekVideo(project: Project, seconds: number): Promise<void> {
+    const layer = project.layers.find(layer => layer.type === 'video') as VideoLayer | undefined
+    if (!layer) return
+    const video = this.videos.get(layer.videoPath)
+    if (!video) return
+    video.pause()
+    const target = layer.endBehavior === 'loop' ? seconds % video.duration : Math.min(seconds, Math.max(0, video.duration - 1 / 30))
+    if (Math.abs(video.currentTime - target) < 0.001 && !video.seeking) return
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => { clearTimeout(timer); video.removeEventListener('seeked', done); video.removeEventListener('error', failed) }
+      const done = () => { cleanup(); resolve() }
+      const failed = () => { cleanup(); reject(new Error('Video seek failed')) }
+      const timer = setTimeout(() => { cleanup(); reject(new Error('Video seek timed out')) }, 10000)
+      video.addEventListener('seeked', done); video.addEventListener('error', failed); video.currentTime = target
+    })
+  }
+
+  async setVideoFrame(url: string): Promise<void> {
+    this.videoFrame = null
+    if (!url) return
+    if (!url.startsWith('data:image/png;base64,')) throw new Error('Invalid decoded video image')
+    const image = new Image(); image.src = url; await image.decode(); this.videoFrame = image
+  }
+
+  private drawImageBox(image: HTMLImageElement | HTMLVideoElement, x: number, y: number, w: number, h: number, fit: 'cover' | 'contain'): void {
     const ctx = this.context
-    const factor = fit === 'cover' ? Math.max(w / image.naturalWidth, h / image.naturalHeight)
-      : Math.min(w / image.naturalWidth, h / image.naturalHeight)
-    const iw = image.naturalWidth * factor
-    const ih = image.naturalHeight * factor
+    const sourceW = image instanceof HTMLVideoElement ? image.videoWidth : image.naturalWidth
+    const sourceH = image instanceof HTMLVideoElement ? image.videoHeight : image.naturalHeight
+    const factor = fit === 'cover' ? Math.max(w / sourceW, h / sourceH) : Math.min(w / sourceW, h / sourceH)
+    const iw = sourceW * factor
+    const ih = sourceH * factor
     ctx.save()
     ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip()
     ctx.drawImage(image, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih)
@@ -361,20 +423,21 @@ export class Composition {
     ctx.restore()
   }
 
-  private drawGraphic(layer: ImageLayer | TextLayer): void {
+  private drawGraphic(layer: ImageLayer | TextLayer | VideoLayer, frameIndex: number): void {
     const ctx = this.context
     ctx.save()
     ctx.globalAlpha = layer.opacity
     ctx.translate(layer.x + layer.w / 2, layer.y + layer.h / 2)
     ctx.rotate(layer.rotation * Math.PI / 180)
-    if (layer.type === 'text') this.drawLayerBackground(layer, layer.w, layer.h)
+    if (layer.type === 'text' || layer.type === 'video') this.drawLayerBackground(layer, layer.w, layer.h)
     if (layer.shadow) {
       ctx.shadowColor = 'rgba(0,0,0,0.85)'
       ctx.shadowBlur = layer.shadow
       ctx.shadowOffsetY = Math.min(12, layer.shadow / 3)
     }
-    if (layer.type === 'image') {
-      const image = this.images.get(layer.imagePath)
+    if (layer.type === 'image' || layer.type === 'video') {
+      const image = layer.type === 'image' ? this.images.get(layer.imagePath) : this.videoFrame || this.videos.get(layer.videoPath)
+      if (layer.type === 'video' && layer.endBehavior === 'hide' && image instanceof HTMLVideoElement && frameIndex / 30 >= image.duration) { ctx.restore(); return }
       if (image) this.drawImageBox(image, -layer.w / 2, -layer.h / 2, layer.w, layer.h, layer.fit)
     } else {
       ctx.beginPath(); ctx.rect(-layer.w / 2, -layer.h / 2, layer.w, layer.h); ctx.clip()
@@ -488,9 +551,13 @@ export class Composition {
     context.fillRect(0, 0, canvas.width, canvas.height)
     if (typeof background !== 'string') {
       if (background.type === 'gradient') {
-        const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height)
-        gradient.addColorStop(0, background.color); gradient.addColorStop(1, background.color2)
-        context.fillStyle = gradient; context.fillRect(0, 0, canvas.width, canvas.height)
+        const key = JSON.stringify([canvas.width, canvas.height, background.color, background.color2, background.dither ?? 1.5])
+        if (this.gradient?.key !== key) {
+          const surface = document.createElement('canvas'); surface.width = canvas.width; surface.height = canvas.height
+          surface.getContext('2d')!.putImageData(new ImageData(gradientPixels(canvas.width, canvas.height, background.color, background.color2, background.dither ?? 1.5), canvas.width, canvas.height), 0, 0)
+          this.gradient = { key, canvas: surface }
+        }
+        context.drawImage(this.gradient.canvas, 0, 0)
       } else if (background.type === 'image') {
         const image = this.images.get(background.imagePath)
         if (image) this.drawImageBox(image, 0, 0, canvas.width, canvas.height, background.fit)
@@ -513,8 +580,8 @@ export class Composition {
     }
     for (const layer of project.layers) {
       if (!layer.visible || layer.opacity === 0) continue
-      if (layer.type === 'image' || layer.type === 'text') {
-        context.save(); context.scale(sx, sy); this.drawGraphic(layer); context.restore()
+      if (layer.type === 'image' || layer.type === 'text' || layer.type === 'video') {
+        context.save(); context.scale(sx, sy); this.drawGraphic(layer, frameIndex); context.restore()
         continue
       }
       const signature = layer.type === 'vectorscope' ? JSON.stringify([layer.type, layer.color,

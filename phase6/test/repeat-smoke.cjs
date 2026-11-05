@@ -150,7 +150,7 @@ module.exports = async function repeatSmoke(win) {
   assert.equal(await evaluate('document.getElementById("layer-y").value'), '110')
   await stageClick(30, 690)
   await evaluate('document.getElementById("load-template").click()')
-  await waitFor('document.querySelectorAll(".layer-item").length > 0 && document.getElementById("no-layer-selected").hidden', 'template load')
+  await waitFor('document.querySelectorAll(".layer-item").length > 0 && document.getElementById("no-layer-selected").hidden && !document.getElementById("editor-screen").inert', 'template load finishes before checking the stage selection')
   assert.equal(await evaluate('document.getElementById("selection").hidden'), false)
   const order = await evaluate('Array.from(document.querySelectorAll(".layer-item"), row => row.dataset.id)')
   assert.ok(order.length > 1, 'Starter template should have multiple layers')

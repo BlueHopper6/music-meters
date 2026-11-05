@@ -1,7 +1,7 @@
 import { renderTemplateThumbnail, clearTemplateThumbnails } from './template-thumbnail'
 import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type VectorscopeLayer, type SpectrumLayer,
   type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer, type LoudnessLayer, type WaterfallLayer,
-  type ImageLayer, type TextLayer, type Background } from './composition'
+  type ImageLayer, type TextLayer, type Background, type VideoLayer, type Mixer } from './composition'
 import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject, fitLayer, orientProject, exportDimensions } from './project.cjs'
 import { move as moveOnStage, resize as resizeOnStage } from './stage-geometry.cjs'
 import { installCommandMenus } from './command-menus'
@@ -9,10 +9,11 @@ import { installVideoPreview, type LiveFrame } from './video-preview'
 import type { PlaybackStart } from './video-preview'
 import { formatTimecode, parseTimecode, frameAtTime } from './timecode.cjs'
 import { ProjectHistory } from './project-history.cjs'
+import { videoLayer, normalizeMixer } from './project.cjs'
 
 type Metadata = { channels: number; sampleRate: number; duration: number; totalFrames: number; codecName: string }
 type TemplateEntry = { id: string; name: string; builtIn: boolean }
-type MissingMedia = { kind: 'audio' | 'background' | 'layer'; id?: string; label: string; path: string }
+type MissingMedia = { kind: 'audio' | 'background' | 'layer' | 'video'; id?: string; label: string; path: string }
 type RecentProject = { path: string; name: string; lastOpened: number }
 type ProjectAction = 'rename' | 'move' | 'copy' | 'delete'
 type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null; fonts: string[];
@@ -27,6 +28,10 @@ type Desktop = {
   onWindowState(listener: (state: { fullscreen: boolean; maximized: boolean }) => void): () => void
   initial(): Promise<Initial>
   chooseAudio(): Promise<{ path: string; metadata: Metadata } | null>
+  chooseVideo(): Promise<{ path: string; duration: number } | null>
+  mediaInfo(project: Project): Promise<Metadata | null>
+  loadVideos(project: Project): Promise<Record<string, string>>
+  cancelMediaPreparation(): Promise<void>
   restoreProject(project: Project): Promise<{ project: Project; metadata: Metadata | null; missingMedia: MissingMedia[] }>
   chooseImage(): Promise<string | null>
   loadAssets(project: Project): Promise<Record<string, string>>
@@ -188,9 +193,74 @@ function upgradeProject() {
   project.layers.push(title)
 }
 async function syncAssets() {
-  try { await composition.setAssets(await window.desktop.loadAssets(project)); render() }
-  catch (error) { setStatus(`Artwork unavailable: ${String(error)}`); render() }
+  try {
+    await composition.setAssets(await window.desktop.loadAssets(project))
+    if (project.layers.some(layer => layer.type === 'video' && layer.videoPath)) setStatus('Preparing video preview…')
+    $('cancel-media').hidden = false
+    await composition.setVideos(await window.desktop.loadVideos(project))
+    await composition.seekVideo(project, frameIndex / 30)
+    render()
+  }
+  catch (error) { setStatus(`Media unavailable: ${String(error)}`); render(); throw error }
+  finally { $('cancel-media').hidden = true }
 }
+const hasMedia = () => Boolean(project.audioPath || project.layers.some(layer => layer.type === 'video' && layer.videoPath))
+function mixer(): Mixer { return normalizeMixer(project.mixer) as Mixer }
+async function updateMedia() {
+  metadata = await window.desktop.mediaInfo(project)
+  refreshAudio(); refreshInspector(); markPreviewStale(); render()
+}
+$('cancel-media').addEventListener('click', () => {
+  setStatus('Media preparation cancelled.')
+  void window.desktop.cancelMediaPreparation().catch(error => setStatus(String(error)))
+})
+$('gradient-texture').addEventListener('input', event => {
+  upgradeProject(); background().dither = Number((event.target as HTMLInputElement).value); render()
+})
+for (const [id, property] of [['mix-video-volume', 'videoVolume'], ['mix-audio-volume', 'audioVolume'],
+  ['mix-master-volume', 'masterVolume'], ['mix-video-muted', 'videoMuted'], ['mix-audio-muted', 'audioMuted'],
+  ['meter-source', 'meterSource'], ['meter-gain', 'meterGainDb'], ['media-duration', 'durationMode']] as const) {
+  $(id).addEventListener('change', async event => {
+    if (historyBusy || exportRunning || exportSubmitting) return
+    const input = event.target as HTMLInputElement
+    const previous = project.mixer
+    const next = { ...mixer(), [property]: property.endsWith('Muted') ? input.checked
+      : property.endsWith('Volume') ? Number(input.value) / 100 : property === 'meterGainDb' ? Number(input.value) : input.value }
+    try {
+      project.mixer = normalizeMixer(next) as Mixer
+      const position = frameIndex
+      resetSongPreview(); frameIndex = position; await updateMedia()
+    } catch (error) { project.mixer = previous; refreshInspector(); setStatus(String(error)) }
+  })
+}
+for (const id of ['video-fit', 'video-end']) $(id).addEventListener('change', event => {
+  const layer = selected()
+  if (layer?.type !== 'video' || layer.locked) return
+  const value = (event.target as HTMLSelectElement).value
+  if (id === 'video-fit') layer.fit = value as VideoLayer['fit']
+  else layer.endBehavior = value as VideoLayer['endBehavior']
+  repaint(); void composition.seekVideo(project, frameIndex / 30).then(render).catch(error => setStatus(String(error)))
+})
+$('replace-video').addEventListener('click', () => $('import-video').click())
+$('import-video').addEventListener('click', async () => {
+  if (historyBusy || exportRunning || exportSubmitting) return
+  const existing = project.layers.find(layer => layer.type === 'video') as VideoLayer | undefined
+  if (!existing && project.layers.length >= (project.version === 1 ? 31 : 32)) return setStatus('Remove a layer before importing video.')
+  endHistoryGroup(); recordEdit(); historyBusy = true; updateHistoryControls()
+  try {
+    const chosen = await window.desktop.chooseVideo()
+    if (!chosen) return
+    resetSongPreview(); upgradeProject()
+    const layer = existing || { ...videoLayer(nextId('video')), w: project.width, h: project.height } as VideoLayer
+    layer.videoPath = chosen.path
+    if (!existing) project.layers.unshift(layer)
+    selectedId = layer.id
+    missingMedia = missingMedia.filter(item => item.kind !== 'video')
+    await updateMedia(); refreshLayers(); renderMissingMedia(); await syncAssets()
+    void refreshPreview()
+  } catch (error) { setStatus(String(error)) }
+  finally { historyBusy = false; updateHistoryControls(); recordEdit() }
+})
 let savedProjectSnapshot = ''
 let pendingUnsavedAction: (() => void | Promise<void>) | null = null
 
@@ -304,6 +374,9 @@ function layerIconSvg(type: Project['layers'][number]['type']): SVGSVGElement {
     const mountain = document.createElementNS(ns, 'path')
     mountain.setAttribute('d', 'M2 10.3L5.4 6.8L7.8 9.1L9.6 7.3L11.6 9.9')
     svg.append(sun, mountain)
+  } else if (type === 'video') {
+    const glyph = document.createElementNS(ns, 'path')
+    glyph.setAttribute('d', 'M5 4L9.5 6.8L5 9.5Z'); svg.append(glyph)
   } else if (type === 'text') {
     const glyph = document.createElementNS(ns, 'path')
     glyph.setAttribute('d', 'M3.9 4H9.5M6.7 4V9.6M5.2 9.6H8.2')
@@ -516,15 +589,31 @@ function refreshInspector() {
   ;($<HTMLInputElement>('background-color2')).value = bg?.color2 ?? '#243750'
   ;($<HTMLSelectElement>('background-fit')).value = bg?.fit ?? 'cover'
   $('background-color2-row').hidden = bg?.type !== 'gradient'
+  $('gradient-texture-row').hidden = bg?.type !== 'gradient'
+  ;($<HTMLInputElement>('gradient-texture')).value = String(bg?.dither ?? 1.5)
   $('background-image-row').hidden = bg?.type !== 'image'
   $('background-image-name').textContent = bg?.imagePath.split(/[\\/]/).pop() || 'No image selected'
   const layer = selected()
   $('no-layer-selected').hidden = !!layer
   $('selected-layer-controls').hidden = !layer
   $('image-options').hidden = layer?.type !== 'image'
+  $('video-options').hidden = layer?.type !== 'video'
+  if (layer?.type === 'video') {
+    $('video-name').textContent = layer.videoPath.split(/[\\/]/).pop() || 'No video selected'
+    ;($<HTMLSelectElement>('video-fit')).value = layer.fit
+    ;($<HTMLSelectElement>('video-end')).value = layer.endBehavior
+  }
+  const mix = mixer()
+  for (const [id, value] of [['mix-video-volume', mix.videoVolume * 100], ['mix-audio-volume', mix.audioVolume * 100],
+    ['mix-master-volume', mix.masterVolume * 100], ['meter-gain', mix.meterGainDb], ['meter-source', mix.meterSource], ['media-duration', mix.durationMode]] as const) {
+    ;($<HTMLInputElement | HTMLSelectElement>(id)).value = String(value)
+  }
+  ;($<HTMLInputElement>('mix-video-muted')).checked = mix.videoMuted
+  ;($<HTMLInputElement>('mix-audio-muted')).checked = mix.audioMuted
+  ;($<HTMLInputElement>('meter-gain')).disabled = mix.meterSource === 'mix'
   $('text-options').hidden = layer?.type !== 'text'
   $('layer-rotation-row').hidden = layer?.type === 'image' || layer?.type === 'text'
-  $('layer-color-row').hidden = layer?.type === 'image'
+  $('layer-color-row').hidden = layer?.type === 'image' || layer?.type === 'video'
   const supportsBackground = !!layer && layer.type !== 'image'
   $('layer-background-options').hidden = !supportsBackground
   const backgroundEnabled = $<HTMLInputElement>('layer-background-enabled')
@@ -694,8 +783,10 @@ function refreshInspector() {
   }
 }
 function refreshAudio() {
+  $('import-video').textContent = project.layers.some(layer => layer.type === 'video') ? 'Replace video' : 'Import video'
   $('import-audio').textContent = project.audioPath ? 'Replace audio' : 'Import audio'
-  $('audio-name').textContent = project.audioPath ? project.audioPath.split(/[\\/]/).pop() || project.audioPath : 'No audio imported'
+  const source = project.audioPath || (project.layers.find(layer => layer.type === 'video') as VideoLayer | undefined)?.videoPath
+  $('audio-name').textContent = source ? source.split(/[\\/]/).pop() || source : 'No media imported'
   $('audio-details').textContent = metadata
     ? `${metadata.channels === 1 ? 'Mono' : 'Stereo'} · ${(metadata.sampleRate / 1000).toFixed(1)} kHz · ${metadata.duration.toFixed(2)} s`
     : project.audioPath ? 'Audio missing. Import a replacement file.' : 'Choose a WAV, MP3, or FLAC file'
@@ -725,6 +816,7 @@ function renderMissingMedia() {
           $('import-audio').click()
           return
         }
+        if (item.kind === 'video') { $('import-video').click(); return }
         const changed = await editArtwork(chosen => {
           if (item.kind === 'background' && typeof project.background !== 'string') project.background.imagePath = chosen
           if (item.kind === 'layer') {
@@ -760,6 +852,7 @@ function resetSongPreview() {
   previewRequest++
   void window.desktop.cancelPreview().catch(() => {})
   $('preview-busy').hidden = true
+  $('cancel-media').hidden = true
   $('preview-stale').hidden = true
   frameIndex = 0
   analysis = emptyAnalysis()
@@ -800,24 +893,27 @@ async function refreshPreview() {
   if (previewTimer) clearTimeout(previewTimer)
   previewTimer = null
   const request = ++previewRequest
-  if (!metadata || !project.audioPath) { $('preview-stale').hidden = true; render(); return }
+  if (!metadata || !hasMedia()) { $('preview-stale').hidden = true; render(); return }
   const requestedFrame = frameIndex
   $('preview-stale').hidden = false
   $('preview-busy').textContent = 'Updating still…'
   $('preview-busy').hidden = false
+  $('cancel-media').hidden = false
   setStatus('Updating still…')
   try {
     const result = await window.desktop.previewAt(requestedFrame, project)
     if (request !== previewRequest || result.superseded) return
     analysis = decodeAnalysis(result)
     sampleRate = result.sampleRate
+    await composition.seekVideo(project, requestedFrame / 30)
+    if (request !== previewRequest) return
     render()
     $('preview-stale').hidden = true
     setStatus(`Real Prism meter still at ${(requestedFrame / 30).toFixed(2)} s.`)
   } catch (error) {
     if (request === previewRequest && !String(error).includes('Preview superseded')) setStatus(String(error))
   } finally {
-    if (request === previewRequest) $('preview-busy').hidden = true
+    if (request === previewRequest) { $('preview-busy').hidden = true; $('cancel-media').hidden = true }
   }
 }
 function markPreviewStale() {
@@ -825,8 +921,9 @@ function markPreviewStale() {
   previewRequest++
   void window.desktop.cancelPreview().catch(() => {})
   $('preview-busy').hidden = true
-  $('preview-stale').hidden = !metadata || !project.audioPath
-  if (metadata && project.audioPath && !exportRunning) {
+  $('cancel-media').hidden = true
+  $('preview-stale').hidden = !metadata || !hasMedia()
+  if (metadata && hasMedia() && !exportRunning) {
     setStatus('Audio still is out of date. Press Refresh still to update meter data.')
   }
 }
@@ -1212,6 +1309,7 @@ canvas.addEventListener('keydown', event => {
 })
 
 function addLayer(type = ($<HTMLSelectElement>('add-type')).value) {
+  if (type === 'video') { $('import-video').click(); return }
   if (project.layers.length >= 32) return setStatus('The project supports at most 32 layers.')
   if (project.version === 1 && (type === 'image' || type === 'text') && project.layers.length >= 31) {
     return setStatus('Remove a layer before adding graphics to this older project.')
@@ -1334,6 +1432,7 @@ $('add-layer-wrap').addEventListener('focusout', event => {
 })
 $('duplicate-layer').addEventListener('click', () => {
   const layer = selected(); if (!layer) return
+  if (layer.type === 'video') return setStatus('One video layer is supported per project.')
   if (project.layers.length >= 32) return setStatus('The project supports at most 32 layers.')
   const copy = { ...layer, id: nextId(), name: `${layer.name} copy`.slice(0, 80), locked: false,
     x: Math.min(layer.x + 20, project.width - layer.w), y: Math.min(layer.y + 20, project.height - layer.h) }
@@ -1345,6 +1444,10 @@ $('delete-layer').addEventListener('click', () => {
   const layer = selected(); if (!layer) return
   project.layers.splice(project.layers.indexOf(layer), 1)
   selectedId = project.layers.at(-1)?.id || null; repaint()
+  if (layer.type === 'video') {
+    if (project.mixer?.durationMode === 'video') project.mixer.durationMode = 'longest'
+    void updateMedia().then(syncAssets).catch(error => setStatus(String(error)))
+  }
 })
 function moveLayer(direction: number) {
   const layer = selected(); if (!layer) return
@@ -1503,6 +1606,7 @@ $('import-audio').addEventListener('click', async () => {
     const previousAudio = project.audioPath
     resetSongPreview()
     project.audioPath = chosen.path; metadata = chosen.metadata
+    await updateMedia()
     suggestSongTitle(chosen.path, previousAudio)
     missingMedia = missingMedia.filter(item => item.kind !== 'audio')
     refreshInspector(); refreshAudio(); renderMissingMedia(); void refreshPreview()
@@ -1520,6 +1624,10 @@ function refreshExportResolution() {
   $('stage-resolution').title = 'Layer coordinates use the saved canvas dimensions; export scales the composition uniformly.'
   ;($<HTMLSelectElement>('export-preset')).options[0].text = `1080p · ${project.width < project.height ? '1080 × 1920' : '1920 × 1080'}`
   ;($<HTMLSelectElement>('export-preset')).options[1].text = `720p · ${project.width} × ${project.height}`
+  for (const option of Array.from(($<HTMLSelectElement>('export-preset')).options).slice(2)) {
+    const output = exportDimensions(project, option.value)
+    option.text = `${option.value}${option.value === '2160p' ? ' · 4K' : ''} · ${output.width} × ${output.height}`
+  }
 }
 $<HTMLSelectElement>('export-preset').addEventListener('change', async event => {
   refreshExportResolution()
@@ -1527,8 +1635,8 @@ $<HTMLSelectElement>('export-preset').addEventListener('change', async event => 
   catch (error) { setStatus(String(error)) }
 })
 $<HTMLSelectElement>('audio-mode').addEventListener('change', event => {
-  const copy = (event.target as HTMLSelectElement).value === 'copy'
-  $('render-mp4').textContent = copy ? 'Export MKV' : 'Export MP4'
+  const mode = (event.target as HTMLSelectElement).value
+  $('render-mp4').textContent = mode === 'aac' ? 'Export MP4' : mode === 'pcm' ? 'Export MOV' : 'Export MKV'
   exportDestination = ''
   ;($<HTMLInputElement>('export-destination')).value = ''
   updateExportDialog()
@@ -2464,7 +2572,7 @@ $('template-picker-create').addEventListener('click', async () => {
 
 $('render-mp4').addEventListener('click', async () => {
   if (exportRunning || exportSubmitting) return
-  if (!metadata || !project.audioPath) return setStatus('Import audio before rendering.')
+  if (!metadata || !hasMedia()) return setStatus('Import audio or video before rendering.')
   exportSubmitting = true
   ;($<HTMLButtonElement>('render-mp4')).disabled = true
   ;($<HTMLButtonElement>('choose-export-destination')).disabled = true
@@ -2526,7 +2634,7 @@ window.desktop.onExport(event => {
     ;($<HTMLSelectElement>('audio-mode')).disabled = false
     $('cancel-render').hidden = true
     $('export-running-label').hidden = true
-    const container = String(event.output).toLowerCase().endsWith('.mkv') ? 'MKV' : 'MP4'
+    const container = String(event.output).toLowerCase().endsWith('.mkv') ? 'MKV' : String(event.output).toLowerCase().endsWith('.mov') ? 'MOV' : 'MP4'
     setStatus(event.event === 'finished' ? `${container} ready: ${event.output}`
       : event.event === 'cancelled' ? 'Export cancelled. No video was saved.'
       : `Export failed: ${event.message || ''}`)
@@ -2658,7 +2766,7 @@ window.addEventListener('keydown', event => {
 
 installCommandMenus()
 playback = installVideoPreview(window.desktop, () => project,
-  () => Boolean(metadata && project.audioPath && !exportRunning), () => frameIndex / 30,
+  () => Boolean(metadata && hasMedia() && !exportRunning), () => frameIndex / 30,
   seconds => {
     frameIndex = Math.max(0, Math.min((metadata?.totalFrames ?? 1) - 1, frameAtTime(seconds)))
     // Transport motion is transient UI state, not an edit to the saved project.
@@ -2673,7 +2781,8 @@ playback = installVideoPreview(window.desktop, () => project,
     void window.desktop.cancelPreview().catch(() => {})
     if (!$('preview-busy').hidden) setStatus('Still update cancelled. Live preview is ready.')
     $('preview-busy').hidden = true
-  })
+    $('cancel-media').hidden = true
+  }, seconds => composition.seekVideo(project, seconds), (seconds, playing) => composition.syncVideo(project, seconds, playing))
 $('new-project').addEventListener('click', () => {
   confirmDiscardIfDirty(async () => {
     try { await applyLoadedProject(await window.desktop.newBlankProject()) }
@@ -2689,7 +2798,13 @@ function updateExportDialog() {
   $('export-canvas-summary').textContent = `${project.width < project.height ? 'Portrait · 9:16' : 'Landscape · 16:9'} · ${size.width} × ${size.height} · 30 FPS`
   $('export-audio-note').textContent = ($<HTMLSelectElement>('audio-mode')).value === 'copy'
     ? 'Copies supported source audio without re-encoding. MP3 stays lossy; container metadata and edge padding can differ.'
-    : 'H.264 video with lossy AAC audio, targeting up to 320 kb/s. Mono and low-sample-rate sources use lower targets.'
+    : ($<HTMLSelectElement>('audio-mode')).value === 'master'
+      ? 'Lossless RGB video from the rendered canvas and uncompressed 32-bit float audio. Very large files; intended for archiving or further editing. Does not restore detail missing from source media.'
+    : ($<HTMLSelectElement>('audio-mode')).value === 'flac'
+      ? 'High-quality H.264 video with 24-bit FLAC audio. No lossy audio compression; volume changes and mixing are rendered into the soundtrack.'
+    : ($<HTMLSelectElement>('audio-mode')).value === 'pcm'
+      ? 'High-quality H.264 video with uncompressed 24-bit PCM audio. A larger upload/editing file that avoids AAC conversion. Upload services may recompress it.'
+    : 'High-quality H.264 video with lossy AAC audio up to 320 kb/s. Choose PCM, FLAC, or a lossless master to avoid lossy audio encoding.'
   ;($<HTMLButtonElement>('render-mp4')).disabled = !metadata || exportRunning || exportSubmitting
   ;($<HTMLButtonElement>('choose-export-destination')).disabled = !metadata || exportRunning || exportSubmitting
   ;($<HTMLSelectElement>('export-preset')).disabled = exportRunning || exportSubmitting

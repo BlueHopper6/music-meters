@@ -28,7 +28,7 @@ function readPreferences(userData) {
     if (fs.statSync(target).size > 16384) throw new Error('Preferences file is too large')
     const stored = JSON.parse(fs.readFileSync(target, 'utf8'))
     return {
-      exportPreset: ['720p', '1080p'].includes(stored.exportPreset) ? stored.exportPreset : '1080p',
+      exportPreset: ['720p', '1080p', '1440p', '2160p'].includes(stored.exportPreset) ? stored.exportPreset : '1080p',
       lastTemplateId: typeof stored.lastTemplateId === 'string' && stored.lastTemplateId.length <= 128
         ? stored.lastTemplateId : '',
       recentProjects: normalizeRecentProjects(stored.recentProjects),
@@ -41,7 +41,7 @@ function readPreferences(userData) {
 function writePreferences(userData, update) {
   const current = readPreferences(userData)
   const next = { ...current, ...update }
-  if (!['720p', '1080p'].includes(next.exportPreset)) throw new Error('Unsupported export preset')
+  if (!['720p', '1080p', '1440p', '2160p'].includes(next.exportPreset)) throw new Error('Unsupported export preset')
   if (typeof next.lastTemplateId !== 'string' || next.lastTemplateId.length > 128) throw new Error('Invalid template choice')
   if (next.recentProjects !== undefined) {
     next.recentProjects = normalizeRecentProjects(next.recentProjects)

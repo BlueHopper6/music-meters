@@ -126,6 +126,7 @@
             <option value="waterfall">Waterfall spectrum</option>
           </optgroup>
           <optgroup label="Graphics">
+            <option value="video">Video</option>
             <option value="image">Artwork / logo</option>
             <option value="text">Text</option>
           </optgroup>
@@ -169,7 +170,8 @@
         <div id="preview-busy" class="preview-busy" role="status" hidden>Updating still…</div>
       </div><button id="exit-fullscreen-preview" type="button" class="exit-fullscreen-btn" title="Exit full screen (Esc)" hidden>Exit full screen · Esc</button></div>
       <div class="timeline">
-        <div class="timeline-top"><div><span class="eyebrow">AUDIO PREVIEW</span><strong id="audio-name">No audio imported</strong></div><div class="audio-source-actions"><span id="audio-details">Choose a WAV, MP3, or FLAC file</span><button id="import-audio" type="button">Import audio</button></div></div>
+        <div class="timeline-top"><div><span class="eyebrow">MEDIA PREVIEW</span><strong id="audio-name">No media imported</strong></div><div class="audio-source-actions"><span id="audio-details">Import audio or video</span><button id="import-video" type="button">Import video</button><button id="import-audio" type="button">Import audio</button></div></div>
+        <button id="cancel-media" type="button" hidden>Cancel media preparation</button>
         <div id="missing-media" class="missing-media" hidden></div>
         <div class="playback-controls" role="group" aria-label="Preview playback">
           <button id="playback-play" type="button" class="transport-button" disabled aria-label="Play preview" aria-pressed="false" title="Play preview (Space)"><svg class="play-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m6 3 11 7-11 7Z"/></svg><svg class="pause-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h4v14H5zm7 0h4v14h-4z"/></svg></button>
@@ -195,6 +197,7 @@
           <label>Background color<input id="background" type="color"></label>
         </div>
         <label id="background-color2-row">Gradient end<input id="background-color2" type="color"></label>
+        <label id="gradient-texture-row">Gradient texture<input id="gradient-texture" type="range" min="0" max="4" step="0.25" value="1.5" title="Subtle texture can reduce banding. Upload compression may remove it."></label>
         <div id="background-image-row"><button id="background-choose-image" type="button">Choose background image</button><span id="background-image-name" class="asset-name"></span><label>Image fit<select id="background-fit"><option value="cover">Crop to fill</option><option value="contain">Fit inside</option></select></label></div>
       </section>
       <section class="property-group"><h3>Selected layer</h3>
@@ -217,6 +220,23 @@
           <label>Background color<input id="layer-background-color" type="color" value="#000000"></label>
           <label>Background opacity %<input id="layer-background-opacity" type="number" min="0" max="100" step="1" value="100"></label>
         </div>
+      </section>
+      <section class="property-group" id="audio-mixer"><h3>Soundtrack &amp; meters</h3>
+        <label>Video audio (%)<input id="mix-video-volume" type="number" min="0" max="200" step="1" value="100"></label>
+        <label><input id="mix-video-muted" type="checkbox"> Mute video audio</label>
+        <label>Imported audio (%)<input id="mix-audio-volume" type="number" min="0" max="200" step="1" value="100"></label>
+        <label><input id="mix-audio-muted" type="checkbox"> Mute imported audio</label>
+        <label>Master output (%)<input id="mix-master-volume" type="number" min="0" max="200" step="1" value="100"></label>
+        <label>Meters listen to<select id="meter-source"><option value="mix">Final mix</option><option value="video">Video audio</option><option value="audio">Imported audio</option></select></label>
+        <label>Meter input gain (dB)<input id="meter-gain" type="number" min="-24" max="24" step="1" value="0" title="Source modes analyze the original source independently of soundtrack volume and mute. This changes meters only."></label>
+        <label>Project length<select id="media-duration"><option value="longest">Longest source</option><option value="video">Video length</option><option value="audio">Imported audio length</option></select></label>
+        <p class="export-note">Source modes use original audio plus meter gain. Final mix follows all soundtrack levels. Preview mute affects listening only.</p>
+      </section>
+      <section class="property-group" id="video-options" hidden><h3>Video</h3>
+        <span id="video-name"></span><button id="replace-video" type="button">Replace video…</button>
+        <label>Fit<select id="video-fit"><option value="cover">Cover</option><option value="contain">Contain</option></select></label>
+        <label>When video ends<select id="video-end"><option value="freeze">Freeze last frame</option><option value="loop">Loop picture</option><option value="hide">Hide picture</option></select></label>
+        <p class="export-note">Loop repeats the picture only. Video audio plays once. Sources begin at the start of the project.</p>
       </section>
       <section class="property-group" id="image-options" hidden><h3>Artwork / logo</h3>
         <button id="image-choose" type="button">Choose local image</button><span id="image-name" class="asset-name"></span>
@@ -434,8 +454,8 @@
       <div class="modal-header"><div><h2 id="export-title" class="modal-title">Export video</h2><p class="export-subtitle">Render your complete song and composition.</p></div><button id="export-close" class="modal-close-btn" type="button" aria-label="Close export dialog">✕</button></div>
       <div class="export-project-summary"><strong id="export-project-name"></strong><span id="export-canvas-summary"></span></div>
       <div class="export-fields">
-        <label>Resolution<select id="export-preset" aria-label="Export size"><option value="1080p">1080p</option><option value="720p">720p</option></select></label>
-        <label>Format &amp; audio<select id="audio-mode" aria-label="Video container and audio export"><option value="aac">MP4 · AAC up to 320 kb/s</option><option value="copy">MKV · Source audio copy (no re-encode)</option></select></label>
+        <label>Resolution<select id="export-preset" aria-label="Export size"><option value="1080p">1080p</option><option value="720p">720p</option><option value="1440p">1440p</option><option value="2160p">2160p · 4K</option></select></label>
+        <label>Format &amp; audio<select id="audio-mode" aria-label="Video container and audio export"><option value="aac">MP4 · AAC up to 320 kb/s</option><option value="pcm">MOV · 24-bit PCM audio</option><option value="flac">MKV · 24-bit FLAC audio</option><option value="master">MKV · Lossless RGB + float PCM master</option><option value="copy">MKV · Source audio copy (no re-encode)</option></select></label>
       </div>
       <p id="export-audio-note" class="export-note"></p>
       <label class="export-destination-label" for="export-destination">Save to</label>
