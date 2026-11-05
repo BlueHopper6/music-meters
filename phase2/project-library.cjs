@@ -5,6 +5,7 @@ const { normalizeProject } = require('./project.cjs')
 const { imagePaths, readImage, resolveArtwork } = require('./assets.cjs')
 const { projectSaveName } = require('./project-path.cjs')
 const { resolveProjectAudio, projectAudioReference } = require('./project-audio.cjs')
+const { saveVideoReferences, resolveVideoReferences } = require('./project-media.cjs')
 const OWNED_MEDIA = '.musicmeters-owned-media'
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
@@ -36,7 +37,7 @@ function readLibraryProject(source) {
   const bytes = fs.readFileSync(source)
   const stored = JSON.parse(bytes)
   const audioPath = resolveProjectAudio(source, stored.audioRelativePath)
-  const project = normalizeProject(resolveArtwork({ ...stored, audioPath }, source))
+  const project = normalizeProject(resolveVideoReferences(resolveArtwork({ ...stored, audioPath }, source), source))
   return { source, bytes, stored, project }
 }
 
@@ -92,6 +93,12 @@ function renameLibraryProject(source, title) {
   const relativeAudio = audio ? path.relative(root, audio) : ''
   const audioInside = audio && relativeAudio !== '..' && !relativeAudio.startsWith('..' + path.sep) && !path.isAbsolute(relativeAudio)
   next.audioRelativePath = projectAudioReference(target, audioInside ? path.join(destination, relativeAudio) : audio)
+  for (const layer of next.layers) if (layer.type === 'video') {
+    const original = snapshot.project.layers.find(item => item.id === layer.id).videoPath
+    const relative = original ? path.relative(root, original) : ''
+    const inside = original && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)
+    layer.videoRelativePath = projectAudioReference(target, inside ? path.join(destination, relative) : original)
+  }
   const manifestPath = path.join(root, OWNED_MEDIA)
   const manifest = fs.existsSync(manifestPath) ? readOwnedMedia(snapshot) : null
   const manifestBytes = manifest ? fs.readFileSync(manifestPath) : null
@@ -206,7 +213,7 @@ async function copyLibraryProject(source, target, title, onCopied = () => {}) {
       next.background.imagePath = rewritten.get(next.background.imagePath) || ''
       for (const layer of next.layers) if (layer.type === 'image') layer.imagePath = rewritten.get(layer.imagePath) || ''
     }
-    const document = { ...next, audioPath: undefined, audioRelativePath: projectAudioReference(target, audio) }
+    const document = { ...saveVideoReferences(next, target), audioPath: undefined, audioRelativePath: projectAudioReference(target, audio) }
     within(root, target); fs.writeFileSync(target, JSON.stringify(document, null, 2) + '\n', { flag: 'wx' }); files.push(target)
     const reopened = readLibraryProject(target)
     if (reopened.project.title !== title.trim()) throw new Error('Project copy verification failed')
@@ -297,6 +304,8 @@ async function deleteLibraryProject(source, trash) {
     }
     const stagedProject = path.join(payload, path.basename(source))
     const next = { ...snapshot.stored }
+    const stagedLayers = saveVideoReferences(snapshot.project, stagedProject).layers
+    next.layers = next.layers.map(layer => layer.type === 'video' ? stagedLayers.find(item => item.id === layer.id) : layer)
     const audioOwned = files.has(snapshot.project.audioPath)
     if (snapshot.project.audioPath && !audioOwned) next.audioRelativePath = projectAudioReference(stagedProject, snapshot.project.audioPath)
     writeAtomic(stagedProject, JSON.stringify(next, null, 2) + '\n')

@@ -12,7 +12,7 @@ declare global {
         vus: Record<string, { rebuild: boolean; startFrame: number; values: string }>,
         loudness: Record<string, string>,
         waterfalls: Record<string, { columns: number; audioSeconds: number; levels: string; ages: string; frequencies: string }>,
-        frameIndex: number) => string
+        frameIndex: number, videoImage?: string) => Promise<string>
     }
   }
 }
@@ -32,8 +32,9 @@ window.phase2Export = {
     sampleRate = nextSampleRate
     await composition.setAssets(assets)
   },
-  render(x, y, multiband, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness, waterfalls, frameIndex) {
+  async render(x, y, multiband, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness, waterfalls, frameIndex, videoImage = '') {
     if (!composition) throw new Error('Export composition was not initialized')
+    await composition.setVideoFrame(videoImage)
     composition.render(project, decodeAnalysis({ x, y, multiband, spectra, oscilloscopes, spectrograms, waveforms, vus, loudness, waterfalls }), frameIndex, sampleRate)
     return canvas.toDataURL('image/png').split(',')[1]
   },

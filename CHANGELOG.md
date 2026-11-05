@@ -2,6 +2,20 @@
 
 User-facing release history, newest first. GitHub release notes provide the download announcement and exact package details; this file keeps the feature history with the source.
 
+## Unreleased
+
+### Added
+
+- One local video layer with normal layer ordering, transforms, cover/contain fitting, and freeze/loop/hide picture endings. Video audio plays once; silent video is supported. Video stays linked to its original file when saving, copying, or moving projects.
+- Independent video-audio, imported-audio, and master levels; source mutes; final-mix/video/imported-audio meter input selection; and meter-only input gain for source modes. Project length can follow the video, imported audio, or longest source.
+- MOV with uncompressed 24-bit PCM audio, MKV with 24-bit FLAC audio, and a large MKV master with lossless RGB video and 32-bit float PCM audio. Source-audio copy remains available for an eligible unchanged single soundtrack.
+- 1440p and 2160p/4K exports at 30 FPS and adjustable gradient texture to help reduce visible banding. Upload services may still remove texture and introduce compression artifacts.
+
+### Changed
+
+- H.264 exports use a slower, higher-quality encoder setting and explicit SDR color metadata. Imported video uses a smaller proxy for preview; export decodes the original file.
+- Edited soundtracks use floating-point intermediates and preserve the highest input sample rate. Mixed-soundtrack overload is reported; integer/lossy exports reject an overloaded mix instead of silently clipping it.
+
 ## [1.1.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.1.0) — 2026-10-29
 
 Published October 29 in America/Indianapolis (October 30 UTC). See the [release notes](docs/releases/1.1.0.md) for exact downloads, checksums, and validation.

@@ -58,6 +58,7 @@ async function main() {
       'phase2/test/project-manager-smoke.cjs',
       'phase2/test/portrait-smoke.cjs',
       'phase2/test/playback-smoke.cjs',
+      'phase2/test/media-quality-smoke.cjs',
       'phase6/test/repeat-smoke.cjs',
       'phase6/test/security-smoke.cjs',
       'phase6/test/audio-copy-editor-smoke.cjs',

@@ -71,6 +71,34 @@ function imageLayer(id = 'image-1', name = 'Artwork') {
     imagePath: '', fit: 'cover', shadow: 0 }
 }
 
+function videoLayer(id = 'video-1', name = 'Video') {
+  return { ...imageLayer(id, name), type: 'video', videoPath: '', imagePath: undefined,
+    x: 0, y: 0, w: WIDTH, h: HEIGHT, endBehavior: 'freeze' }
+}
+
+function normalizeMixer(value = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid audio mixer')
+  const result = {}
+  for (const key of ['videoVolume', 'audioVolume', 'masterVolume']) result[key] = number(value[key] ?? 1, key, 0, 2)
+  for (const key of ['videoMuted', 'audioMuted']) {
+    result[key] = value[key] ?? false
+    if (typeof result[key] !== 'boolean') throw new Error('Invalid mixer mute')
+  }
+  result.meterSource = value.meterSource ?? 'mix'
+  if (!['mix', 'video', 'audio'].includes(result.meterSource)) throw new Error('Invalid meter source')
+  result.meterGainDb = number(value.meterGainDb ?? 0, 'Meter input gain', -24, 24)
+  result.durationMode = value.durationMode ?? 'longest'
+  if (!['longest', 'video', 'audio'].includes(result.durationMode)) throw new Error('Invalid duration source')
+  return result
+}
+
+function localVideoPath(value) {
+  if (typeof value !== 'string' || value.length > 4096 || /[\u0000-\u001f]/.test(value)
+      || /^[a-z][a-z0-9+.-]*:/i.test(value.replace(/^[a-z]:[\\/]/i, '')) || value.startsWith('\\\\')
+      || (value && !/\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(value))) throw new Error('Choose a local MP4, MOV, MKV, WebM, AVI, or M4V video')
+  return value
+}
+
 function textLayer(id = 'text-1', name = 'Song title', text = 'Untitled track') {
   return { id, type: 'text', name, x: 72, y: 64, w: 1120, h: 82,
     visible: true, locked: false, aspectLocked: false, rotation: 0, opacity: 1, color: '#e7f9ff', text,
@@ -124,7 +152,8 @@ function background(value) {
   if (!['cover', 'contain'].includes(value.fit)) throw new Error('Invalid background fit')
   return { type: value.type, color: color(value.color, 'Background color'),
     color2: color(value.color2, 'Second background color'),
-    imagePath: localImagePath(value.imagePath, 'Background image'), fit: value.fit }
+    imagePath: localImagePath(value.imagePath, 'Background image'), fit: value.fit,
+    ...(value.dither === undefined ? {} : { dither: number(value.dither, 'Gradient texture', 0, 4) }) }
 }
 
 function normalizeProject(raw) {
@@ -143,7 +172,7 @@ function normalizeProject(raw) {
   if (!Array.isArray(raw.layers) || raw.layers.length > 32) throw new Error('Project supports at most 32 layers')
   const seen = new Set()
   const layers = raw.layers.map((layer, index) => {
-    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope', 'spectrogram', 'waveform', 'vu', 'loudness', 'waterfall', ...(raw.version === 2 ? ['image', 'text'] : [])].includes(layer.type)) {
+    if (!layer || typeof layer !== 'object' || !['vectorscope', 'spectrum', 'oscilloscope', 'spectrogram', 'waveform', 'vu', 'loudness', 'waterfall', ...(raw.version === 2 ? ['image', 'text', 'video'] : [])].includes(layer.type)) {
       throw new Error(`Layer ${index + 1} has an unsupported type`)
     }
     if (typeof layer.id !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(layer.id) || seen.has(layer.id)) {
@@ -179,6 +208,11 @@ function normalizeProject(raw) {
         backgroundColor: color(layer.backgroundColor === undefined ? '#000000' : layer.backgroundColor, 'Layer background color'),
         backgroundOpacity: number(layer.backgroundOpacity === undefined ? 1 : layer.backgroundOpacity, 'Layer background opacity', 0, 1),
       })
+    }
+    if (layer.type === 'video') {
+      if (!['cover', 'contain'].includes(layer.fit) || !['freeze', 'loop', 'hide'].includes(layer.endBehavior)) throw new Error('Invalid video display settings')
+      return { ...normalized, videoPath: localVideoPath(layer.videoPath), fit: layer.fit,
+        endBehavior: layer.endBehavior, shadow: number(layer.shadow ?? 0, 'Shadow', 0, 40) }
     }
     if (layer.type === 'image' || layer.type === 'text') {
       const shadow = number(layer.shadow, 'Shadow', 0, 40)
@@ -299,9 +333,11 @@ function normalizeProject(raw) {
     }
     return normalized
   })
+  if (layers.filter(layer => layer.type === 'video').length > 1) throw new Error('One video layer is supported per project')
   return { version: raw.version, width, height, fps: FPS,
     title: raw.title, background: raw.version === 1 ? color(raw.background, 'Background') : background(raw.background),
-    audioPath: raw.audioPath, previewFrame, layers }
+    audioPath: raw.audioPath, previewFrame, layers,
+    ...(raw.mixer === undefined ? {} : { mixer: normalizeMixer(raw.mixer) }) }
 }
 
 // Fit as one composition rather than stretching artwork and meter geometry.
@@ -329,9 +365,9 @@ function orientProject(raw, orientation) {
 }
 
 function exportDimensions(project, preset) {
-  if (!['720p', '1080p'].includes(preset)) throw new Error('Unsupported export preset')
-  const scale = preset === '1080p' ? 1.5 : 1
+  if (!['720p', '1080p', '1440p', '2160p'].includes(preset)) throw new Error('Unsupported export preset')
+  const scale = { '720p': 1, '1080p': 1.5, '1440p': 2, '2160p': 3 }[preset]
   return { width: Math.round(project.width * scale), height: Math.round(project.height * scale) }
 }
 
-module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, VECTORSCOPE_MODES, defaultProject, compositionProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, validFontFamily, normalizeProject, fitLayer, orientProject, exportDimensions }
+module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, VECTORSCOPE_MODES, defaultProject, compositionProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, videoLayer, textLayer, validFontFamily, normalizeProject, normalizeMixer, localVideoPath, fitLayer, orientProject, exportDimensions }

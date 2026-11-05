@@ -1,15 +1,17 @@
 import { type Project, type AnalysisFrame, decodeAnalysis } from './composition'
 import { frameAtTime } from './timecode.cjs'
 export type LiveFrame = Parameters<typeof decodeAnalysis>[0] & { frameIndex: number; sampleRate: number }
-export type PlaybackStart = { url: string; session: string; frames: LiveFrame[]; superseded?: false } | { superseded: true }
+export type PlaybackStart = { url: string; session: string; frames: LiveFrame[]; superseded?: false; peak?: number } | { superseded: true }
 type API = {
   preparePlayback(project: Project, frame: number): Promise<PlaybackStart>
   playbackFrames(session: string, count: number): Promise<LiveFrame[]>
   cancelPlayback(): Promise<void>
+  cancelMediaPreparation?(): Promise<void>
 }
 export function installVideoPreview(api: API, project: () => Project, available: () => boolean,
   position: () => number, setPosition: (seconds: number) => void,
-  paint: (data: AnalysisFrame, frame: number, rate: number) => void, resetPainters: () => void, cancelStill: () => void) {
+  paint: (data: AnalysisFrame, frame: number, rate: number) => void, resetPainters: () => void, cancelStill: () => void,
+  seekVisual: (seconds: number) => Promise<void> = async () => {}, syncVisual: (seconds: number, playing: boolean) => void = () => {}) {
   const audio = document.getElementById('playback-audio') as HTMLAudioElement
   const play = document.getElementById('playback-play') as HTMLButtonElement
   const cancel = document.getElementById('playback-cancel') as HTMLButtonElement
@@ -31,6 +33,7 @@ export function installVideoPreview(api: API, project: () => Project, available:
   }
   function showFrames() {
     const target = frameAtTime(audio.currentTime)
+    syncVisual(audio.currentTime, !audio.paused)
     while (queue.length && queue[0].frameIndex <= target) {
       const frame = queue.shift()!
       paint(decodeAnalysis(frame), frame.frameIndex, frame.sampleRate)
@@ -58,6 +61,7 @@ export function installVideoPreview(api: API, project: () => Project, available:
   function pause() {
     const wasPlaying = !audio.paused
     audio.pause(); cancelAnimationFrame(clock)
+    syncVisual(audio.currentTime, false)
     // The pause event is asynchronous. Capture the audio clock before callers
     // snapshot the project, without overwriting an already-paused seek target.
     if (active && wasPlaying) showFrames()
@@ -94,11 +98,15 @@ export function installVideoPreview(api: API, project: () => Project, available:
         audio.src = result.url
       })
       if (request !== generation) return
-      resetPainters(); active = true; starting = false
+      resetPainters()
       audio.currentTime = Math.min(frame / 30, Math.max(0, audio.duration - 1 / 30))
+      await seekVisual(frame / 30)
+      if (request !== generation) return
+      active = true; starting = false
       // Paint the selected frame immediately; native audio seeking may complete asynchronously.
       if (queue.length) { const first = queue.shift()!; paint(decodeAnalysis(first), first.frameIndex, first.sampleRate); lastFrame = first.frameIndex }
       status.textContent = 'Live preview · meter history restarts after seeking'
+      if (result.peak && result.peak > 1) status.textContent = 'Soundtrack overload: lower source or master volume to avoid clipping.'
       refill(); controls()
       if (resume) await audio.play()
     } catch (error) {
@@ -121,7 +129,10 @@ export function installVideoPreview(api: API, project: () => Project, available:
     controls()
   }
   play.addEventListener('click', () => { void toggle() })
-  cancel.addEventListener('click', () => reset('Preview cancelled.'))
+  cancel.addEventListener('click', () => {
+    void api.cancelMediaPreparation?.().catch(error => { status.textContent = String(error) })
+    reset('Preview cancelled.')
+  })
   document.getElementById('playback-muted')!.addEventListener('change', event => { audio.muted = (event.target as HTMLInputElement).checked })
   audio.addEventListener('play', () => { controls(); tick() })
   audio.addEventListener('pause', () => { cancelAnimationFrame(clock); if (active) showFrames(); controls() })

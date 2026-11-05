@@ -25,7 +25,7 @@ function layerKey(layer, rate) {
 function analysisLanes(project, rate) {
   const families = new Map()
   for (const layer of project.layers) {
-    if (!layer.visible || ['text', 'image'].includes(layer.type)) continue
+    if (!layer.visible || ['text', 'image', 'video'].includes(layer.type)) continue
     if (!families.has(layer.type)) families.set(layer.type, new Map())
     const groups = families.get(layer.type), key = layerKey(layer, rate)
     if (!groups.has(key)) groups.set(key, [])

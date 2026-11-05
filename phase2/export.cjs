@@ -9,12 +9,13 @@ const { assertInstalledFonts } = require('./fonts.cjs')
 const { resolveArtwork } = require('./assets.cjs')
 const { jobPath } = require('./runtime.cjs')
 const { validateOutputPath } = require('./audio-output.cjs')
+const { resolveVideoReferences, mediaPlan } = require('./project-media.cjs')
 
 function parse(args) {
   const options = {}
   for (let i = 0; i < args.length; i += 2) {
     if (!['--project', '--output', '--preset', '--audio-mode', '--cancel-after-frames'].includes(args[i]) || !args[i + 1]) {
-      throw new Error('Usage: node phase2/export.cjs --project <JSON> --output <MP4|MKV> [--audio-mode aac|copy] [--preset 720p|1080p]')
+      throw new Error('Usage: node phase2/export.cjs --project <JSON> --output <MP4|MOV|MKV> [--audio-mode aac|pcm|flac|master|copy] [--preset 720p|1080p|1440p|2160p]')
     }
     options[args[i].slice(2)] = args[i + 1]
   }
@@ -23,7 +24,7 @@ function parse(args) {
   options.output = path.resolve(options.output)
   options.preset ||= '720p'
   options['audio-mode'] ||= 'aac'
-  if (!['720p', '1080p'].includes(options.preset)) throw new Error('Unsupported export preset')
+  if (!['720p', '1080p', '1440p', '2160p'].includes(options.preset)) throw new Error('Unsupported export preset')
   validateOutputPath(options.output, options['audio-mode'])
   if (fs.existsSync(options.output)) throw new Error(`Output already exists: ${options.output}`)
   if (options['cancel-after-frames'] !== undefined) {
@@ -39,9 +40,9 @@ async function main() {
   if (fs.statSync(options.project).size > 1024 * 1024) throw new Error('Project file is too large')
   const document = JSON.parse(fs.readFileSync(options.project, 'utf8'))
   const audioPath = resolveProjectAudio(options.project, document.audioRelativePath)
-  const project = normalizeProject(resolveArtwork({ ...document, audioPath }, options.project))
+  const project = normalizeProject(resolveVideoReferences(resolveArtwork({ ...document, audioPath }, options.project), options.project))
   assertInstalledFonts(project)
-  if (!audioPath || !fs.statSync(audioPath).isFile()) throw new Error('Project audio is unavailable')
+  if (!mediaPlan(project)) throw new Error('Project media is unavailable')
   const electron = await build()
   const controlDir = jobPath('jobs')
   fs.mkdirSync(controlDir, { recursive: true })

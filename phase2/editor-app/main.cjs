@@ -18,6 +18,11 @@ const { outputFormat, validateOutputPath, validateAudioCopy } = require('../audi
 const { lockWindowNavigation, assertTrustedSender } = require('../window-security.cjs')
 const { mediaResponse } = require('../playback-video.cjs')
 const { LivePlayback } = require('../live-playback.cjs')
+const { videoOf, probeVideo, mediaPlan, copySource, MediaCache, saveVideoReferences, resolveVideoReferences } = require('../project-media.cjs')
+const { VideoPreviewCache } = require('../video-frames.cjs')
+const mediaCache = new MediaCache(jobPath('media', randomUUID()))
+const videoCache = new VideoPreviewCache(jobPath('video-preview', randomUUID()))
+const allowedVideos = new Set([''])
 protocol.registerSchemesAsPrivileged([{ scheme: 'musicmeters-preview', privileges: { standard: true, secure: true, stream: true } }])
 
 const ROOT = resolve(__dirname, '..', '..')
@@ -51,6 +56,7 @@ const pendingPreviews = new Map()
 let exportJob = null
 let closingAfterExport = false
 let playbackVideo
+let playbackRequest = 0
 let playbackCleaned = false
 let cleaningPlayback = false
 const userData = () => app.getPath('userData')
@@ -98,6 +104,8 @@ function getPreviewWorker() {
 
 function missingMedia(value) {
   const missing = []
+  const video = videoOf(value)
+  if (video?.videoPath && !fs.existsSync(video.videoPath)) missing.push({ kind: 'video', label: video.name, path: video.videoPath, id: video.id })
   if (value.audioPath && !fs.existsSync(value.audioPath)) missing.push({ kind: 'audio', label: 'Audio', path: value.audioPath })
   if (value.version === 2) {
     if (value.background.type === 'image' && value.background.imagePath && !fs.existsSync(value.background.imagePath)) {
@@ -111,9 +119,10 @@ function missingMedia(value) {
 }
 
 function suggestedOutput(value, audioMode) {
-  const title = value.title && value.title !== 'Untitled track' ? value.title : titleSuggestion(value.audioPath)
+  const source = value.audioPath || videoOf(value)?.videoPath || ''
+  const title = value.title && value.title !== 'Untitled track' ? value.title : titleSuggestion(source)
   const safe = title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').replace(/[. ]+$/g, '').trim().slice(0, 120) || 'visualizer'
-  return join(projectPath ? dirname(projectPath) : dirname(value.audioPath),
+  return join(projectPath ? dirname(projectPath) : dirname(source),
     `${safe}_visualizer${outputFormat(audioMode).extension}`)
 }
 
@@ -138,10 +147,46 @@ function validateActiveProject(raw, restoring = false) {
   for (const input of imagePaths(normalized)) if (!allowedImages.has(input)) {
     throw new Error('Choose artwork through the local image picker')
   }
+  if (!allowedVideos.has(videoOf(normalized)?.videoPath || '')) throw new Error('Choose video through the local video picker')
   return normalized
 }
 
+function currentMediaInfo(value) {
+  const available = { ...value, audioPath: value.audioPath && fs.existsSync(value.audioPath) ? value.audioPath : '',
+    layers: value.layers.filter(layer => layer.type !== 'video' || layer.videoPath && fs.existsSync(layer.videoPath)) }
+  // Keep missing references in the project; metadata describes available sources.
+  if (!available.audioPath && !videoOf(available)?.videoPath) return null
+  const mode = value.mixer?.durationMode
+  const missingDurationSource = mode === 'video' && !videoOf(available)?.videoPath || mode === 'audio' && !available.audioPath
+  return mediaPlan({ ...available, mixer: { ...value.mixer, ...(missingDurationSource ? { durationMode: 'longest' } : {}) } })?.metadata || null
+}
+handle('media-info', (_event, raw) => {
+  const value = validateActiveProject(raw)
+  const plan = mediaPlan(value)
+  metadata = plan?.metadata || null
+  project = value
+  return metadata
+})
+handle('choose-video', async () => {
+  if (exportJob || projectManagementRunning) throw new Error('Wait for the current operation')
+  const result = process.env.MUSICMETERS_TEST_VIDEO ? { filePaths: [process.env.MUSICMETERS_TEST_VIDEO] }
+    : await dialog.showOpenDialog(win, { title: 'Import video', properties: ['openFile'],
+      filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v'] }] })
+  if (result.canceled) return null
+  const input = resolve(result.filePaths[0]), info = probeVideo(input)
+  allowedVideos.add(input)
+  return { path: input, ...info }
+})
+handle('load-videos', async (_event, raw) => {
+  const value = validateActiveProject(raw), video = videoOf(value)
+  if (!video?.videoPath || !fs.existsSync(video.videoPath)) return {}
+  const preview = await videoCache.prepare(video.videoPath)
+  return { [video.videoPath]: preview.url }
+})
+handle('cancel-media-preparation', () => { ++playbackRequest; cancelPreview(); mediaCache.cancel(); videoCache.cancel(); return playbackVideo.cancel() })
+
 const isAutomatedTest = Boolean(
+  process.env.MUSICMETERS_MEDIA_SMOKE ||
   process.env.PHASE2_TEST_INPUT ||
   process.env.PHASE2_TEST_PROJECT_PATH ||
   process.env.PHASE6_SECURITY_SMOKE ||
@@ -179,6 +224,7 @@ function freshBlankProject() {
   return fresh
 }
 handle('new-blank-project', () => {
+  allowedVideos.clear(); allowedVideos.add(''); videoCache.media.clear()
   projectOpen = true
   cancelPreview()
   project = freshBlankProject()
@@ -191,6 +237,7 @@ handle('new-blank-project', () => {
     templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: [] }
 })
 handle('close-project', () => {
+  allowedVideos.clear(); allowedVideos.add(''); videoCache.media.clear()
   projectOpen = false
   cancelPreview()
   project = freshBlankProject()
@@ -203,6 +250,7 @@ handle('close-project', () => {
     templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: [] }
 })
 handle('new-project-from-template', (_event, templateId) => {
+  allowedVideos.clear(); allowedVideos.add(''); videoCache.media.clear()
   if (!templateId || typeof templateId !== 'string') throw new Error('Choose a template')
   cancelPreview()
   const tmpl = readTemplate(userData(), templateId)
@@ -298,42 +346,47 @@ handle('restore-project', async (_event, raw) => {
   if (exportJob) throw new Error('Wait for the export to finish')
   await playbackVideo.cancel()
   const next = validateActiveProject(raw, true)
-  const info = next.audioPath && fs.existsSync(next.audioPath) ? audioInfo(next.audioPath) : null
   cancelPreview()
   previewAudioRevision++
   project = next
-  activeAudio = info?.path || ''
-  metadata = info?.metadata || null
+  activeAudio = next.audioPath && fs.existsSync(next.audioPath) ? next.audioPath : ''
+  metadata = currentMediaInfo(next)
   return { project, metadata, missingMedia: missingMedia(project) }
 })
 handle('preview-at', async (_event, frame, raw) => {
-  if (!metadata || !activeAudio) throw new Error('Import audio before previewing')
+  if (!metadata) throw new Error('Import audio or video before previewing')
   if (!Number.isSafeInteger(frame) || frame < 0 || frame >= metadata.totalFrames) {
     throw new Error('Preview frame is outside the song')
   }
   const value = validateActiveProject(raw)
   cancelPreview()
   const id = previewGeneration
+  const prepared = await mediaCache.prepare(value)
+  if (id !== previewGeneration) return { superseded: true }
   const worker = getPreviewWorker()
   return new Promise((resolve, reject) => {
     pendingPreviews.set(id, { resolve, reject })
-    try { worker.postMessage({ type: 'preview', id, input: activeAudio, metadata,
-      frame, project: value, audioRevision: previewAudioRevision }) }
+    try { worker.postMessage({ type: 'preview', id, input: prepared.analysisPath, metadata: prepared.metadata,
+      frame, project: value, audioRevision: `${previewAudioRevision}:${prepared.analysisPath}` }) }
     catch (error) { pendingPreviews.delete(id); reject(error) }
   })
 })
 handle('cancel-preview', () => cancelPreview())
 handle('prepare-playback', async (_event, raw, frame) => {
   if (exportJob) throw new Error('Wait for the export to finish')
-  if (!metadata || !activeAudio) throw new Error('Import audio before playing a preview')
+  if (!metadata) throw new Error('Import audio or video before playing a preview')
   if (!Number.isSafeInteger(frame) || frame < 0 || frame >= metadata.totalFrames) throw new Error('Playback position is outside the song')
   const value = validateActiveProject(raw)
   assetData(value)
   cancelPreview()
-  return playbackVideo.open(value, metadata, frame)
+  const generation = ++playbackRequest
+  const prepared = await mediaCache.prepare(value)
+  if (generation !== playbackRequest) return { superseded: true }
+  const result = await playbackVideo.open({ ...value, audioPath: prepared.analysisPath }, prepared.metadata, frame, prepared.outputPath)
+  return { ...result, peak: prepared.peak }
 })
 handle('playback-frames', (_event, session, count) => playbackVideo.pull(session, count))
-handle('cancel-playback', () => playbackVideo.cancel())
+handle('cancel-playback', () => { ++playbackRequest; return playbackVideo.cancel() })
 handle('save-project', async (_event, raw, asNew = false) => {
   const value = validateActiveProject(raw)
   if (typeof asNew !== 'boolean') throw new Error('Invalid Save As setting')
@@ -353,11 +406,11 @@ handle('save-project', async (_event, raw, asNew = false) => {
   }
   if (extname(target).toLowerCase() !== '.json') throw new Error('Project file must end in .json')
   const reference = activeAudio || value.audioPath
-  const document = { ...saveArtwork(value, target), audioPath: undefined,
+  const document = { ...saveVideoReferences(saveArtwork(value, target), target), audioPath: undefined,
     audioRelativePath: projectAudioReference(target, reference) }
   fs.mkdirSync(dirname(target), { recursive: true })
   fs.writeFileSync(target, JSON.stringify(document, null, 2) + '\n', { flag: 'w' })
-  project = normalizeProject(resolveArtwork({ ...document, audioPath: reference }, target))
+  project = normalizeProject(resolveVideoReferences(resolveArtwork({ ...document, audioPath: reference }, target), target))
   for (const input of imagePaths(project)) allowedImages.add(input)
   projectPath = target
   recordRecentProject(userData(), target, project.title)
@@ -367,9 +420,10 @@ function loadProjectFromDisk(target) {
   if (fs.statSync(target).size > 1024 * 1024) throw new Error('Project file is too large')
   const stored = JSON.parse(fs.readFileSync(target, 'utf8'))
   const candidate = resolveProjectAudio(target, stored.audioRelativePath)
-  const value = normalizeProject(resolveArtwork({ ...stored, audioPath: candidate }, target))
+  const value = normalizeProject(resolveVideoReferences(resolveArtwork({ ...stored, audioPath: candidate }, target), target))
   assertInstalledFonts(value)
   allowedImages.clear()
+  allowedVideos.clear(); allowedVideos.add(''); allowedVideos.add(videoOf(value)?.videoPath || '')
   for (const input of imagePaths(value)) allowedImages.add(input)
   let nextMetadata = null
   let nextAudio = ''
@@ -383,7 +437,7 @@ function loadProjectFromDisk(target) {
   project = value
   projectOpen = true
   historyAudio.clear(); historyAudio.add(''); historyAudio.add(value.audioPath)
-  metadata = nextMetadata
+  metadata = currentMediaInfo(value)
   activeAudio = nextAudio
   projectPath = target
   recordRecentProject(userData(), target, value.title)
@@ -509,17 +563,18 @@ async function chooseExportDestination(value, audioMode) {
 }
 handle('choose-export-destination', async (_event, raw, audioMode) => {
   if (exportJob) throw new Error('An export is already running')
-  if (!metadata || !activeAudio) throw new Error('Import audio before exporting')
-  if (audioMode === 'copy') validateAudioCopy(activeAudio, metadata)
-  return chooseExportDestination(validateActiveProject(raw), audioMode)
+  if (!metadata) throw new Error('Import audio or video before exporting')
+  const value = validateActiveProject(raw)
+  if (audioMode === 'copy') { const source = copySource(value); validateAudioCopy(source.path, source.metadata) }
+  return chooseExportDestination(value, audioMode)
 })
 handle('render-video', async (_event, raw, preset, audioMode, destination = '') => {
   if (exportJob) throw new Error('An export is already running')
-  if (!metadata || !activeAudio) throw new Error('Import audio before rendering')
-  if (!['720p', '1080p'].includes(preset)) throw new Error('Unsupported export preset')
+  if (!metadata) throw new Error('Import audio or video before rendering')
+  if (!['720p', '1080p', '1440p', '2160p'].includes(preset)) throw new Error('Unsupported export preset')
   outputFormat(audioMode)
-  if (audioMode === 'copy') validateAudioCopy(activeAudio, metadata)
   const value = validateActiveProject(raw)
+  if (audioMode === 'copy') { const source = copySource(value); validateAudioCopy(source.path, source.metadata) }
   assetData(value)
   writePreferences(userData(), { exportPreset: preset })
   let output
@@ -598,7 +653,7 @@ handle('cancel-render', () => {
 app.disableHardwareAcceleration()
 app.whenReady().then(() => {
   playbackVideo = new LivePlayback()
-  protocol.handle('musicmeters-preview', request => mediaResponse(request, playbackVideo.media))
+  protocol.handle('musicmeters-preview', request => mediaResponse(request, videoCache.media.get(request.url) || playbackVideo.media))
   if (process.env.PHASE2_TEST_INPUT) {
     const info = audioInfo(process.env.PHASE2_TEST_INPUT)
     activeAudio = info.path
@@ -633,9 +688,10 @@ app.whenReady().then(() => {
     win.webContents.send('app-close-requested')
   })
   return win.loadFile(editorDocument).then(async () => {
-    if (process.env.PHASE2_PLAYBACK_SMOKE === '1' || process.env.PHASE2_PORTRAIT_SMOKE === '1' || process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
+    if (process.env.MUSICMETERS_MEDIA_SMOKE === '1' || process.env.PHASE2_PLAYBACK_SMOKE === '1' || process.env.PHASE2_PORTRAIT_SMOKE === '1' || process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
-        if (process.env.PHASE2_PLAYBACK_SMOKE === '1') await require('../test/playback-smoke.cjs')(win, playbackVideo)
+        if (process.env.MUSICMETERS_MEDIA_SMOKE === '1') await require('../test/media-quality-smoke.cjs')(win)
+        else if (process.env.PHASE2_PLAYBACK_SMOKE === '1') await require('../test/playback-smoke.cjs')(win, playbackVideo)
         else if (process.env.PHASE2_PORTRAIT_SMOKE === '1') await require('../test/portrait-smoke.cjs')(win)
         else if (process.env.PHASE2_STARTUP_SMOKE === '1') await require('../test/startup-smoke.cjs')(win)
         else if (process.env.PHASE6_SECURITY_SMOKE === '1') await require('../../phase6/test/security-smoke.cjs')(win)
@@ -677,7 +733,10 @@ app.on('before-quit', event => {
     event.preventDefault()
     if (!cleaningPlayback) {
       cleaningPlayback = true
+      mediaCache.cancel(); videoCache.cancel()
       Promise.resolve(playbackVideo?.cancel()).catch(error => console.error(`Preview cleanup: ${error.message}`))
+        .then(async () => { await previewWorker?.terminate(); await mediaCache.close(); await videoCache.close() })
+        .catch(error => console.error(`Media cleanup: ${error.message}`))
         .finally(() => { playbackCleaned = true; app.quit() })
     }
   }

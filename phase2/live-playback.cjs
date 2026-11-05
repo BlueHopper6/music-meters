@@ -68,7 +68,7 @@ class LivePlayback {
     return this.cleanup
   }
   cancel() { ++this.generation; return this.stopWorkers() }
-  async open(project, metadata, frame) {
+  async open(project, metadata, frame, outputPath = project.audioPath) {
     const generation = ++this.generation
     await this.stopWorkers()
     if (generation !== this.generation) return { superseded: true }
@@ -80,8 +80,8 @@ class LivePlayback {
       }))))
       if (generation !== this.generation) return { superseded: true }
       this.session = randomUUID()
-      const type = { '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.flac': 'audio/flac' }[path.extname(project.audioPath).toLowerCase()]
-      this.media = { path: project.audioPath, url: `musicmeters-preview://audio/${this.session}`, type }
+      const type = { '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.flac': 'audio/flac' }[path.extname(outputPath).toLowerCase()]
+      this.media = { path: outputPath, url: `musicmeters-preview://audio/${this.session}`, type }
       return { session: this.session, url: this.media.url, frames }
     } catch (error) {
       if (generation !== this.generation) return { superseded: true }

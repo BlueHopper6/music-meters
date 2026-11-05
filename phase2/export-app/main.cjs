@@ -23,6 +23,8 @@ const { assetData } = require('../assets.cjs')
 const { probeAudio } = require('../audio.cjs')
 const { outputFormat, aacBitrate, validateOutputPath, validateAudioCopy } = require('../audio-output.cjs')
 const { lockWindowNavigation } = require('../window-security.cjs')
+const { mediaPlan, copySource, MediaCache } = require('../project-media.cjs')
+const { VideoFrames } = require('../video-frames.cjs')
 const { precomputeSpectra } = require('../../phase3/spectrum.cjs')
 const { precomputeOscilloscopes } = require('../../phase3/oscilloscope.cjs')
 const { precomputeSpectrograms } = require('../../phase3/spectrogram.cjs')
@@ -44,28 +46,35 @@ const nativeLoudness = nativeModule.lufsmeter
 const nativeWaterfall = nativeModule.waterfall
 const config = JSON.parse(process.env.PHASE2_JOB || '{}')
 const FPS = 30
+let exportMediaCache
 
 function validate() {
   const project = normalizeProject(config.project)
   assertInstalledFonts(project)
-  if (!project.audioPath || !fs.statSync(project.audioPath).isFile()) throw new Error('Project audio is unavailable')
+  if (!mediaPlan(project)) throw new Error('Project media is unavailable')
   validateOutputPath(config.output, config.audioMode)
   if (fs.existsSync(config.output)) throw new Error(`Output already exists: ${config.output}`)
   if (typeof config.cancelFile !== 'string') throw new Error('Missing cancellation marker path')
-  if (!['720p', '1080p'].includes(config.preset)) throw new Error('Unsupported export preset')
+  if (!['720p', '1080p', '1440p', '2160p'].includes(config.preset)) throw new Error('Unsupported export preset')
   return project
 }
 
 function startEncoder(temp, input, totalFrames, audioMode, metadata) {
   const audioBitrate = audioMode === 'copy' ? null : aacBitrate(metadata)
   const audioArgs = audioMode === 'copy' ? ['-c:a', 'copy']
+    : audioMode === 'flac' ? ['-af', 'aresample=osf=s32:output_sample_bits=24:dither_method=triangular', '-c:a', 'flac', '-sample_fmt', 's32', '-bits_per_raw_sample', '24', '-compression_level', '8']
+    : audioMode === 'master' ? ['-c:a', 'pcm_f32le']
+    : audioMode === 'pcm' ? ['-af', 'aresample=osf=s32:output_sample_bits=24:dither_method=triangular', '-c:a', 'pcm_s24le', '-movflags', '+faststart']
     : ['-c:a', 'aac', '-b:a', audioBitrate, '-movflags', '+faststart']
+  const videoArgs = audioMode === 'master'
+    ? ['-c:v', 'ffv1', '-level', '3', '-coder', '1', '-context', '1', '-g', '1', '-slicecrc', '1', '-pix_fmt', 'bgr0']
+    : ['-vf', 'scale=in_range=full:out_range=tv:out_color_matrix=bt709', '-c:v', 'libx264', '-preset', 'slow', '-crf', '16',
+      '-pix_fmt', 'yuv420p', '-color_range', 'tv', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'iec61966-2-1']
   const args = [
     '-nostdin', '-hide_banner', '-loglevel', 'error', '-n',
     '-f', 'image2pipe', '-framerate', String(FPS), '-vcodec', 'png', '-i', 'pipe:0',
     '-i', input, '-map', '0:v:0', '-map', '1:a:0',
-    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
-    '-pix_fmt', 'yuv420p', '-r', String(FPS),
+    ...videoArgs, '-r', String(FPS),
     ...(audioMode === 'copy' ? [] : ['-frames:v', String(totalFrames)]),
     ...audioArgs, temp,
   ]
@@ -113,10 +122,20 @@ function checkCancel(frame) {
 
 async function exportVideo() {
   const project = validate()
-  const metadata = probeAudio(project.audioPath)
-  if (config.audioMode === 'copy') validateAudioCopy(project.audioPath, metadata)
-  assertOutputSpace(config.output, metadata.duration, fs.statfsSync,
-    config.audioMode === 'copy' ? fs.statSync(project.audioPath, { bigint: true }).size : 0)
+  const plan = mediaPlan(project)
+  const source = config.audioMode === 'copy' ? copySource(project, plan) : null
+  if (source) validateAudioCopy(source.path, source.metadata)
+  assertOutputSpace(config.output, plan.metadata.duration, fs.statfsSync,
+    source ? fs.statSync(source.path, { bigint: true }).size : 0, config.preset, config.audioMode)
+  const mediaCache = new MediaCache(jobPath('export-media', randomUUID()))
+  exportMediaCache = mediaCache
+  const abort = new AbortController()
+  const cancelTimer = setInterval(() => { if (fs.existsSync(config.cancelFile)) abort.abort() }, 100)
+  let prepared
+  try { prepared = await mediaCache.prepare(project, abort.signal) } finally { clearInterval(cancelTimer) }
+  if (prepared.peak > 1 && config.audioMode !== 'master') throw new Error(`Soundtrack exceeds full scale by ${(20 * Math.log10(prepared.peak)).toFixed(1)} dB. Lower source or master volume before exporting to avoid clipping.`)
+  const metadata = prepared.metadata
+  const analysisPath = prepared.analysisPath
   const totalFrames = metadata.totalFrames
   const vectorscopeMultiband = project.layers.some(layer => layer.type === 'vectorscope' && layer.visible && layer.multiband)
   const { width, height } = exportDimensions(project, config.preset)
@@ -137,6 +156,7 @@ async function exportVideo() {
   let loudnessCache
   let waterfallCache
   let reader
+  let videoReader
   let encoder
   let win
   let success = false
@@ -148,29 +168,29 @@ async function exportVideo() {
   let decodedFrames = 0
   let renderedFrames = 0
   try {
-    spectrumCache = await precomputeSpectra(project.audioPath, metadata, project, nativeSpectrum,
+    spectrumCache = await precomputeSpectra(analysisPath, metadata, project, nativeSpectrum,
       spectrumDirectory, () => !fs.existsSync(config.cancelFile),
       (configuration, configurations, frames, total) => console.log(JSON.stringify({
         event: 'analysis-progress', configuration, configurations, frames, total,
       })))
-    oscilloscopeCache = await precomputeOscilloscopes(project.audioPath, metadata, project, nativeOscilloscope,
+    oscilloscopeCache = await precomputeOscilloscopes(analysisPath, metadata, project, nativeOscilloscope,
       oscilloscopeDirectory, () => !fs.existsSync(config.cancelFile),
       (frames, total) => console.log(JSON.stringify({ event: 'oscilloscope-progress', frames, total })))
-    spectrogramCache = await precomputeSpectrograms(project.audioPath, metadata, project, nativeSpectrogram,
+    spectrogramCache = await precomputeSpectrograms(analysisPath, metadata, project, nativeSpectrogram,
       spectrogramDirectory, width / project.width, () => !fs.existsSync(config.cancelFile),
       (configuration, configurations, frames, total) => console.log(JSON.stringify({
         event: 'spectrogram-progress', configuration, configurations, frames, total })))
-    waveformCache = await precomputeWaveforms(project.audioPath, metadata, project, nativeWaveform,
+    waveformCache = await precomputeWaveforms(analysisPath, metadata, project, nativeWaveform,
       waveformDirectory, width / project.width, () => !fs.existsSync(config.cancelFile),
       (configuration, configurations, frames, total) => console.log(JSON.stringify({
         event: 'waveform-progress', configuration, configurations, frames, total })))
-    vuCache = await precomputeVus(project.audioPath, metadata, project, nativeVu,
+    vuCache = await precomputeVus(analysisPath, metadata, project, nativeVu,
       vuDirectory, () => !fs.existsSync(config.cancelFile),
       (frames, total) => console.log(JSON.stringify({ event: 'vu-progress', frames, total })))
-    loudnessCache = await precomputeLoudness(project.audioPath, metadata, project, nativeLoudness,
+    loudnessCache = await precomputeLoudness(analysisPath, metadata, project, nativeLoudness,
       loudnessDirectory, () => !fs.existsSync(config.cancelFile),
       (frames, total) => console.log(JSON.stringify({ event: 'loudness-progress', frames, total })))
-    waterfallCache = await precomputeWaterfalls(project.audioPath, metadata, project, nativeWaterfall,
+    waterfallCache = await precomputeWaterfalls(analysisPath, metadata, project, nativeWaterfall,
       waterfallDirectory, width / project.width, () => !fs.existsSync(config.cancelFile),
       (configuration, configurations, frames, total) => console.log(JSON.stringify({
         event: 'waterfall-progress', configuration, configurations, frames, total })))
@@ -192,11 +212,12 @@ async function exportVideo() {
       `window.phase2Export.initialize(${JSON.stringify(project)},${width},${height},${metadata.sampleRate},${JSON.stringify(images)})`)
     native.reset()
     native.setSampleRate(metadata.sampleRate)
-    encoder = startEncoder(temp, project.audioPath, totalFrames, config.audioMode, metadata)
+    encoder = startEncoder(temp, source?.path || prepared.outputPath, totalFrames, config.audioMode, metadata)
+    if (plan.video?.videoPath && plan.video.visible && plan.video.opacity > 0) videoReader = new VideoFrames(plan.video, metadata.duration, Math.max(width, height))
     // Open the decoder when rendering is ready to consume it. Starting it
     // before the hidden renderer initializes caused packaged 8 kHz exports
     // to report EOF at the first frame.
-    reader = new PcmReader(project.audioPath, metadata.sampleRate)
+    reader = new PcmReader(analysisPath, metadata.sampleRate)
     console.log(JSON.stringify({ event: 'started', input: project.audioPath, output: config.output,
       ...metadata, width, height, audioBitrate: encoder.audioBitrate,
       encoderPid: encoder.child.pid, decoderPid: reader.child.pid }))
@@ -227,9 +248,11 @@ async function exportVideo() {
       const vus = vuCache.frame()
       const loudness = loudnessCache.frame()
       const waterfalls = waterfallCache.frame()
-      const encoded = await win.webContents.executeJavaScript(`window.phase2Export.render(${JSON.stringify(x)},${JSON.stringify(y)},${JSON.stringify(multiband)},${JSON.stringify(spectra)},${JSON.stringify(oscilloscopes)},${JSON.stringify(spectrograms)},${JSON.stringify(waveforms)},${JSON.stringify(vus)},${JSON.stringify(loudness)},${JSON.stringify(waterfalls)},${index})`)
+      const videoImage = videoReader ? await videoReader.read() : ''
+      const encoded = await win.webContents.executeJavaScript(`window.phase2Export.render(${JSON.stringify(x)},${JSON.stringify(y)},${JSON.stringify(multiband)},${JSON.stringify(spectra)},${JSON.stringify(oscilloscopes)},${JSON.stringify(spectrograms)},${JSON.stringify(waveforms)},${JSON.stringify(vus)},${JSON.stringify(loudness)},${JSON.stringify(waterfalls)},${index},${JSON.stringify(videoImage)})`)
       renderMs += performance.now() - renderStart
       const png = Buffer.from(encoded, 'base64')
+      if (index === 0 && process.env.MUSICMETERS_MEDIA_SMOKE === '1') fs.writeFileSync(`${config.output}.rendered.png`, png, { flag: 'wx' })
       const backpressureStart = performance.now()
       await writeFrame(encoder, png)
       backpressureMs += performance.now() - backpressureStart
@@ -260,12 +283,13 @@ async function exportVideo() {
       }
       fs.rmSync(temp, { force: true })
     }
-    try { await reader?.close() } finally { spectrumCache?.close(); oscilloscopeCache?.close(); spectrogramCache?.close(); waveformCache?.close(); vuCache?.close(); loudnessCache?.close(); waterfallCache?.close(); win?.destroy() }
+    try { await reader?.close(); await videoReader?.close() } finally { spectrumCache?.close(); oscilloscopeCache?.close(); spectrogramCache?.close(); waveformCache?.close(); vuCache?.close(); loudnessCache?.close(); waterfallCache?.close(); win?.destroy(); await mediaCache.close() }
   }
 }
 
 app.disableHardwareAcceleration()
-app.whenReady().then(exportVideo).then(() => app.quit()).catch(error => {
+app.whenReady().then(exportVideo).then(async () => { await exportMediaCache?.close(); app.quit() }).catch(async error => {
+  try { await exportMediaCache?.close() } catch (cleanup) { console.error(`Media cleanup: ${cleanup.message}`) }
   console.error(error.message)
-  app.exit(error.message === 'Export cancelled' ? 2 : 1)
+  app.exit(error.message === 'Export cancelled' || fs.existsSync(config.cancelFile) ? 2 : 1)
 })

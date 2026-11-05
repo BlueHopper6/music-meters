@@ -16,6 +16,38 @@ The first **Save** and **Save as…** suggest a filename based on **Project name
 
 For a finished composition, choose **Artwork / logo** or **Text** in the Add layer menu. Image layers use a local PNG, JPEG, or WebP file, crop-to-fill or fit-inside, opacity, rotation, and shadow. Text layers have content, font, size, weight, alignment, color, rotation, and shadow. The composition background can be a solid color, gradient, or local image. Layer order is shared across meters, artwork, and text: **Move up** places a layer in front. The project name is metadata; in version 2 projects, visible song and artist lettering comes from text layers. Older version 1 projects retain their original fixed title/subtitle/timestamp display until a new graphic layer or background style upgrades them. Saving a version 2 project copies artwork into a sibling `<project-name>.assets` folder. Keep that folder with the JSON when moving the project. Audio is still referenced separately and is never embedded. If audio or artwork is missing, the editor lists each missing file with a **Relink…** button; save the project after choosing replacements. **Save as…** creates a separate project for the next song.
 
+## Video layers and audio routing
+
+These controls are in development source after 1.1.0; published 1.1.0 binaries do not include them.
+
+Choose **Import video** or **Add layer → Video**. One local MP4, MOV, MKV, WebM, AVI, or M4V video is supported, subject to the installed FFmpeg's decoders. Arrange it anywhere among the other layers; an opaque video covers layers beneath it. Position, size, rotation, visibility, opacity, locking, and cover/contain fitting work like other layers. Replace or relink it through the video picker. Video remains an external file reference; saving, copying, or moving a project does not copy the original video. Keep that source available. Projects containing a video layer require this version or newer.
+
+Sources begin at project time zero. **Project length** follows **Longest source**, **Video length**, or **Imported audio length**. Shorter audio ends in silence. **When video ends** controls its picture: freeze the final frame, loop the picture, or hide it. Picture looping does not repeat video audio. Trimming, start offsets, multiple video layers, surround mixing, and HDR video are not included. Convert HDR to SDR BT.709 before importing. Composition and output remain 30 FPS, so other input frame rates are sampled onto that clock.
+
+In **Soundtrack & meters**, adjust video audio and imported audio independently from 0–200%, mute either source, and set the master output. The exported soundtrack always follows those settings. Hiding a video picture does not mute its audio. The transport **Mute** control affects listening only.
+
+**Meters listen to** chooses **Final mix**, **Video audio**, or **Imported audio** for every meter. Final mix analyzes the soundtrack after all source and master levels. Source modes analyze that original source independently of soundtrack level/mute; **Meter input gain** adjusts analysis only, leaving the exported sound unchanged. Meter input gain is disabled in final-mix mode to keep its readings tied to the output. For a talking video with music-only visualization, choose **Imported audio**, lower its soundtrack volume, and keep video audio audible. If the chosen source has no audio, the meter input is silence.
+
+The editor prepares a smaller silent video proxy for preview and floating-point soundtrack files when processing is needed. Preparing long clips can take time and temporary disk space; use **Cancel media preparation** to stop. Export reads the original video, not the preview proxy. Temporary prepared media is removed on normal app exit; interrupted processes may leave temporary files.
+
+## Export quality and gradients
+
+All export sizes follow the canvas orientation, from 720p through 1080p, 1440p, and 2160p/4K at 30 FPS. Meters, text, and gradients render at the selected size. Exporting a low-resolution imported image or video at 4K cannot recover missing source detail.
+
+| Format & audio | Quality and intended use |
+| --- | --- |
+| MP4 · AAC up to 320 kb/s | H.264 with lossy AAC; compatible sharing format. Mono and low-rate inputs use lower audio targets. |
+| MOV · 24-bit PCM audio | High-quality H.264 and uncompressed audio; a larger upload or editing file without an AAC conversion. |
+| MKV · 24-bit FLAC audio | High-quality H.264 and losslessly compressed 24-bit audio of the rendered mix. |
+| MKV · Lossless RGB + float PCM master | FFV1 preserves the rendered 8-bit RGB canvas pixels; 32-bit float PCM preserves the floating-point soundtrack. Very large files and more limited player/editor support; useful for archiving and further conversion. This is not HDR or a higher-bit-depth renderer. |
+| MKV · Source audio copy | No new audio encode for one eligible unchanged source at its original volume and length. Mixing, master/source gain, padding, or trimming requires a processed audio option. Meter routing alone does not change the soundtrack. |
+
+Mixing uses floating-point samples without lossy intermediate encoding or automatic normalization. The highest input audio sample rate is used when sources differ; this can require resampling the lower-rate source. AAC may use a lower rate where its encoder requires one. PCM/FLAC convert the mix to 24-bit integer samples with dither; the float master avoids that conversion. None of these options restores information missing from already compressed source media. Overloaded edited soundtracks are indicated during playback and rejected for AAC/PCM/FLAC export; reduce source or master volume. A float master can preserve values above full scale, which may clip when played or converted without attenuation.
+
+H.264 uses a slow preset and CRF 16, with BT.709 matrix/primaries and the canvas's sRGB transfer indicated explicitly. It remains lossy, including 4:2:0 color subsampling. Use the lossless RGB master when preserving rendered pixels is the priority.
+
+For gradients, **Gradient texture** adds fixed, subtle spatial noise before rounding to 8-bit pixels. Zero disables it; the default is 1.5. This can help disguise banding but can also look grainy at larger strengths. Lossy upload encoding can remove that texture or introduce new bands/blocks. A clean local export does not guarantee a clean streamed result. Compare the finished high-resolution stream after processing, and consider less subtle gradient colors if artifacts persist. YouTube describes its [recommended upload settings](https://support.google.com/youtube/answer/1722171?hl=en) and [video re-encoding](https://support.google.com/youtube/answer/4603579?hl=en).
+
 ## Layer backgrounds
 
 Select any visualizer or text layer and open **Layer background** in the inspector. Enable a background, choose its color, and set its opacity independently of the trace or text. It fills the layer's rectangle and follows its position, rotation, and overall layer opacity. Disable the background to make it transparent again. Projects and templates preserve these settings; older projects and existing factory templates remain transparent by default. Locked layers cannot change their background settings.
