@@ -12,7 +12,7 @@
 
 MusicMeters is an offline desktop music visualizer built around [Prism](https://github.com/Boof2015/prism)'s native audio analysis and meter rendering. Combine meters, artwork, and text into a composition, preview it with your music, and export a video.
 
-Development source ahead of the published 1.1.0 release adds video layers, independent soundtrack and meter routing, lossless export options, gradient texture, and exports up to 4K at 30 FPS. See [video and export quality](docs/user-guide.md#video-layers-and-audio-routing). These additions are not in the published 1.1.0 downloads.
+MusicMeters 1.2.0 is being prepared with video layers, independent soundtrack and meter routing, Copy/Link media storage, meter styling presets, lossless export options, gradient texture, and exports up to 4K at 30 FPS. See [video and export quality](docs/user-guide.md#video-layers-and-audio-routing). These additions are not in the published 1.1.0 downloads.
 
 ## Features
 
@@ -73,7 +73,7 @@ The application and setup are unsigned. Check the selected release's checksums a
 4. Press **Play** to preview the composition with audio. Use **Full-history still** when you want analysis through the selected timestamp.
 5. **Save** your project, then choose **Export…** to select the resolution, format, and output filename.
 
-Saving a new project creates a project folder. Keep its JSON and sibling `.assets` folder together; audio remains a separate file reference. Templates reuse the layout with fresh song media. The [user guide](docs/user-guide.md) explains media handling, template behavior, preview history, and shortcuts.
+Saving a new project creates a project folder. Keep its JSON and sibling `.assets` folder together; media follows its Copy/Link choice. Keep linked original files available. Templates reuse the layout with fresh song media. The [user guide](docs/user-guide.md) explains media handling, template behavior, preview history, and shortcuts.
 
 ## Developing
 
