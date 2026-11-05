@@ -980,6 +980,9 @@ body.stage-fullscreen .selection {
 .template-name-field input::placeholder { color: var(--text-muted); }
 .template-name-field input:focus { outline: 0; border-color: var(--text-secondary); box-shadow: none; }
 .template-name-field span { color: var(--text-muted); font-size: 11px; }
+#meter-style-options details { margin-top: 12px; }
+#meter-style-options summary { cursor: pointer; color: var(--text-secondary); font-size: 12px; margin-bottom: 10px; }
+#meter-style-options input[type="color"] { width: 100%; }
 
 .number-grid {
   display: grid;

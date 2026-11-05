@@ -251,7 +251,7 @@ async function exportVideo() {
       const encoded = await win.webContents.executeJavaScript(`window.phase2Export.render(${JSON.stringify(x)},${JSON.stringify(y)},${JSON.stringify(multiband)},${JSON.stringify(spectra)},${JSON.stringify(oscilloscopes)},${JSON.stringify(spectrograms)},${JSON.stringify(waveforms)},${JSON.stringify(vus)},${JSON.stringify(loudness)},${JSON.stringify(waterfalls)},${index},${JSON.stringify(videoImage)})`)
       renderMs += performance.now() - renderStart
       const png = Buffer.from(encoded, 'base64')
-      if (index === 0 && process.env.MUSICMETERS_MEDIA_SMOKE === '1') fs.writeFileSync(`${config.output}.rendered.png`, png, { flag: 'wx' })
+      if (index === 0 && (process.env.MUSICMETERS_MEDIA_SMOKE === '1' || process.env.MUSICMETERS_STYLE_SMOKE === '1')) fs.writeFileSync(`${config.output}.rendered.png`, png, { flag: 'wx' })
       const backpressureStart = performance.now()
       await writeFrame(encoder, png)
       backpressureMs += performance.now() - backpressureStart

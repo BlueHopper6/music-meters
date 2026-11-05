@@ -1,3 +1,4 @@
+const { normalizeAppearance } = require('./meter-style.cjs')
 const WIDTH = 1280
 const HEIGHT = 720
 const FPS = 30
@@ -204,6 +205,7 @@ function normalizeProject(raw) {
       x, y, w, h, visible: layer.visible, locked: layer.locked,
       aspectLocked: layer.aspectLocked === true, rotation,
       opacity: number(layer.opacity, 'Opacity', 0, 1), color: color(layer.color, 'Meter color') }
+    if (!['image','text','video'].includes(layer.type) && layer.appearance !== undefined) normalized.appearance = normalizeAppearance(layer.appearance)
     if (layer.type !== 'image' && ['backgroundEnabled', 'backgroundColor', 'backgroundOpacity']
       .some(key => layer[key] !== undefined)) {
       const enabled = layer.backgroundEnabled === undefined ? false : layer.backgroundEnabled

@@ -275,6 +275,27 @@
         </div>
         <label>Shadow blur<input id="text-shadow" type="number" min="0" max="40" step="1"></label>
       </section>
+      <section class="property-group" id="meter-style-options" hidden><h3>Meter style</h3>
+        <label>Color preset<select id="meter-palette" aria-label="Apply meter color preset"><option value="">Apply a preset…</option><option value="prism">Prism Classic</option><option value="neon">Cyan &amp; Magenta</option><option value="ember">Ember</option><option value="ice">Ice</option><option value="forest">Forest</option><option value="mono">Monochrome</option></select></label>
+        <button id="meter-style-reset" type="button">Reset style</button>
+        <details id="meter-style-details"><summary>Fine-tune appearance</summary>
+          <label id="meter-trace-row">Trace weight<input id="meter-trace-width" type="number" min="0.5" max="8" step="0.25" aria-label="Meter trace weight"></label>
+          <div class="number-grid"><label>Grid / scale<input id="meter-grid-color" type="color"></label><label>Strength (%)<input id="meter-grid-opacity" type="number" min="0" max="100" step="1"></label></div>
+          <div id="meter-label-row" class="number-grid"><label>Labels<input id="meter-label-color" type="color"></label><label>Strength (%)<input id="meter-label-opacity" type="number" min="0" max="100" step="1"></label></div>
+          <label id="meter-phase-row">Phase warning<input id="meter-phase-color" type="color"></label>
+          <div id="meter-spectrum-style">
+            <label>Side-channel color<input id="meter-side-color" type="color"></label>
+            <label>Fill<select id="meter-fill-mode"><option value="none">Line only</option><option value="gradient">Gradient</option><option value="heat">Heat map</option></select></label>
+            <label id="meter-fill-opacity-row">Gradient strength (%)<input id="meter-fill-opacity" type="number" min="0" max="100" step="1"></label>
+            <label><input id="meter-spectrum-grid" type="checkbox"> Show spectrum grid</label>
+          </div>
+          <div id="meter-heat-style">
+            <div class="color-grid-3"><label>Low fill<input id="meter-fill-low" type="color"></label><label>Mid fill<input id="meter-fill-mid" type="color"></label><label>High fill<input id="meter-fill-high" type="color"></label></div>
+            <p id="meter-heat-hint" class="export-note">Choose Heat in the meter options to use this palette.</p>
+          </div>
+          <div id="meter-scope-fill" class="number-grid"><label>Wave fill<input id="meter-scope-color" type="color"></label><label>Strength (%)<input id="meter-scope-opacity" type="number" min="0" max="100" step="1"></label></div>
+        </details>
+      </section>
       <section class="property-group" id="vectorscope-options" hidden><h3>Vectorscope</h3>
         <div class="number-grid">
           <label>Projection<select id="vectorscope-mode"><option value="lissajous">Lissajous</option><option value="polar-unipolar">Polar unipolar</option><option value="polar-bipolar">Polar bipolar</option><option value="linear-unipolar">Linear unipolar</option><option value="linear-bipolar">Linear bipolar</option></select></label>
