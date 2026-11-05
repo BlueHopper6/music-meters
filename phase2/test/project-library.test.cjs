@@ -153,7 +153,7 @@ test('copy never reads or copies song bytes, and move leaves an internal song at
   fs.writeFileSync(f.source, JSON.stringify(stored))
   const read = fs.readFileSync, stream = fs.createReadStream, copy = fs.promises.copyFile
   fs.readFileSync = (file, ...args) => { assert.notEqual(file, local, 'Must not read audio bytes'); return read(file, ...args) }
-  fs.createReadStream = file => { assert.fail('Must not stream audio: ' + file) }
+  fs.createReadStream = (file, ...args) => { assert.notEqual(file, local, 'Must not stream linked audio'); return stream(file, ...args) }
   fs.promises.copyFile = async () => { assert.fail('Must not copy audio') }
   let copied
   try { copied = await copyLibraryProject(f.source, f.target, 'Copy') }

@@ -45,18 +45,18 @@ export type LoudnessLayer = BaseLayer & { type: 'loudness'; readout: 'momentary'
 export type WaterfallLayer = BaseLayer & { type: 'waterfall'; fftSize: number; scaleMode: 'log' | 'mel' | 'linear'
   frequencyRangeMode: 'extended' | 'audible'; historySeconds: number; density: 'sparse' | 'balanced' | 'dense'
   colorMode: 'theme' | 'heat'; smoothing: number; tiltDbPerOctave: number; showGrid: boolean }
-export type ImageLayer = BaseLayer & { type: 'image'; imagePath: string; fit: 'cover' | 'contain'; rotation: number; shadow: number }
-export type VideoLayer = BaseLayer & { type: 'video'; videoPath: string; fit: 'cover' | 'contain'; shadow: number; endBehavior: 'freeze' | 'loop' | 'hide' }
+export type ImageLayer = BaseLayer & { type: 'image'; imagePath: string; storage?: 'copy' | 'link'; fit: 'cover' | 'contain'; rotation: number; shadow: number }
+export type VideoLayer = BaseLayer & { type: 'video'; videoPath: string; storage?: 'copy' | 'link'; fit: 'cover' | 'contain'; shadow: number; endBehavior: 'freeze' | 'loop' | 'hide' }
 export type TextLayer = BaseLayer & { type: 'text'; text: string; fontFamily: string; fontSize: number;
   fontWeight: 'normal' | 'bold'; align: 'left' | 'center' | 'right'; rotation: number; shadow: number }
 export type Layer = VectorscopeLayer | SpectrumLayer | OscilloscopeLayer | SpectrogramLayer | WaveformLayer | VuLayer | LoudnessLayer | WaterfallLayer | ImageLayer | TextLayer | VideoLayer
 type MeterLayer = Exclude<Layer, ImageLayer | TextLayer | VideoLayer>
-export type Background = { type: 'solid' | 'gradient' | 'image'; color: string; color2: string; imagePath: string; fit: 'cover' | 'contain'; dither?: number }
+export type Background = { type: 'solid' | 'gradient' | 'image'; color: string; color2: string; imagePath: string; storage?: 'copy' | 'link'; fit: 'cover' | 'contain'; dither?: number }
 export type Mixer = { videoVolume: number; audioVolume: number; masterVolume: number; videoMuted: boolean; audioMuted: boolean;
   meterSource: 'mix' | 'video' | 'audio'; meterGainDb: number; durationMode: 'longest' | 'video' | 'audio' }
 export type Project = {
   version: number; width: number; height: number; fps: number; title: string
-  background: string | Background; audioPath: string; previewFrame?: number; layers: Layer[]; mixer?: Mixer
+  background: string | Background; audioPath: string; audioStorage?: 'copy' | 'link'; previewFrame?: number; layers: Layer[]; mixer?: Mixer
 }
 export type Points = { x: Float32Array; y: Float32Array }
 export type VectorscopeFrame = Points & { multiband: Float32Array }

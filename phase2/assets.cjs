@@ -1,6 +1,8 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { createHash } = require('node:crypto')
+const { assertLocal, ensureDirectory } = require('./media-storage.cjs')
+const { projectAudioReference, resolveProjectAudio } = require('./project-audio.cjs')
 
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' }
 
@@ -45,30 +47,39 @@ function assetData(project, requireComplete = true) {
   return data
 }
 
-function saveArtwork(project, target) {
+function saveArtwork(project, target, forceCopy = true) {
   if (project.version !== 2) return project
   const copied = structuredClone(project)
   const folder = `${path.basename(target, '.json')}.assets`
   const dir = path.join(path.dirname(target), folder)
-  const replace = input => {
+  const replace = (input, storage) => {
     if (!input) return ''
+    if (!forceCopy && storage === 'link') return projectAudioReference(target, input)
+    assertLocal(input)
     const { bytes, extension } = readImage(input)
     const name = `${createHash('sha256').update(bytes).digest('hex')}${extension}`
-    fs.mkdirSync(dir, { recursive: true })
+    ensureDirectory(dir)
     const destination = path.join(dir, name)
+    assertLocal(destination)
     if (!fs.existsSync(destination)) fs.writeFileSync(destination, bytes, { flag: 'wx' })
+    if (createHash('sha256').update(fs.readFileSync(destination)).digest('hex') !== name.slice(0,64)) throw new Error('Existing artwork does not match its content hash')
     return `${folder}/${name}`
   }
-  copied.background.imagePath = replace(copied.background.imagePath)
-  for (const layer of copied.layers) if (layer.type === 'image') layer.imagePath = replace(layer.imagePath)
+  copied.background.imagePath = replace(copied.background.imagePath, copied.background.storage)
+  if (forceCopy) delete copied.background.storage
+  for (const layer of copied.layers) if (layer.type === 'image') {
+    layer.imagePath = replace(layer.imagePath, layer.storage)
+    if (forceCopy) delete layer.storage
+  }
   return copied
 }
 
 function resolveArtwork(project, target) {
   if (project.version !== 2) return project
   const folder = `${path.basename(target, '.json')}.assets`
-  const resolveRef = ref => {
+  const resolveRef = (ref, storage) => {
     if (!ref) return ''
+    if (storage === 'link') return resolveProjectAudio(target, ref)
     if (typeof ref !== 'string' || !ref.startsWith(`${folder}/`) || ref.includes('\\')
         || !/^[a-f0-9]{64}\.(png|jpe?g|webp)$/i.test(ref.slice(folder.length + 1))) {
       throw new Error('Invalid project artwork reference')
@@ -76,8 +87,8 @@ function resolveArtwork(project, target) {
     return path.join(path.dirname(target), folder, ref.slice(folder.length + 1))
   }
   const resolved = structuredClone(project)
-  resolved.background.imagePath = resolveRef(resolved.background.imagePath)
-  for (const layer of resolved.layers) if (layer.type === 'image') layer.imagePath = resolveRef(layer.imagePath)
+  resolved.background.imagePath = resolveRef(resolved.background.imagePath, resolved.background.storage)
+  for (const layer of resolved.layers) if (layer.type === 'image') layer.imagePath = resolveRef(layer.imagePath, layer.storage)
   return resolved
 }
 

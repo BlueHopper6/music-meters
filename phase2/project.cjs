@@ -146,13 +146,18 @@ function localImagePath(value, name) {
   return value
 }
 
+function storage(value) {
+  if (value === undefined) return {}
+  if (!['copy', 'link'].includes(value)) throw new Error('Invalid media storage choice')
+  return { storage: value }
+}
 function background(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid background')
   if (!['solid', 'gradient', 'image'].includes(value.type)) throw new Error('Unsupported background type')
   if (!['cover', 'contain'].includes(value.fit)) throw new Error('Invalid background fit')
   return { type: value.type, color: color(value.color, 'Background color'),
     color2: color(value.color2, 'Second background color'),
-    imagePath: localImagePath(value.imagePath, 'Background image'), fit: value.fit,
+    imagePath: localImagePath(value.imagePath, 'Background image'), fit: value.fit, ...storage(value.storage),
     ...(value.dither === undefined ? {} : { dither: number(value.dither, 'Gradient texture', 0, 4) }) }
 }
 
@@ -211,14 +216,14 @@ function normalizeProject(raw) {
     }
     if (layer.type === 'video') {
       if (!['cover', 'contain'].includes(layer.fit) || !['freeze', 'loop', 'hide'].includes(layer.endBehavior)) throw new Error('Invalid video display settings')
-      return { ...normalized, videoPath: localVideoPath(layer.videoPath), fit: layer.fit,
+      return { ...normalized, ...storage(layer.storage), videoPath: localVideoPath(layer.videoPath), fit: layer.fit,
         endBehavior: layer.endBehavior, shadow: number(layer.shadow ?? 0, 'Shadow', 0, 40) }
     }
     if (layer.type === 'image' || layer.type === 'text') {
       const shadow = number(layer.shadow, 'Shadow', 0, 40)
       if (layer.type === 'image') {
         if (!['cover', 'contain'].includes(layer.fit)) throw new Error('Invalid image fit')
-        return { ...normalized, imagePath: localImagePath(layer.imagePath, 'Artwork'),
+        return { ...normalized, ...storage(layer.storage), imagePath: localImagePath(layer.imagePath, 'Artwork'),
           fit: layer.fit, shadow }
       }
       if (typeof layer.text !== 'string' || layer.text.length > 500 || /[\u0000-\u001f]/.test(layer.text)) throw new Error('Invalid text layer content')
@@ -337,6 +342,7 @@ function normalizeProject(raw) {
   return { version: raw.version, width, height, fps: FPS,
     title: raw.title, background: raw.version === 1 ? color(raw.background, 'Background') : background(raw.background),
     audioPath: raw.audioPath, previewFrame, layers,
+    ...(raw.audioStorage === undefined ? {} : { audioStorage: storage(raw.audioStorage).storage }),
     ...(raw.mixer === undefined ? {} : { mixer: normalizeMixer(raw.mixer) }) }
 }
 

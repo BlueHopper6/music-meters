@@ -27,13 +27,13 @@ type Desktop = {
   windowState(): Promise<{ fullscreen: boolean; maximized: boolean }>
   onWindowState(listener: (state: { fullscreen: boolean; maximized: boolean }) => void): () => void
   initial(): Promise<Initial>
-  chooseAudio(): Promise<{ path: string; metadata: Metadata } | null>
-  chooseVideo(): Promise<{ path: string; duration: number } | null>
+  chooseAudio(): Promise<{ path: string; metadata: Metadata; storage: 'copy' | 'link' } | null>
+  chooseVideo(): Promise<{ path: string; duration: number; storage: 'copy' | 'link' } | null>
   mediaInfo(project: Project): Promise<Metadata | null>
   loadVideos(project: Project): Promise<Record<string, string>>
   cancelMediaPreparation(): Promise<void>
   restoreProject(project: Project): Promise<{ project: Project; metadata: Metadata | null; missingMedia: MissingMedia[] }>
-  chooseImage(): Promise<string | null>
+  chooseImage(): Promise<{ path: string; storage: 'copy' | 'link' } | null>
   loadAssets(project: Project): Promise<Record<string, string>>
   previewAt(frame: number, project: Project): Promise<
     { x: string; y: string; multiband: string; spectra: Record<string, { mid: string; side: string }>;
@@ -106,6 +106,12 @@ let playback: ReturnType<typeof installVideoPreview> | null = null
 const history = new ProjectHistory(100)
 let historyBusy = false
 let historyGroup = ''
+async function persistProject(asNew = false) {
+  if (historyBusy) throw new Error('Wait for the current edit to finish')
+  historyBusy = true; $('editor-screen').inert = true; updateHistoryControls()
+  try { return await window.desktop.saveProject(project, asNew) }
+  finally { historyBusy = false; $('editor-screen').inert = false; updateHistoryControls() }
+}
 
 function updateHistoryControls() {
   const blocked = historyBusy || exportRunning || exportSubmitting || $('editor-screen').hidden
@@ -159,9 +165,11 @@ async function editArtwork(change: (path: string) => void): Promise<boolean> {
   endHistoryGroup(); recordEdit()
   historyBusy = true; $('editor-screen').inert = true; updateHistoryControls()
   try {
-    const path = await window.desktop.chooseImage()
-    if (!path) return false
-    change(path)
+    const chosen = await window.desktop.chooseImage()
+    if (!chosen) return false
+    change(chosen.path)
+    if (typeof project.background !== 'string' && project.background.imagePath === chosen.path) project.background.storage = chosen.storage
+    for (const layer of project.layers) if (layer.type === 'image' && layer.imagePath === chosen.path) layer.storage = chosen.storage
     refreshInspector(); refreshLayers(); renderMissingMedia(); await syncAssets()
     return true
   } finally { historyBusy = false; $('editor-screen').inert = false; recordEdit() }
@@ -270,6 +278,7 @@ $('import-video').addEventListener('click', async () => {
     resetSongPreview(); upgradeProject()
     const layer = existing || { ...videoLayer(nextId('video')), w: project.width, h: project.height } as VideoLayer
     layer.videoPath = chosen.path
+    layer.storage = chosen.storage
     if (!existing) project.layers.unshift(layer)
     selectedId = layer.id
     missingMedia = missingMedia.filter(item => item.kind !== 'video')
@@ -1648,7 +1657,7 @@ $('import-audio').addEventListener('click', async () => {
     if (!chosen) return
     const previousAudio = project.audioPath
     resetSongPreview()
-    project.audioPath = chosen.path; metadata = chosen.metadata
+    project.audioPath = chosen.path; project.audioStorage = chosen.storage; metadata = chosen.metadata
     await updateMedia()
     suggestSongTitle(chosen.path, previousAudio)
     missingMedia = missingMedia.filter(item => item.kind !== 'audio')
@@ -2154,7 +2163,7 @@ $('rename-template').addEventListener('click', async () => {
 })
 $('save-project').addEventListener('click', async () => {
   try {
-    const saved = await window.desktop.saveProject(project)
+    const saved = await persistProject()
     if (saved) {
       projectPath = saved.path; project = normalizeProject(saved.project) as Project
       missingMedia = saved.missingMedia
@@ -2166,7 +2175,7 @@ $('save-project').addEventListener('click', async () => {
 })
 $('save-project-as').addEventListener('click', async () => {
   try {
-    const saved = await window.desktop.saveProject(project, true)
+    const saved = await persistProject(true)
     if (saved) {
       projectPath = saved.path; project = normalizeProject(saved.project) as Project
       missingMedia = saved.missingMedia
@@ -2548,7 +2557,7 @@ $('unsaved-changes-save').addEventListener('click', async () => {
   const action = pendingUnsavedAction
   closeUnsavedChangesModal()
   try {
-    const result = await window.desktop.saveProject(project, false)
+    const result = await persistProject()
     if (result) {
       projectPath = result.path
       project = normalizeProject(result.project) as Project
