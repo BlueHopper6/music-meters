@@ -4,16 +4,16 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ## Unreleased
 
-## 1.2.0 — release preparation
+## [1.2.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.2.0) — 2026-11-05
+
+Published November 5 in America/Indianapolis. See the [release notes](docs/releases/1.2.0.md) for exact downloads, checksums, and validation.
 
 ### Added
 
 - Six coordinated meter color presets and Prism appearance controls for trace weight, grids/scales, labels, spectrum fills and side-channel color, heat palettes, and oscilloscope underfill. Styling supports history, templates, preview and export.
 - Copy or link images, audio, and video on import; keep original-quality copies with projects or save space with external links. Save As and project management preserve each choice.
-
 - Ctrl+Q quits with the unsaved-changes guard; Ctrl+F toggles full-screen preview.
 - Compatible MP4 exports now target up to 384 kb/s AAC stereo (192 kb/s mono), retaining lower targets for low sample rates.
-
 - One local video layer with normal layer ordering, transforms, cover/contain fitting, and freeze/loop/hide picture endings. Video audio plays once; silent video is supported. Import offers copying or linking the original file.
 - Independent video-audio, imported-audio, and master levels; source mutes; final-mix/video/imported-audio meter input selection; and meter-only input gain for source modes. Project length can follow the video, imported audio, or longest source.
 - MKV with 24-bit FLAC audio and a large MKV master with lossless RGB video and 32-bit float PCM audio. Source-audio copy remains available for an eligible unchanged single soundtrack.

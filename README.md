@@ -10,15 +10,15 @@
 
 </div>
 
-MusicMeters is an offline desktop music visualizer built around [Prism](https://github.com/Boof2015/prism)'s native audio analysis and meter rendering. Combine meters, artwork, and text into a composition, preview it with your music, and export a video.
+MusicMeters is an offline desktop music visualizer built around [Prism](https://github.com/Boof2015/prism)'s native audio analysis and meter rendering. Combine meters, video, artwork, and text into a composition, mix your soundtrack, and export a video.
 
-MusicMeters 1.2.0 is being prepared with video layers, independent soundtrack and meter routing, Copy/Link media storage, meter styling presets, lossless export options, gradient texture, and exports up to 4K at 30 FPS. See [video and export quality](docs/user-guide.md#video-layers-and-audio-routing). These additions are not in the published 1.1.0 downloads.
+MusicMeters 1.2.0 adds video layers, independent soundtrack and meter routing, Copy/Link media storage, meter styling presets, lossless export options, gradient texture, and exports up to 4K at 30 FPS. See [video and export quality](docs/user-guide.md#video-layers-and-audio-routing).
 
 ## Features
 
 ### Eight audio visualizers
 
-Each meter has its own settings, colors, and placement.
+Each meter has its own settings, colors, and placement, with six coordinated color presets and fine appearance controls.
 
 | Visualizer | What it shows |
 | --- | --- |
@@ -34,13 +34,16 @@ Each meter has its own settings, colors, and placement.
 ### Design your composition
 
 - Arrange, resize, rotate, reorder, hide, and lock layers. Use snapping, alignment guides, and an optional grid.
+- Import a video layer and arrange artwork, text, and meters above or below it.
 - Add local artwork and editable text with fonts, colors, opacity, and shadows.
 - Choose a solid, gradient, or image background, plus independent backgrounds for meter and text layers.
-- Work in landscape **16:9** or portrait **9:16** and export at **720p or 1080p, 30 FPS**.
+- Work in landscape **16:9** or portrait **9:16** and export at **720p, 1080p, 1440p, or 2160p/4K at 30 FPS**.
 
 ### Preview and reuse
 
-- Play your audio with synchronized live meters, pause, mute, scrub, or jump to a timecode.
+- Play your composition with synchronized live meters, pause, mute, scrub, or jump to a timecode.
+- Mix video audio and imported music independently, and choose which source or final mix drives the meters.
+- Copy media into the project when saving, or link originals to save disk space.
 - Start from eight factory templates: **Afterglow**, **Contour**, **Night Radio**, **Observatory**, **Synthwave**, **Minimalist Ambient**, **Social**, and **Hyper Chase**.
 - Save your own templates and manage them through the Project Manager.
 - Save local projects, reopen recent work, and relink missing audio or artwork.
@@ -48,14 +51,15 @@ Each meter has its own settings, colors, and placement.
 ### Export locally
 
 - **MP4:** H.264 video with lossy AAC audio targeting up to 384 kb/s; mono and low-sample-rate sources use lower targets.
-- **MKV:** H.264 video with supported MP3, FLAC, or WAV/PCM audio copied without re-encoding. MP3 remains lossy.
+- **MKV:** H.264 with lossless 24-bit FLAC audio, or eligible unchanged source audio copied without re-encoding. MP3 source audio remains lossy.
+- **Lossless master:** MKV with lossless RGB video and 32-bit float PCM audio; files can be much larger.
 - Track export progress, cancel an export, and keep existing videos safe from silent overwrites.
 
-The latest release is [MusicMeters 1.1.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.1.0), with template previews, audio-preserving layout changes, undo/redo, and project-management improvements. See the [changelog](CHANGELOG.md) for the release history.
+The latest release is [MusicMeters 1.2.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.2.0), with video mixing, separate meter inputs, richer meter styling, media storage choices, and higher-quality exports. See the [changelog](CHANGELOG.md) for the release history.
 
 ## Download
 
-MusicMeters targets **Windows x64**. Download the setup EXE or portable ZIP from [MusicMeters 1.1.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.1.0) and check its requirements and checksums. Linux and macOS builds have not been validated.
+MusicMeters targets **Windows x64**. Download the setup EXE or portable ZIP from [MusicMeters 1.2.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.2.0) and check its requirements and checksums. Linux and macOS builds have not been validated.
 
 1. Install the FFmpeg command-line tools and put both `ffmpeg` and `ffprobe` on your Windows `PATH`. Check `ffmpeg -version` and `ffprobe -version` in a new terminal.
 2. For the **setup EXE**, run it to install MusicMeters for your Windows account, then open **MusicMeters** from the Start menu. Setup adds an uninstall entry and preserves the existing templates/preferences location.
