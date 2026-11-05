@@ -16,7 +16,9 @@ class VideoFrames {
       ...(layer.endBehavior === 'loop' ? ['-stream_loop', '-1'] : []),
       '-protocol_whitelist', 'file,pipe', '-i', layer.videoPath, '-map', `0:${info.streamIndex}`, '-an',
       '-vf', `fps=30,scale=w='min(iw,${maxDimension})':h='min(ih,${maxDimension})':force_original_aspect_ratio=decrease,setsar=1,tpad=stop_mode=clone:stop_duration=${duration}`,
-      '-t', String(duration), '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'],
+      // Match the composition's ceiling exactly, including fractional final
+      // frames. A duration cut can round down while the renderer rounds up.
+      '-frames:v', String(Math.ceil(duration * 30)), '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'],
     { stdio: ['ignore', 'pipe', 'pipe'], shell: false, windowsHide: true })
     this.iterator = this.child.stdout[Symbol.asyncIterator]()
     let errors = ''
