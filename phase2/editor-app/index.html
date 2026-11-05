@@ -452,6 +452,19 @@
       </div>
     </div>
   </div>
+  <div id="media-storage-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="media-storage-title" aria-describedby="media-storage-description" hidden>
+    <div class="modal-card">
+      <h2 id="media-storage-title" class="modal-title">Store imported media</h2>
+      <p id="media-storage-description" class="modal-body"></p>
+      <p class="modal-body"><strong>Copy into project</strong><br>Keep a separate original-quality copy when you save. Uses more disk space.</p>
+      <p class="modal-body"><strong>Link original</strong><br>Use the file where it is. If you move or delete it, you’ll need to relink it.</p>
+      <div class="modal-actions">
+        <button id="media-storage-cancel" type="button">Cancel</button>
+        <button id="media-storage-link" type="button">Link original</button>
+        <button id="media-storage-copy" type="button" class="primary">Copy into project</button>
+      </div>
+    </div>
+  </div>
   <div id="unsaved-changes-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="unsaved-changes-title" aria-describedby="unsaved-changes-message" hidden>
     <div class="modal-card">
       <h2 id="unsaved-changes-title" class="modal-title">Unsaved Changes</h2>

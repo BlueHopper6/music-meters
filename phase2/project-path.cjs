@@ -22,4 +22,9 @@ function encapsulateProjectPath(targetPath) {
   return path.join(parentDir, projectName, `${projectName}.json`)
 }
 
-module.exports = { encapsulateProjectPath, projectSaveName }
+function projectTitleForSave(title, target) {
+  if (!title.trim() || /^untitled (project|track)$/i.test(title.trim())) return path.parse(target).name.slice(0, 200)
+  return title
+}
+
+module.exports = { encapsulateProjectPath, projectSaveName, projectTitleForSave }

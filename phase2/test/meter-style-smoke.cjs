@@ -31,6 +31,14 @@ module.exports=async function(win){
   await change('meter-fill-mode','none');const line=await stage('spectrum-line.png')
   await change('meter-fill-mode','gradient');const gradient=await stage('spectrum-gradient.png');assert.notEqual(line,gradient)
   await change('meter-fill-mode','heat');const heat=await stage('spectrum-heat.png');assert.notEqual(gradient,heat)
+  assert.notEqual(line,heat,'heat map must differ from the plain spectrum line')
+  const fillPixels=await evaluate(`(async()=>{
+    const load=async data=>{const im=new Image();im.src='data:image/png;base64,'+data;await im.decode();const c=document.createElement('canvas');c.width=1280;c.height=720;const ctx=c.getContext('2d');ctx.drawImage(im,0,0);return ctx.getImageData(345,30,280,290).data}
+    const a=await load(${JSON.stringify(line)}),b=await load(${JSON.stringify(heat)});let changed=0
+    for(let i=0;i<a.length;i+=4)if(Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2])>12)changed++
+    return changed
+  })()`)
+  assert.ok(fillPixels>1500,`Heat map must paint a visible interior, changed ${fillPixels} pixels`)
   await change('meter-fill-mode','gradient')
   await change('meter-side-color','#ff4ba8');await change('meter-fill-opacity',70)
   await change('meter-trace-width',3.25)
@@ -44,6 +52,7 @@ module.exports=async function(win){
   await change('layer-locked',true)
   assert.equal(await evaluate('document.getElementById("meter-palette").disabled'),true)
   await change('layer-locked',false)
+  await change('meter-fill-mode','heat')
   const final=await save();assert.equal(final.layers.filter(layer=>layer.appearance).length,8)
   win.showInactive();win.setSize(1480,900)
   await evaluate('document.getElementById("meter-style-details").open=true;document.getElementById("meter-style-options").scrollIntoView({block:"start"})')
@@ -53,6 +62,7 @@ module.exports=async function(win){
   await click('refresh-still')
   await wait('document.getElementById("status").textContent.includes("Real Prism meter still at 1.50 s.") && document.getElementById("preview-busy").hidden','late full-history still')
   await stage('all-eight-styled.png')
+  await stage('heat-late.png')
   // Reopen to get a fresh painter for the first-frame parity comparison.
   await click('close-project');await wait('!document.getElementById("project-manager-screen").hidden','closed')
   await click('open-project')

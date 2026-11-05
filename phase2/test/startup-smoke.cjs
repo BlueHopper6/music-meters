@@ -369,6 +369,8 @@ module.exports = async function startupSmoke(win) {
   assert.ok(statusText.includes('saved-smoke-project'), 'Project must be saved inside dedicated subfolder')
   const savedPath = path.join(path.dirname(process.env.PHASE2_TEST_SAVE_PATH), 'saved-smoke-project', 'saved-smoke-project.json')
   assert.equal(JSON.parse(fs.readFileSync(savedPath, 'utf8')).previewFrame, 120)
+  assert.equal(JSON.parse(fs.readFileSync(savedPath, 'utf8')).title, 'saved-smoke-project')
+  assert.equal(await evaluate('document.getElementById("window-project-title").textContent'), 'saved-smoke-project')
 
   console.log('Step 8: Verifying Recent Project card')
   await click('close-project')
@@ -401,7 +403,7 @@ module.exports = async function startupSmoke(win) {
   await evaluate('document.querySelector("#recent-projects-grid .project-card").click()')
   await waitFor('!document.getElementById("editor-screen").hidden', 'editor visible after card click')
   const reopenedTitle = await evaluate('document.getElementById("title").value')
-  assert.equal(reopenedTitle, 'Untitled project')
+  assert.equal(reopenedTitle, 'saved-smoke-project')
   assert.equal(await evaluate('Number(document.getElementById("time-input").value)'), 4,
     'Reopening must restore the saved preview marker')
   await waitFor('document.getElementById("status").textContent.includes("Real Prism meter still at 4.00 s.")', 'restored marker preview')
