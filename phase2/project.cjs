@@ -151,6 +151,10 @@ function storage(value) {
   if (!['copy', 'link'].includes(value)) throw new Error('Invalid media storage choice')
   return { storage: value }
 }
+function mediaName(value) {
+  if (typeof value !== 'string' || !value || value.length > 255 || /[\\/\u0000-\u001f]/.test(value)) throw new Error('Invalid media display name')
+  return value
+}
 function background(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid background')
   if (!['solid', 'gradient', 'image'].includes(value.type)) throw new Error('Unsupported background type')
@@ -217,6 +221,7 @@ function normalizeProject(raw) {
     if (layer.type === 'video') {
       if (!['cover', 'contain'].includes(layer.fit) || !['freeze', 'loop', 'hide'].includes(layer.endBehavior)) throw new Error('Invalid video display settings')
       return { ...normalized, ...storage(layer.storage), videoPath: localVideoPath(layer.videoPath), fit: layer.fit,
+        ...(layer.sourceName === undefined ? {} : { sourceName: mediaName(layer.sourceName) }),
         endBehavior: layer.endBehavior, shadow: number(layer.shadow ?? 0, 'Shadow', 0, 40) }
     }
     if (layer.type === 'image' || layer.type === 'text') {
@@ -343,6 +348,7 @@ function normalizeProject(raw) {
     title: raw.title, background: raw.version === 1 ? color(raw.background, 'Background') : background(raw.background),
     audioPath: raw.audioPath, previewFrame, layers,
     ...(raw.audioStorage === undefined ? {} : { audioStorage: storage(raw.audioStorage).storage }),
+    ...(raw.audioName === undefined ? {} : { audioName: mediaName(raw.audioName) }),
     ...(raw.mixer === undefined ? {} : { mixer: normalizeMixer(raw.mixer) }) }
 }
 

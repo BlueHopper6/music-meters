@@ -278,6 +278,7 @@ $('import-video').addEventListener('click', async () => {
     resetSongPreview(); upgradeProject()
     const layer = existing || { ...videoLayer(nextId('video')), w: project.width, h: project.height } as VideoLayer
     layer.videoPath = chosen.path
+    layer.sourceName = chosen.path.split(/[\\/]/).pop()
     layer.storage = chosen.storage
     if (!existing) project.layers.unshift(layer)
     selectedId = layer.id
@@ -625,7 +626,7 @@ function refreshInspector() {
   $('image-options').hidden = layer?.type !== 'image'
   $('video-options').hidden = layer?.type !== 'video'
   if (layer?.type === 'video') {
-    $('video-name').textContent = layer.videoPath.split(/[\\/]/).pop() || 'No video selected'
+    $('video-name').textContent = layer.sourceName || layer.videoPath.split(/[\\/]/).pop() || 'No video selected'
     ;($<HTMLSelectElement>('video-fit')).value = layer.fit
     ;($<HTMLSelectElement>('video-end')).value = layer.endBehavior
   }
@@ -812,8 +813,10 @@ function refreshInspector() {
 function refreshAudio() {
   $('import-video').textContent = project.layers.some(layer => layer.type === 'video') ? 'Replace video' : 'Import video'
   $('import-audio').textContent = project.audioPath ? 'Replace audio' : 'Import audio'
-  const source = project.audioPath || (project.layers.find(layer => layer.type === 'video') as VideoLayer | undefined)?.videoPath
-  $('audio-name').textContent = source ? source.split(/[\\/]/).pop() || source : 'No media imported'
+  const video = project.layers.find(layer => layer.type === 'video') as VideoLayer | undefined
+  const source = project.audioPath || video?.videoPath
+  const name = project.audioPath ? project.audioName : video?.sourceName
+  $('audio-name').textContent = source ? name || source.split(/[\\/]/).pop() || source : 'No media imported'
   $('audio-details').textContent = metadata
     ? `${metadata.channels === 1 ? 'Mono' : 'Stereo'} · ${(metadata.sampleRate / 1000).toFixed(1)} kHz · ${metadata.duration.toFixed(2)} s`
     : project.audioPath ? 'Audio missing. Import a replacement file.' : 'Choose a WAV, MP3, or FLAC file'
@@ -1655,9 +1658,9 @@ $('import-audio').addEventListener('click', async () => {
   try {
     const chosen = await window.desktop.chooseAudio()
     if (!chosen) return
-    const previousAudio = project.audioPath
+    const previousAudio = project.audioName || project.audioPath
     resetSongPreview()
-    project.audioPath = chosen.path; project.audioStorage = chosen.storage; metadata = chosen.metadata
+    project.audioPath = chosen.path; project.audioName = chosen.path.split(/[\\/]/).pop(); project.audioStorage = chosen.storage; metadata = chosen.metadata
     await updateMedia()
     suggestSongTitle(chosen.path, previousAudio)
     missingMedia = missingMedia.filter(item => item.kind !== 'audio')

@@ -80,8 +80,14 @@ async function copyMedia(input, target) {
 }
 async function prepareStoredMedia(project, target) {
   const copied = structuredClone(project)
-  if (copied.audioPath && copied.audioStorage === 'copy') copied.audioPath = await copyMedia(copied.audioPath, target)
-  for (const layer of copied.layers) if (layer.type === 'video' && layer.videoPath && layer.storage === 'copy') layer.videoPath = await copyMedia(layer.videoPath, target)
+  if (copied.audioPath && copied.audioStorage === 'copy') {
+    copied.audioName ??= path.basename(copied.audioPath)
+    copied.audioPath = await copyMedia(copied.audioPath, target)
+  }
+  for (const layer of copied.layers) if (layer.type === 'video' && layer.videoPath && layer.storage === 'copy') {
+    layer.sourceName ??= path.basename(layer.videoPath)
+    layer.videoPath = await copyMedia(layer.videoPath, target)
+  }
   return copied
 }
 module.exports = { assertLocal, ensureDirectory, renameLocal, fileDigest, writeAtomic, copyMedia, prepareStoredMedia }

@@ -25,10 +25,12 @@ async function save(project,target) {
 }
 test('copy saves original bytes, reuses verified files and carries media through Save As, rename, copy and move',async()=>{
   const f=fixture('copy'),saved=await save(f.project,f.target)
+  assert.equal(saved.audioName,'song.wav');assert.equal(saved.layers[1].sourceName,'clip.mp4')
   for (const [original,copied] of [[f.audio,saved.audioPath],[f.video,saved.layers[1].videoPath],[f.image,saved.layers[0].imagePath]]) {assert.notEqual(original,copied);assert.equal(hash(original),hash(copied))}
   const savedHash=hash(saved.audioPath);fs.appendFileSync(f.audio,'changed original');assert.equal(hash(saved.audioPath),savedHash,'project copy must be independent of the source file')
   assert.deepEqual(await save(saved,f.target),saved)
   const target=path.join(f.dir,'Other','Other.json'),other=await save(saved,target)
+  assert.equal(other.audioName,'song.wav');assert.equal(other.layers[1].sourceName,'clip.mp4')
   assert.notEqual(saved.audioPath,other.audioPath);assert.equal(hash(saved.audioPath),hash(other.audioPath))
   const renamed=renameLibraryProject(f.target,'Renamed'),after=readLibraryProject(renamed.path).project
   for(const file of [after.audioPath,after.layers[1].videoPath,after.layers[0].imagePath])assert.ok(fs.existsSync(file))
@@ -92,4 +94,13 @@ test('an explicit link protects a file also used by a copied artwork layer',asyn
   assert.equal(project.layers[2].imagePath,original)
   await deleteLibraryProject(copied.path,async staging=>fs.renameSync(staging,path.join(f.dir,'bin')))
   assert.ok(fs.existsSync(original))
+})
+test('source display names survive template application but stay out of saved song-independent layouts',()=>{
+  const {layoutFromProject,applyTemplate}=require('../templates.cjs')
+  const f=fixture('copy');f.project.audioName='song.wav';f.project.layers[1].sourceName='clip.mp4'
+  const layout=layoutFromProject(f.project)
+  assert.equal(layout.audioName,undefined);assert.equal(layout.layers[1].sourceName,undefined)
+  const applied=applyTemplate(layout,f.project)
+  assert.equal(applied.audioName,'song.wav');assert.equal(applied.layers[1].sourceName,'clip.mp4')
+  assert.throws(()=>normalizeProject({...f.project,audioName:'C:/private/song.wav'}),/display name/)
 })
