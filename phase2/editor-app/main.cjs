@@ -8,7 +8,7 @@ const { prepareStoredMedia, writeAtomic } = require('../media-storage.cjs')
 const { jobPath } = require('../runtime.cjs')
 const { resolveProjectAudio, projectAudioReference } = require('../project-audio.cjs')
 const { defaultProject, compositionProject, normalizeProject } = require('../project.cjs')
-const { encapsulateProjectPath, projectSaveName } = require('../project-path.cjs')
+const { encapsulateProjectPath, projectSaveName, projectTitleForSave } = require('../project-path.cjs')
 const { readLibraryProject, renameLibraryProject, copyLibraryProject, removeOriginalProject, deleteLibraryProject } = require('../project-library.cjs')
 const { installedFonts, assertInstalledFonts } = require('../fonts.cjs')
 const { readImage, imagePaths, assetData, saveArtwork, resolveArtwork } = require('../assets.cjs')
@@ -43,14 +43,16 @@ let forceQuit = false
 let project = defaultProject()
 const allowedImages = new Set()
 
+let pendingStorage = null
 async function chooseStorage(input, kind) {
   // Existing automated smokes preserve their historical import behavior.
   if ((isAutomatedTest || process.env.PHASE2_STARTUP_SMOKE === '1') && !process.env.MUSICMETERS_STORAGE_SMOKE) return kind === 'image' ? 'copy' : 'link'
-  const answer = await dialog.showMessageBox(win, { type:'question', title:'Store imported media',
-    message:`How should this ${kind} be stored?`,
-    detail:`${basename(input)}\n\nCopy into project: keep a separate original-quality copy when you save. Uses more disk space.\n\nLink original: use this file where it is. Moving or deleting it will require relinking.`,
-    buttons:['Copy into project', 'Link original', 'Cancel'], defaultId:0, cancelId:2, noLink:true })
-  return ['copy','link',null][answer.response]
+  if (pendingStorage) throw new Error('Finish the current import first')
+  return new Promise(resolve => {
+    const id = randomUUID()
+    pendingStorage = { id, resolve }
+    win.webContents.send('media-storage-requested', { id, kind, name: basename(input) })
+  })
 }
 let metadata = null
 let activeAudio = ''
@@ -76,12 +78,19 @@ const editorDocument = join(__dirname, 'index.html')
 function handle(channel, callback) {
   ipcMain.handle(channel, (event, ...args) => {
     assertTrustedSender(event, win?.webContents, editorDocument)
-    if (projectManagementRunning && ['new-blank-project', 'new-project-from-template', 'close-project', 'open-project', 'open-project-path', 'save-project', 'choose-audio', 'choose-video', 'choose-image', 'restore-project', 'media-info', 'load-template', 'render-video'].includes(channel)) {
+    if ((projectManagementRunning || pendingStorage) && ['new-blank-project', 'new-project-from-template', 'close-project', 'open-project', 'open-project-path', 'save-project', 'choose-audio', 'choose-video', 'choose-image', 'restore-project', 'media-info', 'load-template', 'render-video'].includes(channel)) {
       throw new Error('Wait for the project operation to finish')
     }
     return callback(event, ...args)
   })
 }
+
+handle('media-storage-choice', (_event, id, choice) => {
+  if (!pendingStorage || id !== pendingStorage.id || !['copy', 'link', null].includes(choice)) throw new Error('Invalid import choice')
+  const pending = pendingStorage
+  pendingStorage = null
+  pending.resolve(choice)
+})
 
 function cancelPreview() {
   const id = ++previewGeneration
@@ -424,6 +433,7 @@ handle('save-project', async (_event, raw, asNew = false) => {
     }
   }
   if (extname(target).toLowerCase() !== '.json') throw new Error('Project file must end in .json')
+  value.title = projectTitleForSave(value.title, target)
   projectManagementRunning = true
   let savedSuccessfully = false
   try {
@@ -714,6 +724,12 @@ app.whenReady().then(() => {
     win.on(event, () => win.webContents.send('window-state', windowState()))
   }
   lockWindowNavigation(win.webContents)
+  win.webContents.on('render-process-gone', () => {
+    if (pendingStorage) { const pending = pendingStorage; pendingStorage = null; pending.resolve(null) }
+  })
+  win.on('closed', () => {
+    if (pendingStorage) { const pending = pendingStorage; pendingStorage = null; pending.resolve(null) }
+  })
   win.on('close', event => {
     if (projectManagementRunning) { event.preventDefault(); quitAfterProjectManagement = true; return }
     if (forceQuit || isAutomatedTest) return

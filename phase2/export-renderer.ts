@@ -4,7 +4,7 @@ declare global {
   interface Window {
     phase2Export: {
       initialize: (project: Project, width: number, height: number, sampleRate: number, assets: Record<string, string>) => Promise<void>
-      render: (x: string, y: string, multiband: string, spectra: Record<string, { mid: string; side: string }>,
+      render: (x: string, y: string, multiband: string, spectra: Record<string, { mid: string; side: string; raw: string }>,
         oscilloscopes: Record<string, { samples: string; detectedPitch: number; triggerIndex: number }>,
         spectrograms: Record<string, { rebuild: boolean; entries: Array<{
           columnCount: number; rowCount: number; display: string; heat: string }> }>,

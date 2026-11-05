@@ -25,6 +25,12 @@ User-facing release history, newest first. GitHub release notes provide the down
 - Edited soundtracks use floating-point intermediates and preserve the highest input sample rate. Mixed-soundtrack overload is reported; integer/lossy exports reject an overloaded mix instead of silently clipping it.
 - The Save as Template name field matches the editor theme and has a clear keyboard focus indicator.
 
+### Fixed
+
+- Spectrum heat-map fill now receives native FFT magnitudes and updates consistently in preview, seeking, and export.
+- Copy/Link import choices use a themed, keyboard-accessible MusicMeters dialog.
+- Saving an unnamed project adopts the chosen JSON filename in the project field and window title, while preserving custom names.
+
 ## [1.1.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.1.0) — 2026-10-29
 
 Published October 29 in America/Indianapolis (October 30 UTC). See the [release notes](docs/releases/1.1.0.md) for exact downloads, checksums, and validation.

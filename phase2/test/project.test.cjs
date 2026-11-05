@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { defaultProject, compositionProject, imageLayer, textLayer, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, normalizeProject } = require('../project.cjs')
-const { encapsulateProjectPath, projectSaveName } = require('../project-path.cjs')
+const { encapsulateProjectPath, projectSaveName, projectTitleForSave } = require('../project-path.cjs')
 const { orientProject, exportDimensions } = require('../project.cjs')
 
 test('portrait projects fit without cropping, retain media and marker, and export at 1080x1920', () => {
@@ -326,4 +326,12 @@ test('project save names are safe Windows filename components with a nonempty fa
   for (const title of ['CON', 'aux', 'COM1', 'LPT9', 'NUL.notes']) assert.equal(projectSaveName(title), `_${title}.json`)
   assert.equal(projectSaveName('x'.repeat(201)), 'x'.repeat(200) + '.json')
   assert.throws(() => projectSaveName(null), /Invalid project title/)
+})
+
+
+test('unnamed projects adopt the saved filename while explicit titles stay intact', () => {
+  for (const title of ['', '  ', 'Untitled project', 'Untitled track']) assert.equal(projectTitleForSave(title, 'test.json'), 'test')
+  assert.equal(projectTitleForSave('', 'x'.repeat(230)+'.json').length, 200)
+  assert.equal(projectTitleForSave('My song', 'test.json'), 'My song')
+  assert.equal(projectTitleForSave('Untitled project remix', 'test.json'), 'Untitled project remix')
 })

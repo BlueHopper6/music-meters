@@ -29,6 +29,8 @@ type Desktop = {
   windowState(): Promise<{ fullscreen: boolean; maximized: boolean }>
   onWindowState(listener: (state: { fullscreen: boolean; maximized: boolean }) => void): () => void
   initial(): Promise<Initial>
+  onMediaStorageRequested(listener: (request: { id: string; kind: string; name: string }) => void): () => void
+  mediaStorageChoice(id: string, choice: 'copy' | 'link' | null): Promise<void>
   chooseAudio(): Promise<{ path: string; metadata: Metadata; storage: 'copy' | 'link' } | null>
   chooseVideo(): Promise<{ path: string; duration: number; storage: 'copy' | 'link' } | null>
   mediaInfo(project: Project): Promise<Metadata | null>
@@ -38,7 +40,7 @@ type Desktop = {
   chooseImage(): Promise<{ path: string; storage: 'copy' | 'link' } | null>
   loadAssets(project: Project): Promise<Record<string, string>>
   previewAt(frame: number, project: Project): Promise<
-    { x: string; y: string; multiband: string; spectra: Record<string, { mid: string; side: string }>;
+    { x: string; y: string; multiband: string; spectra: Record<string, { mid: string; side: string; raw: string }>;
       oscilloscopes: Record<string, { samples: string; detectedPitch: number; triggerIndex: number }>;
       spectrograms: Record<string, { rebuild: boolean; entries: Array<{
         columnCount: number; rowCount: number; display: string; heat: string }> }>;
@@ -2647,6 +2649,7 @@ $('unsaved-changes-save').addEventListener('click', async () => {
   }
 })
 window.desktop.onAppCloseRequested(() => {
+  if (storageRequest) { void finishStorageChoice(null); return }
   playback?.pause()
   $('export-modal').hidden = true
   $('about-modal').hidden = true
@@ -2960,6 +2963,29 @@ $('choose-export-destination').addEventListener('click', async () => {
     if (path) { exportDestination = path; ($<HTMLInputElement>('export-destination')).value = path }
   } catch (error) { $('export-dialog-status').textContent = String(error) }
 })
+let storageRequest: { id: string; previousInert: boolean; previousHeaderInert: boolean; focus: HTMLElement | null } | null = null
+async function finishStorageChoice(choice: 'copy' | 'link' | null) {
+  const request = storageRequest
+  if (!request) return
+  storageRequest = null
+  $('media-storage-modal').hidden = true
+  $('editor-screen').inert = request.previousInert
+  document.querySelector<HTMLElement>('.app-titlebar')!.inert = request.previousHeaderInert
+  try { await window.desktop.mediaStorageChoice(request.id, choice) }
+  catch (error) { setStatus(String(error)) }
+  setTimeout(() => { if (request.focus?.isConnected && !request.focus.closest('[inert]')) request.focus.focus() }, 0)
+}
+window.desktop.onMediaStorageRequested(request => {
+  storageRequest = { id: request.id, previousInert: $('editor-screen').inert, previousHeaderInert: document.querySelector<HTMLElement>('.app-titlebar')!.inert, focus: document.activeElement as HTMLElement | null }
+  $('media-storage-description').textContent = `How would you like to store this ${request.kind}? ${request.name}`
+  $('editor-screen').inert = true
+  document.querySelector<HTMLElement>('.app-titlebar')!.inert = true
+  $('media-storage-modal').hidden = false
+  $('media-storage-copy').focus()
+})
+$('media-storage-copy').addEventListener('click', () => { void finishStorageChoice('copy') })
+$('media-storage-link').addEventListener('click', () => { void finishStorageChoice('link') })
+$('media-storage-cancel').addEventListener('click', () => { void finishStorageChoice(null) })
 function openAbout() {
   $('about-modal').hidden = false; $('editor-screen').inert = true; $('about-close').focus()
 }
@@ -2969,7 +2995,7 @@ function closeAbout() {
 $('about-app').addEventListener('click', openAbout)
 $('show-license').addEventListener('click', openAbout)
 $('about-close').addEventListener('click', closeAbout)
-for (const [id, close] of [['export-modal', closeExportDialog], ['about-modal', closeAbout]] as const) {
+for (const [id, close] of [['export-modal', closeExportDialog], ['about-modal', closeAbout], ['media-storage-modal', () => { void finishStorageChoice(null) }]] as const) {
   const modal = $(id)
   modal.addEventListener('click', event => { if (event.target === modal) close() })
   modal.addEventListener('keydown', event => {

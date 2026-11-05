@@ -68,7 +68,7 @@ export type Project = {
 }
 export type Points = { x: Float32Array; y: Float32Array }
 export type VectorscopeFrame = Points & { multiband: Float32Array }
-export type SpectrumBins = { mid: Float32Array; side: Float32Array }
+export type SpectrumBins = { mid: Float32Array; side: Float32Array; raw: Float32Array }
 export type OscilloscopeWave = { samples: Float32Array; detectedPitch: number; triggerIndex: number }
 export type SpectrogramColumns = SpectrogramNativeResult
 export type SpectrogramFrame = { rebuild: boolean; entries: SpectrogramColumns[] }
@@ -87,7 +87,7 @@ export function decodeFloats(encoded: string): Float32Array {
 }
 
 export function decodeAnalysis(encoded: { x: string; y: string; multiband?: string;
-  spectra?: Record<string, { mid: string; side: string }>;
+  spectra?: Record<string, { mid: string; side: string; raw: string }>;
   oscilloscopes?: Record<string, { samples: string; detectedPitch: number; triggerIndex: number }>;
   spectrograms?: Record<string, { rebuild: boolean; entries: Array<{
     columnCount: number; rowCount: number; display: string; heat: string }> }>;
@@ -97,7 +97,7 @@ export function decodeAnalysis(encoded: { x: string; y: string; multiband?: stri
   waterfalls?: Record<string, { columns: number; audioSeconds: number; levels: string; ages: string; frequencies: string }> }): AnalysisFrame {
   const spectra: Record<string, SpectrumBins> = {}
   for (const [key, value] of Object.entries(encoded.spectra || {})) {
-    spectra[key] = { mid: decodeFloats(value.mid), side: decodeFloats(value.side) }
+    spectra[key] = { mid: decodeFloats(value.mid), side: decodeFloats(value.side), raw: decodeFloats(value.raw) }
   }
   const oscilloscopes: Record<string, OscilloscopeWave> = {}
   for (const [key, value] of Object.entries(encoded.oscilloscopes || {})) {
@@ -173,7 +173,7 @@ function drawCorrelationOverlay(canvas: HTMLCanvasElement, layer: VectorscopeLay
 }
 
 class SpectrumSnapshot implements SpectrumNativeAnalyzer {
-  bins: SpectrumBins = { mid: new Float32Array(0), side: new Float32Array(0) }
+  bins: SpectrumBins = { mid: new Float32Array(0), side: new Float32Array(0), raw: new Float32Array(0) }
   isAvailable() { return true }
   hasSpectrumData() { return this.bins.mid.length > 0 }
   setFFTSize(_size: number) {}
@@ -182,11 +182,11 @@ class SpectrumSnapshot implements SpectrumNativeAnalyzer {
   setSmoothing(_smoothing: number) {}
   pushSamples(_audioData: Float32Array) {}
   pushStereoSamples(_left: Float32Array, _right: Float32Array) {}
-  fillRawMagnitudes(_output: Float32Array) { return 0 }
+  fillRawMagnitudes(output: Float32Array) { return this.copy(this.bins.raw, output) }
   fillMagnitudes(output: Float32Array) { return this.copy(this.bins.mid, output) }
   fillSideMagnitudes(output: Float32Array) { return this.copy(this.bins.side, output) }
   fillChannelMaxMagnitudes(_output: Float32Array) { return 0 }
-  getRawMagnitudes() { return null }
+  getRawMagnitudes() { return this.bins.raw }
   getMagnitudes() { return this.bins.mid }
   getSideMagnitudes() { return this.bins.side }
   getChannelMaxMagnitudes() { return null }
@@ -539,8 +539,15 @@ export class Composition {
           lineColor: layer.color, backgroundColor: 'transparent', ...appearance }) }
     }
     const snapshot = new SpectrumSnapshot()
+    // Notify Prism that each snapshot contains fresh FFT data. pushSamples is a
+    // no-op: DSP already ran in the analysis worker, never on this marker.
+    const marker = new Float32Array(1)
+    const source = { ...this.source, getPendingSpectrumSamples: () => [marker],
+      getPendingSpectrumStereoSamples: () => [{ left: marker, right: marker }] }
     return { canvas: surface, type: layer.type, signature, snapshot,
-      painter: new SpectrumAnalyzer(surface, { dataSource: this.source, nativeAnalyzer: snapshot,
+      painter: new SpectrumAnalyzer(surface, { dataSource: source, nativeAnalyzer: snapshot,
+        // Avoid a second history-dependent filter so seeks and exports agree.
+        heatmapSmoothing: 0,
         fftSize: layer.fftSize, smoothing: layer.smoothing, scaleType: layer.scaleType,
         minFrequency: layer.minFrequency, maxFrequency: layer.maxFrequency,
         minDecibels: layer.minDecibels, maxDecibels: layer.maxDecibels,
@@ -641,7 +648,7 @@ export class Composition {
       }
       if (layer.type === 'spectrum') {
         ;(meter.snapshot as SpectrumSnapshot).bins = analysis.spectra[`${layer.fftSize}:${layer.smoothing}`]
-          || { mid: new Float32Array(0), side: new Float32Array(0) }
+          || { mid: new Float32Array(0), side: new Float32Array(0), raw: new Float32Array(0) }
       } else if (layer.type === 'oscilloscope') {
         ;(meter.snapshot as OscilloscopeSnapshot).wave = analysis.oscilloscopes[layer.pitchLock ? 'locked' : 'free']
           || { samples: new Float32Array(0), detectedPitch: 0, triggerIndex: 0 }

@@ -27,16 +27,19 @@ function setup(native, config, sampleRate) {
 function capture(native, bins) {
   const mid = native.getMagnitudes()
   const side = native.getSideMagnitudes()
-  if (mid.length !== bins || side.length !== bins) throw new Error('Prism spectrum returned an unexpected FFT length')
-  const bytes = Buffer.allocUnsafe(bins * 8)
+  const raw = native.getRawMagnitudes()
+  if (mid.length !== bins || side.length !== bins || raw.length !== bins) throw new Error('Prism spectrum returned an unexpected FFT length')
+  const bytes = Buffer.allocUnsafe(bins * 12)
   Buffer.from(mid.buffer, mid.byteOffset, mid.byteLength).copy(bytes, 0)
   Buffer.from(side.buffer, side.byteOffset, side.byteLength).copy(bytes, bins * 4)
+  Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength).copy(bytes, bins * 8)
   return bytes
 }
 
 function encoded(bytes, bins) {
   return { mid: bytes.subarray(0, bins * 4).toString('base64'),
-    side: bytes.subarray(bins * 4).toString('base64') }
+    side: bytes.subarray(bins * 4, bins * 8).toString('base64'),
+    raw: bytes.subarray(bins * 8, bins * 12).toString('base64') }
 }
 
 async function advance(reader, native, sampleRate, duration, index, consumed) {
@@ -98,7 +101,7 @@ async function precomputeSpectra(input, metadata, project, native, directory, is
       frame() {
         const data = {}
         for (const [key, file] of files) {
-          const bytes = Buffer.allocUnsafe(file.bins * 8)
+          const bytes = Buffer.allocUnsafe(file.bins * 12)
           const read = fs.readSync(file.fd, bytes, 0, bytes.length, null)
           if (read !== bytes.length) throw new Error('Spectrum cache ended before video frames')
           data[key] = encoded(bytes, file.bins)

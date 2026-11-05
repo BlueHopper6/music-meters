@@ -12,6 +12,12 @@ contextBridge.exposeInMainWorld('desktop', {
     return () => ipcRenderer.off('window-state', handler)
   },
   initial: () => ipcRenderer.invoke('initial'),
+  onMediaStorageRequested: listener => {
+    const handler = (_event, request) => listener(request)
+    ipcRenderer.on('media-storage-requested', handler)
+    return () => ipcRenderer.off('media-storage-requested', handler)
+  },
+  mediaStorageChoice: (id, choice) => ipcRenderer.invoke('media-storage-choice', id, choice),
   chooseAudio: () => ipcRenderer.invoke('choose-audio'),
   chooseVideo: () => ipcRenderer.invoke('choose-video'),
   mediaInfo: project => ipcRenderer.invoke('media-info', project),
