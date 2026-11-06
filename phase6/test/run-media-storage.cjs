@@ -7,6 +7,13 @@ async function main(){
   const audio=path.join(dir,'song.wav'),video=path.join(dir,'clip.mp4'),image=path.join(dir,'art.png')
   for(const [file,args] of [[audio,['-f','lavfi','-i','sine=frequency=440:duration=0.3','-c:a','pcm_s24le']],[video,['-f','lavfi','-i','color=c=navy:size=160x90:rate=30:duration=0.3','-an','-c:v','libx264']]])execFileSync('ffmpeg',['-v','error',...args,file],{windowsHide:true})
   fs.writeFileSync(image,Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII=','base64'))
+  // A real PNG with a valid ancillary chunk exercises the full 16 MiB import path.
+  const { crc32 } = require('node:zlib'), original = fs.readFileSync(image)
+  const type = Buffer.from('tEXt'), data = Buffer.alloc(16 * 1024 * 1024 - original.length - 12, 65)
+  data.write('Note\0', 0, 'ascii')
+  const length = Buffer.alloc(4), checksum = Buffer.alloc(4)
+  length.writeUInt32BE(data.length); checksum.writeUInt32BE(crc32(Buffer.concat([type, data])))
+  fs.writeFileSync(image, Buffer.concat([original.subarray(0, -12), length, type, data, checksum, original.subarray(-12)]))
   fs.copyFileSync(audio,path.join(dir,'next-song.wav'))
   const fd=fs.openSync(path.join(dir,'editor.log'),'wx')
   const child=spawn(packagedExecutable(path.resolve(process.argv[2])),[],{env:{...process.env,TEMP:path.join(dir,'temp'),TMP:path.join(dir,'temp'),PHASE2_HEADLESS:'1',PHASE2_TEST_INPUT:audio,PHASE2_TEST_IMPORT_PATH:audio,MUSICMETERS_TEST_VIDEO:video,PHASE4_TEST_IMAGE_PATH:image,PHASE5_TEST_USER_DATA:path.join(dir,'profile'),MUSICMETERS_STORAGE_SMOKE:'1',MUSICMETERS_STORAGE_DIR:dir},stdio:['ignore',fd,fd],windowsHide:true})
