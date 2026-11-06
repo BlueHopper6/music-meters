@@ -501,12 +501,20 @@
   </div>
   <div id="export-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="export-title" hidden>
     <div class="modal-card export-card">
-      <div class="modal-header"><div><h2 id="export-title" class="modal-title">Export video</h2><p class="export-subtitle">Render your complete song and composition.</p></div><button id="export-close" class="modal-close-btn" type="button" aria-label="Close export dialog">✕</button></div>
+      <div class="modal-header"><div><h2 id="export-title" class="modal-title">Export video</h2><p class="export-subtitle">Render the full project or a selected section.</p></div><button id="export-close" class="modal-close-btn" type="button" aria-label="Close export dialog">✕</button></div>
       <div class="export-project-summary"><strong id="export-project-name"></strong><span id="export-canvas-summary"></span></div>
       <div class="export-fields">
         <label>Resolution<select id="export-preset" aria-label="Export size"><option value="1080p">1080p</option><option value="720p">720p</option><option value="1440p">1440p</option><option value="2160p">2160p · 4K</option></select></label>
         <label>Format &amp; audio<select id="audio-mode" aria-label="Video container and audio export"><option value="aac">MP4 · AAC up to 384 kb/s</option><option value="flac">MKV · 24-bit FLAC audio</option><option value="master">MKV · Lossless RGB + float PCM master</option><option value="copy">MKV · Source audio copy (no re-encode)</option></select></label>
       </div>
+      <fieldset class="export-range"><legend>Export region</legend>
+        <label class="check-row"><input id="export-range-enabled" type="checkbox"> Export a selected section</label>
+        <div id="export-range-fields" class="export-fields" hidden>
+          <label>Start (seconds)<input id="export-range-start" type="number" min="0" step="0.001" value="0"><button id="export-range-in" type="button">Use playhead as start</button></label>
+          <label>End (seconds)<input id="export-range-end" type="number" min="0" step="0.001"><button id="export-range-out" type="button">Use playhead as end</button></label>
+        </div>
+        <p id="export-range-note" class="export-note" role="status"></p>
+      </fieldset>
       <p id="export-audio-note" class="export-note"></p>
       <label class="export-destination-label" for="export-destination">Save to</label>
       <div class="export-destination-row"><input id="export-destination" type="text" readonly placeholder="Choose a destination…"><button id="choose-export-destination" type="button">Browse…</button></div>

@@ -208,6 +208,7 @@ handle('load-videos', async (_event, raw) => {
 handle('cancel-media-preparation', () => { ++playbackRequest; cancelPreview(); mediaCache.cancel(); videoCache.cancel(); return playbackVideo.cancel() })
 
 const isAutomatedTest = Boolean(
+  process.env.MUSICMETERS_RANGE_SMOKE ||
   process.env.MUSICMETERS_SNAPPING_SMOKE ||
   process.env.MUSICMETERS_FEEDBACK_SMOKE ||
   process.env.MUSICMETERS_STYLE_SMOKE ||
@@ -613,12 +614,15 @@ handle('choose-export-destination', async (_event, raw, audioMode) => {
   if (audioMode === 'copy') { const source = copySource(value); validateAudioCopy(source.path, source.metadata) }
   return chooseExportDestination(value, audioMode)
 })
-handle('render-video', async (_event, raw, preset, audioMode, destination = '') => {
+handle('render-video', async (_event, raw, preset, audioMode, destination = '', selectedRange) => {
   if (exportJob) throw new Error('An export is already running')
   if (!metadata) throw new Error('Import audio or video before rendering')
   if (!['720p', '1080p', '1440p', '2160p'].includes(preset)) throw new Error('Unsupported export preset')
   outputFormat(audioMode)
   const value = validateActiveProject(raw)
+  const { exportRange, assertRangeAudioMode } = require('../export-range.cjs')
+  const range = exportRange(selectedRange, mediaPlan(value).metadata.duration)
+  assertRangeAudioMode(range, audioMode)
   if (audioMode === 'copy') { const source = copySource(value); validateAudioCopy(source.path, source.metadata) }
   assetData(value)
   writePreferences(userData(), { exportPreset: preset })
@@ -640,7 +644,7 @@ handle('render-video', async (_event, raw, preset, audioMode, destination = '') 
   const exportProfile = fs.mkdtempSync(join(controlDir, 'export-profile-'))
   const child = spawn(process.execPath, [join(ROOT, 'phase2', 'export-app')], {
     env: { ...process.env, MUSICMETERS_EXPORT_PROFILE: exportProfile,
-      PHASE2_JOB: JSON.stringify({ project: value, output, cancelFile, preset, audioMode }) },
+      PHASE2_JOB: JSON.stringify({ project: value, output, cancelFile, preset, audioMode, range }) },
     stdio: ['ignore', 'pipe', 'pipe'], shell: false, detached: true, windowsHide: true,
   })
   const job = { child, cancelFile, output, finishedEvent: null, errors: '' }
@@ -739,9 +743,10 @@ app.whenReady().then(() => {
     win.webContents.send('app-close-requested')
   })
   return win.loadFile(editorDocument).then(async () => {
-    if (process.env.MUSICMETERS_FEEDBACK_SMOKE === '1' || process.env.MUSICMETERS_SNAPPING_SMOKE === '1' || process.env.MUSICMETERS_STYLE_SMOKE === '1' || process.env.MUSICMETERS_STORAGE_SMOKE === '1' || process.env.MUSICMETERS_MEDIA_SMOKE === '1' || process.env.PHASE2_PLAYBACK_SMOKE === '1' || process.env.PHASE2_PORTRAIT_SMOKE === '1' || process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
+    if (process.env.MUSICMETERS_RANGE_SMOKE === '1' || process.env.MUSICMETERS_FEEDBACK_SMOKE === '1' || process.env.MUSICMETERS_SNAPPING_SMOKE === '1' || process.env.MUSICMETERS_STYLE_SMOKE === '1' || process.env.MUSICMETERS_STORAGE_SMOKE === '1' || process.env.MUSICMETERS_MEDIA_SMOKE === '1' || process.env.PHASE2_PLAYBACK_SMOKE === '1' || process.env.PHASE2_PORTRAIT_SMOKE === '1' || process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
-        if (process.env.MUSICMETERS_SNAPPING_SMOKE === '1') await require('../test/layer-snapping-smoke.cjs')(win)
+        if (process.env.MUSICMETERS_RANGE_SMOKE === '1') await require('../test/export-range-smoke.cjs')(win)
+        else if (process.env.MUSICMETERS_SNAPPING_SMOKE === '1') await require('../test/layer-snapping-smoke.cjs')(win)
         else if (process.env.MUSICMETERS_FEEDBACK_SMOKE === '1') await require('../test/user-feedback-smoke.cjs')(win)
         else if (process.env.MUSICMETERS_STYLE_SMOKE === '1') await require('../test/meter-style-smoke.cjs')(win)
         else if (process.env.MUSICMETERS_STORAGE_SMOKE === '1') await require('../test/media-storage-smoke.cjs')(win)

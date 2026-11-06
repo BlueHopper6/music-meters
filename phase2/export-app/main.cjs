@@ -24,6 +24,7 @@ const { probeAudio } = require('../audio.cjs')
 const { outputFormat, aacBitrate, validateOutputPath, validateAudioCopy } = require('../audio-output.cjs')
 const { lockWindowNavigation } = require('../window-security.cjs')
 const { mediaPlan, copySource, MediaCache } = require('../project-media.cjs')
+const { exportRange, assertRangeAudioMode } = require('../export-range.cjs')
 const { VideoFrames } = require('../video-frames.cjs')
 const { precomputeSpectra } = require('../../phase3/spectrum.cjs')
 const { precomputeOscilloscopes } = require('../../phase3/oscilloscope.cjs')
@@ -122,16 +123,18 @@ function checkCancel(frame) {
 async function exportVideo() {
   const project = validate()
   const plan = mediaPlan(project)
+  const range = exportRange(config.range, plan.metadata.duration)
+  assertRangeAudioMode(range, config.audioMode)
   const source = config.audioMode === 'copy' ? copySource(project, plan) : null
   if (source) validateAudioCopy(source.path, source.metadata)
-  assertOutputSpace(config.output, plan.metadata.duration, fs.statfsSync,
+  assertOutputSpace(config.output, range.duration, fs.statfsSync,
     source ? fs.statSync(source.path, { bigint: true }).size : 0, config.preset, config.audioMode)
   const mediaCache = new MediaCache(jobPath('export-media', randomUUID()))
   exportMediaCache = mediaCache
   const abort = new AbortController()
   const cancelTimer = setInterval(() => { if (fs.existsSync(config.cancelFile)) abort.abort() }, 100)
   let prepared
-  try { prepared = await mediaCache.prepare(project, abort.signal) } finally { clearInterval(cancelTimer) }
+  try { prepared = await mediaCache.prepare(project, abort.signal, range) } finally { clearInterval(cancelTimer) }
   if (prepared.peak > 1 && config.audioMode !== 'master') throw new Error(`Soundtrack exceeds full scale by ${(20 * Math.log10(prepared.peak)).toFixed(1)} dB. Lower source or master volume before exporting to avoid clipping.`)
   const metadata = prepared.metadata
   const analysisPath = prepared.analysisPath
@@ -212,13 +215,13 @@ async function exportVideo() {
     native.reset()
     native.setSampleRate(metadata.sampleRate)
     encoder = startEncoder(temp, source?.path || prepared.outputPath, totalFrames, config.audioMode, metadata)
-    if (plan.video?.videoPath && plan.video.visible && plan.video.opacity > 0) videoReader = new VideoFrames(plan.video, metadata.duration, Math.max(width, height))
+    if (plan.video?.videoPath && plan.video.visible && plan.video.opacity > 0) videoReader = new VideoFrames(plan.video, metadata.duration, Math.max(width, height), range.start)
     // Open the decoder when rendering is ready to consume it. Starting it
     // before the hidden renderer initializes caused packaged 8 kHz exports
     // to report EOF at the first frame.
     reader = new PcmReader(analysisPath, metadata.sampleRate)
     console.log(JSON.stringify({ event: 'started', input: project.audioPath, output: config.output,
-      ...metadata, width, height, audioBitrate: encoder.audioBitrate,
+      ...metadata, rangeStart: range.start, rangeEnd: range.end, width, height, audioBitrate: encoder.audioBitrate,
       encoderPid: encoder.child.pid, decoderPid: reader.child.pid }))
     for (let index = 0; index < totalFrames; index++) {
       checkCancel(index)

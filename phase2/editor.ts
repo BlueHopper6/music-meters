@@ -1,3 +1,4 @@
+import { exportRange, assertRangeAudioMode } from './export-range.cjs'
 import { userMessage } from './user-message.cjs'
 import { installUserFeedback } from './user-feedback'
 import { renderTemplateThumbnail, clearTemplateThumbnails } from './template-thumbnail'
@@ -73,7 +74,7 @@ type Desktop = {
   deleteTemplate(id: string): Promise<{ id: string; name: string }>
   setExportPreset(preset: string): Promise<void>
   chooseExportDestination(project: Project, audioMode: string): Promise<string | null>
-  renderVideo(project: Project, preset: string, audioMode: string, destination?: string): Promise<string | null>
+  renderVideo(project: Project, preset: string, audioMode: string, destination?: string, range?: { start: number; end: number }): Promise<string | null>
   cancelRender(): Promise<void>
   confirmAppClose(): Promise<void>
   onAppCloseRequested(listener: () => void): () => void
@@ -966,6 +967,9 @@ function refreshTemplates(entries: TemplateEntry[], preferred = '') {
   if (!$('template-manager-modal').hidden) renderTemplateManager()
 }
 function resetSongPreview() {
+  $<HTMLInputElement>('export-range-enabled').checked = false
+  $<HTMLInputElement>('export-range-start').value = '0'
+  $<HTMLInputElement>('export-range-end').value = ''
   playback?.reset()
   exportDestination = ''
   ;($<HTMLInputElement>('export-destination')).value = ''
@@ -2733,7 +2737,7 @@ $('render-mp4').addEventListener('click', async () => {
   try {
     refreshExportResolution()
     const output = await window.desktop.renderVideo(project, ($<HTMLSelectElement>('export-preset')).value,
-      ($<HTMLSelectElement>('audio-mode')).value, exportDestination)
+      ($<HTMLSelectElement>('audio-mode')).value, exportDestination, selectedExportRange())
     if (!output) return
     exportRunning = true
     playback?.sync()
@@ -2946,6 +2950,12 @@ $('new-project').addEventListener('click', () => {
 })
 $('manage-templates').addEventListener('click', () => $('open-template-manager').click())
 
+function selectedExportRange(): { start: number; end: number } | undefined {
+  if (!$<HTMLInputElement>('export-range-enabled').checked) return undefined
+  const start = $<HTMLInputElement>('export-range-start'), end = $<HTMLInputElement>('export-range-end')
+  if (!start.value || !end.value) throw new Error('Enter both a start and end for the export region.')
+  return { start: Number(start.value), end: Number(end.value) }
+}
 function updateExportDialog() {
   updateHistoryControls()
   $('export-project-name').textContent = project.title || 'Untitled project'
@@ -2958,7 +2968,23 @@ function updateExportDialog() {
     : ($<HTMLSelectElement>('audio-mode')).value === 'flac'
       ? 'High-quality H.264 video with 24-bit FLAC audio. No lossy audio compression; volume changes and mixing are rendered into the soundtrack.'
     : 'High-quality H.264 video with lossy AAC audio up to 384 kb/s. Choose MKV with FLAC or a lossless master to avoid lossy audio encoding.'
-  ;($<HTMLButtonElement>('render-mp4')).disabled = !metadata || exportRunning || exportSubmitting
+  let rangeError = ''
+  const enabled = $<HTMLInputElement>('export-range-enabled').checked
+  $('export-range-fields').hidden = !enabled
+  try {
+    if (metadata) {
+      const range = exportRange(selectedExportRange(), metadata.duration)
+      assertRangeAudioMode(range, $<HTMLSelectElement>('audio-mode').value)
+      $('export-range-note').textContent = enabled
+        ? `${range.start.toFixed(3)}–${range.end.toFixed(3)} s · ${range.duration.toFixed(3)} seconds exported. Cuts align to 30 FPS; meter history starts at this region.`
+        : `Full project · ${metadata.duration.toFixed(3)} seconds.`
+    }
+  } catch (error) { rangeError = userMessage(error); $('export-range-note').textContent = rangeError }
+  $('export-range-note').classList.toggle('error', Boolean(rangeError))
+  for (const id of ['export-range-enabled', 'export-range-start', 'export-range-end', 'export-range-in', 'export-range-out']) {
+    ($<HTMLInputElement>(id)).disabled = exportRunning || exportSubmitting
+  }
+  ;($<HTMLButtonElement>('render-mp4')).disabled = !metadata || Boolean(rangeError) || exportRunning || exportSubmitting
   ;($<HTMLButtonElement>('choose-export-destination')).disabled = !metadata || exportRunning || exportSubmitting
   ;($<HTMLSelectElement>('export-preset')).disabled = exportRunning || exportSubmitting
   ;($<HTMLSelectElement>('audio-mode')).disabled = exportRunning || exportSubmitting
@@ -2966,6 +2992,8 @@ function updateExportDialog() {
 function openExportDialog() {
   playback?.pause()
   if (exportRunning) return
+  const end = $<HTMLInputElement>('export-range-end')
+  if (!end.value || Number(end.value) > (metadata?.duration || 0)) end.value = String(metadata?.duration || 0)
   refreshExportResolution(); updateExportDialog()
   $('export-dialog-status').textContent = metadata ? 'Existing videos are never overwritten.' : 'Import audio before exporting.'
   $('export-modal').hidden = false
@@ -2977,6 +3005,16 @@ function closeExportDialog() {
   $('export-modal').hidden = true
   $('editor-screen').inert = false
   $('open-export').focus()
+}
+for (const id of ['export-range-enabled', 'export-range-start', 'export-range-end']) {
+  $(id).addEventListener('input', updateExportDialog)
+  $(id).addEventListener('change', updateExportDialog)
+}
+for (const [button, input] of [['export-range-in', 'export-range-start'], ['export-range-out', 'export-range-end']]) {
+  $(button).addEventListener('click', () => {
+    $<HTMLInputElement>(input).value = String(Math.min(frameIndex / 30, metadata?.duration || 0))
+    updateExportDialog()
+  })
 }
 $('open-export').addEventListener('click', openExportDialog)
 $('export-close').addEventListener('click', closeExportDialog)

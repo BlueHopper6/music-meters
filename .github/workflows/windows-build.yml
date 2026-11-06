@@ -71,12 +71,13 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           node phase6/package-windows.cjs --output artifacts/phase6/ci-package
           node phase6/test/package-branding.cjs artifacts/phase6/ci-package
+          node phase6/test/run-export-range.cjs artifacts/phase6/ci-package artifacts/phase6/ci-export-range
           node phase6/test/run-layer-snapping.cjs artifacts/phase6/ci-package artifacts/phase6/ci-layer-snapping
           node phase2/test/run-startup-smoke.cjs --package artifacts/phase6/ci-package
           node phase2/test/run-portrait-smoke.cjs --package artifacts/phase6/ci-package artifacts/phase6/ci-portrait
           node --test phase2/test/playback-media.test.cjs phase2/test/timecode.test.cjs
           node --test phase2/test/project-history.test.cjs phase2/test/project-library.test.cjs phase2/test/project-audio.test.cjs phase2/test/recent-projects.test.cjs
-          node --test phase2/test/project-media.test.cjs phase2/test/video-frames.test.cjs phase2/test/media-storage.test.cjs
+          node --test phase2/test/export-range.test.cjs phase2/test/project-media.test.cjs phase2/test/video-frames.test.cjs phase2/test/media-storage.test.cjs
           node phase6/test/run-user-feedback.cjs artifacts/phase6/ci-package artifacts/phase6/ci-user-feedback
           node phase6/test/run-media-storage.cjs artifacts/phase6/ci-package artifacts/phase6/ci-media-storage
           node --test phase2/test/meter-style.test.cjs

@@ -7,20 +7,26 @@ const { probeVideo, runFFmpeg, assertCachePath } = require('./project-media.cjs'
 // Sequential offline decoding: bounded by one PNG plus stream backpressure.
 // FFmpeg maps variable-rate input onto the composition's 30 FPS clock.
 class VideoFrames {
-  constructor(layer, duration, maxDimension = 3840) {
-    this.layer = layer; this.index = 0; this.pending = Buffer.alloc(0)
+  constructor(layer, duration, maxDimension = 3840, start = 0) {
+    this.layer = layer; this.index = 0; this.start = start; this.pending = Buffer.alloc(0)
     this.requestedDuration = duration
     const info = probeVideo(layer.videoPath)
     this.duration = info.duration
+    const seek = layer.endBehavior === 'loop' ? start % info.duration : Math.min(start, Math.max(0, info.duration - 1 / 30))
     this.child = spawn('ffmpeg', ['-nostdin', '-v', 'error',
       ...(layer.endBehavior === 'loop' ? ['-stream_loop', '-1'] : []),
-      '-protocol_whitelist', 'file,pipe', '-i', layer.videoPath, '-map', `0:${info.streamIndex}`, '-an',
+      '-protocol_whitelist', 'file,pipe', ...(seek > 0 ? ['-ss', String(seek)] : []), '-i', layer.videoPath, '-map', `0:${info.streamIndex}`, '-an',
       '-vf', `fps=30,scale=w='min(iw,${maxDimension})':h='min(ih,${maxDimension})':force_original_aspect_ratio=decrease,setsar=1,tpad=stop_mode=clone:stop_duration=${duration}`,
       // Match the composition's ceiling exactly, including fractional final
       // frames. A duration cut can round down while the renderer rounds up.
       '-frames:v', String(Math.ceil(duration * 30)), '-f', 'image2pipe', '-c:v', 'png', 'pipe:1'],
     { stdio: ['ignore', 'pipe', 'pipe'], shell: false, windowsHide: true })
     this.iterator = this.child.stdout[Symbol.asyncIterator]()
+    // Claim stdout immediately: a tiny selected section can finish decoding
+    // before audio analysis requests its first picture. Child-process teardown
+    // otherwise drains an unconsumed pipe and loses those frames.
+    this.firstChunk = this.iterator.next()
+    this.firstChunk.catch(() => {})
     let errors = ''
     this.child.stderr.on('data', value => { errors = (errors + value).slice(-4096) })
     this.done = new Promise((resolve, reject) => {
@@ -30,7 +36,7 @@ class VideoFrames {
     this.done.catch(() => {})
   }
   async read() {
-    if (this.layer.endBehavior === 'hide' && this.index / 30 >= this.duration) { this.index++; return '' }
+    if (this.layer.endBehavior === 'hide' && this.start + this.index / 30 >= this.duration) { this.index++; return '' }
     let offset = 8
     for (;;) {
       while (this.pending.length >= offset + 12) {
@@ -46,7 +52,8 @@ class VideoFrames {
           return `data:image/png;base64,${frame}`
         }
       }
-      const next = await this.iterator.next()
+      const next = await (this.firstChunk || this.iterator.next())
+      this.firstChunk = null
       if (next.done) { await this.done; throw new Error(`Video decoder ended before composition frame ${this.index} (requested ${this.requestedDuration}s; source ${this.duration}s)`) }
       this.pending = Buffer.concat([this.pending, next.value])
       if (this.pending.length > 128 * 1024 * 1024) throw new Error('Decoded video frame exceeded its buffer limit')

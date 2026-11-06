@@ -47,7 +47,7 @@ contextBridge.exposeInMainWorld('desktop', {
   deleteTemplate: id => ipcRenderer.invoke('delete-template', id),
   setExportPreset: preset => ipcRenderer.invoke('set-export-preset', preset),
   chooseExportDestination: (project, audioMode) => ipcRenderer.invoke('choose-export-destination', project, audioMode),
-  renderVideo: (project, preset, audioMode, destination = '') => ipcRenderer.invoke('render-video', project, preset, audioMode, destination),
+  renderVideo: (project, preset, audioMode, destination = '', range) => ipcRenderer.invoke('render-video', project, preset, audioMode, destination, range),
   cancelRender: () => ipcRenderer.invoke('cancel-render'),
   closeProject: () => ipcRenderer.invoke('close-project'),
   confirmAppClose: () => ipcRenderer.invoke('confirm-app-close'),
