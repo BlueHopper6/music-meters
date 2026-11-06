@@ -4,6 +4,10 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ## Unreleased
 
+### Changed
+
+- Image imports accept files up to 16 MB, retaining the 24 MB combined project-artwork budget and format checks.
+
 ## [1.2.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.2.0) — 2026-11-05
 
 Published November 5 in America/Indianapolis. See the [release notes](docs/releases/1.2.0.md) for exact downloads, checksums, and validation.
