@@ -18,13 +18,35 @@ module.exports=async function(win){
   await wait('document.getElementById("status").textContent.includes("Real Prism")','initial')
   await click('open-project')
   await wait('document.querySelectorAll(".layer-item").length===8 && document.getElementById("status").textContent.includes("Real Prism") && document.getElementById("preview-busy").hidden','eight meters')
+  await ready();await click('refresh-still');await wait('document.getElementById("status").textContent.includes("Real Prism") && document.getElementById("preview-busy").hidden && !document.getElementById("editor-screen").inert','settled project still')
   const baseline=await stage('original.png')
+  win.showInactive();win.focus();win.webContents.focus()
+  await select('vectorscope')
+  await evaluate('document.getElementById("meter-style-options").scrollIntoView({block:"center"})')
+  await delay(200)
+  await click('meter-palette-trigger')
+  await wait('!document.getElementById("meter-palette-menu").hidden','preset menu opens')
+  await delay(150);fs.writeFileSync(path.join(dir,'preset-menu.png'),(await win.capturePage()).toPNG())
+  for(const key of ['Down','Enter']) {win.webContents.sendInputEvent({type:'keyDown',keyCode:key});win.webContents.sendInputEvent({type:'keyUp',keyCode:key});await delay(70)}
+  assert.equal(await evaluate('document.getElementById("meter-palette").value'),'neon')
+  assert.match(await evaluate('document.getElementById("meter-palette-trigger").textContent'),/Cyan & Magenta/)
+  assert.equal(await evaluate('document.activeElement.id'),'stage')
+  const press=key=>{win.webContents.sendInputEvent({type:'keyDown',keyCode:key});win.webContents.sendInputEvent({type:'keyUp',keyCode:key})}
+  press('Space');await wait('!document.getElementById("playback-audio").paused','Space after preset plays')
+  assert.equal(await evaluate('document.getElementById("meter-palette-menu").hidden'),true)
+  await delay(150);press('Space');await wait('document.getElementById("playback-audio").paused','Space after preset pauses')
+  await change('time-input','0')
+  await select('spectrum');await select('vectorscope')
+  assert.equal(await evaluate('document.getElementById("meter-palette").value'),'neon','switching layers retains preset label')
+
   const types=['vectorscope','spectrum','oscilloscope','spectrogram','waveform','vu','loudness','waterfall']
   for(const [index,type] of types.entries()){
     await select(type)
     assert.equal(await evaluate('document.getElementById("meter-style-options").hidden'),false)
     await change('meter-palette',['neon','ember','ice','forest','prism','ember','ice','mono'][index])
+    assert.notEqual(await evaluate('document.getElementById("meter-palette").value'),'')
     await change('meter-grid-opacity',25)
+    assert.equal(await evaluate('document.getElementById("meter-palette").value'),'')
     if(['vectorscope','spectrum','oscilloscope'].includes(type))await change('meter-trace-width',3)
   }
   await select('spectrum')

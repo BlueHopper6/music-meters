@@ -1,3 +1,4 @@
+import { installPalettePicker } from './meter-palette-picker'
 import { exportRange, assertRangeAudioMode } from './export-range.cjs'
 import { userMessage } from './user-message.cjs'
 import { installUserFeedback } from './user-feedback'
@@ -12,7 +13,7 @@ import { installVideoPreview, type LiveFrame } from './video-preview'
 import type { PlaybackStart } from './video-preview'
 import { formatTimecode, parseTimecode, frameAtTime } from './timecode.cjs'
 import { ProjectHistory } from './project-history.cjs'
-import { applyPalette, normalizeAppearance, appearanceDefaults } from './meter-style.cjs'
+import { applyPalette, matchingPalette, normalizeAppearance, appearanceDefaults } from './meter-style.cjs'
 import type { MeterAppearance } from './composition'
 import { videoLayer, normalizeMixer } from './project.cjs'
 
@@ -85,6 +86,7 @@ declare global { interface Window { desktop: Desktop } }
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const feedback = installUserFeedback(setStatus)
 const canvas = $<HTMLCanvasElement>('stage')
+const palettePicker = installPalettePicker($<HTMLSelectElement>('meter-palette'), $<HTMLButtonElement>('meter-palette-trigger'), () => canvas.focus({ preventScroll: true }))
 // A playback shortcut must not turn a pointer-focused canvas into a keyboard focus ring.
 document.addEventListener('keydown', event => {
   if (event.key === 'Tab') document.body.classList.add('keyboard-navigation')
@@ -640,7 +642,7 @@ function refreshMeterStyle() {
   const layer = selected()
   const meter = layer && !['image','text','video'].includes(layer.type) ? layer : null
   $('meter-style-options').hidden = !meter
-  if (!meter) return
+  if (!meter) { palettePicker.close(); return }
   const a = meter.appearance || {}
   $('meter-trace-row').hidden = !['vectorscope','spectrum','oscilloscope'].includes(meter.type)
   $('meter-label-row').hidden = ['spectrum','oscilloscope'].includes(meter.type)
@@ -650,7 +652,7 @@ function refreshMeterStyle() {
   $('meter-heat-hint').hidden = meter.type === 'spectrum'
   $('meter-scope-fill').hidden = meter.type !== 'oscilloscope'
   $('meter-fill-opacity-row').hidden = a.fillMode !== 'gradient'
-  ;($<HTMLSelectElement>('meter-palette')).value = ''
+  ;($<HTMLSelectElement>('meter-palette')).value = matchingPalette(meter)
   const defaults = appearanceDefaults(meter)
   for (const [id,value] of [
     ['meter-trace-width', a.lineWidth ?? defaults.lineWidth], ['meter-grid-color', a.gridColor ?? defaults.gridColor],
@@ -663,6 +665,7 @@ function refreshMeterStyle() {
   ] as const) $<HTMLInputElement>(id).value = String(value)
   ;($<HTMLInputElement>('meter-spectrum-grid')).checked = a.showGrid ?? true
   for (const input of $('meter-style-options').querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>('input,select,button')) input.disabled = meter.locked
+  palettePicker.sync()
 }
 function refreshStyledMeter() {
   repaint()
@@ -672,7 +675,7 @@ function refreshStyledMeter() {
 $('meter-palette').addEventListener('change', event => {
   const layer = selected(), id = (event.target as HTMLSelectElement).value
   if (!layer || layer.locked || historyBusy || !id) return
-  try { Object.assign(layer, applyPalette(layer,id)); refreshStyledMeter() }
+  try { Object.assign(layer, applyPalette(layer,id)); refreshStyledMeter(); canvas.focus({ preventScroll: true }) }
   catch (error) { setStatus(String(error)) }
 })
 $('meter-style-reset').addEventListener('click', () => {

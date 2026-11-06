@@ -11,6 +11,7 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ### Fixed
 
+- Meter preset names track applied colors; a themed swatch picker returns focus to the canvas so Space plays/pauses after selection.
 - Undoing imported video changes preserves the Redo entry.
 - Space plays or pauses after canvas dragging without adding a stage focus outline; text entry and Tab focus cues are preserved.
 

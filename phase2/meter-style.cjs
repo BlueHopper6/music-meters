@@ -83,3 +83,16 @@ function applyPalette(layer,id) {
   return next
 }
 module.exports={PALETTES,normalizeAppearance,appearanceDefaults,nativeAppearance,applyPalette}
+
+// Derive the label from applied colors so old projects, templates and Undo agree.
+function matchingPalette(layer) {
+  if (['image','text','video'].includes(layer.type)) return ''
+  for (const id of Object.keys(PALETTES)) {
+    const expected=applyPalette(layer,id)
+    const keys=['color','bandLowColor','bandMidColor','bandHighColor','peakColor','needleLeftColor','needleRightColor','needleCombinedColor','targetColor']
+    const appearanceKeys=['secondaryColor','gridColor','gridOpacity','labelColor','labelOpacity','fillLowColor','fillMidColor','fillHighColor','fillOpacity','scopeFillColor','scopeFillOpacity',...(layer.type==='spectrum'?['fillMode']:[])]
+    if (keys.every(key=>expected[key]===layer[key]) && appearanceKeys.every(key=>expected.appearance[key]===layer.appearance?.[key])) return id
+  }
+  return ''
+}
+module.exports.matchingPalette=matchingPalette
