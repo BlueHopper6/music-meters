@@ -217,6 +217,10 @@
         <div id="selected-layer-controls">
           <label>Name<input id="layer-name" type="text" maxlength="80"></label>
           <div class="number-grid"><label>X<input id="layer-x" type="number" min="0" max="1280"></label><label>Y (from top)<input id="layer-y" type="number" min="0" max="720"></label><label>Width<input id="layer-w" type="number" min="80" max="1280"></label><label>Height<input id="layer-h" type="number" min="80" max="720"></label></div>
+          <div id="video-transform-tools" hidden>
+            <div class="video-transform-buttons"><button id="video-half-size" type="button">Half size</button><button id="video-canvas-size" type="button">Canvas size</button></div>
+            <p class="hint">Drag the video to move it; drag its bottom-right handle to resize. A canvas-sized video must be made smaller before it can move within the canvas.</p>
+          </div>
           <label class="stage-option"><input id="layer-aspect-lock" type="checkbox"> Lock aspect ratio while resizing</label>
           <label id="layer-rotation-row">Rotation (°)<input id="layer-rotation" type="number" min="-180" max="180" step="1"></label>
           <div class="number-grid">

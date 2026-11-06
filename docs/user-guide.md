@@ -42,6 +42,8 @@ Full-screen preview keeps a seek line, current/total time, Play/Pause, and liste
 
 The editor prepares a smaller silent video proxy for preview and floating-point soundtrack files when processing is needed. Preparing long clips can take time and temporary disk space; use **Cancel media preparation** to stop. Export reads the original video, not the preview proxy. Temporary prepared media is removed on normal app exit; interrupted processes may leave temporary files.
 
+Video layers use the same X/Y, width/height, rotation, aspect lock, and stage dragging as other layers. Select the video in **Layers**; its name and enlarged bottom-right resize handle stay inside its frame, including when it fills the canvas. Drag the handle inward to shrink it, then drag the picture to move it. **Half size** shrinks around its center; **Canvas size** restores a full-canvas frame and zero rotation. A full-canvas frame has no room to move within the canvas bounds. Locked video layers cannot be moved or resized. These changes support undo/redo, saving and export.
+
 ## Export a section
 
 In **Export**, enable **Export a selected section** and enter start/end times in seconds (for example, 60 to 70 for a ten-second clip). You can seek in the editor, open Export, and use **Use playhead as start/end**. Close the dialog to seek to another position, then reopen it to set the other boundary. The dialog shows the actual range and exported duration; cuts align to the nearest 30 FPS frame. Turn the option off for the full project.

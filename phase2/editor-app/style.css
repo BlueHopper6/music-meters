@@ -1549,3 +1549,9 @@ body.stage-fullscreen .stage-shell { top: 40px; }
 
 .export-range input[type="number"]:focus { outline: 0; border-color: var(--text-secondary); box-shadow: none; }
 .export-range .export-fields { grid-template-columns: 1fr 1fr; }
+
+/* Keep a video frame's drag affordances visible even when it fills the stage. */
+.selection.video-selection .resize-handle { width: 16px; height: 16px; right: 2px; bottom: 2px; }
+.selection.video-selection .selection-label { top: 4px; left: 4px; border-radius: 3px; }
+.video-transform-buttons { display: flex; gap: 8px; margin: 10px 0; }
+.video-transform-buttons button { flex: 1; }

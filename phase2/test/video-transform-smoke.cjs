@@ -1,0 +1,73 @@
+const fs = require('node:fs')
+const path = require('node:path')
+const assert = require('node:assert/strict')
+const { app } = require('electron')
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+module.exports = async function (win) {
+  const dir = process.env.MUSICMETERS_VIDEO_TRANSFORM_DIR
+  const evaluate = source => win.webContents.executeJavaScript(source)
+  const click = id => evaluate(`document.getElementById(${JSON.stringify(id)}).click()`)
+  async function wait(source, label) {
+    console.log(JSON.stringify({event:'video-transform-wait',label}))
+    const deadline = Date.now()+60000
+    while(Date.now()<deadline) { if(await evaluate(source)) return; await delay(70) }
+    fs.writeFileSync(path.join(dir,'failure.png'),(await win.capturePage()).toPNG())
+    throw new Error(`${label}: ${await evaluate('document.getElementById("status").textContent')}`)
+  }
+  async function change(id,value) {
+    await evaluate(`(()=>{const e=document.getElementById(${JSON.stringify(id)});${typeof value === 'boolean' ? 'e.checked' : 'e.value'}=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}))})()`)
+  }
+  const geometry = () => evaluate(`['layer-x','layer-y','layer-w','layer-h'].map(id=>Number(document.getElementById(id).value))`)
+  async function nativeDrag(start,end) {
+    win.focus();win.webContents.focus()
+    await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');await delay(150)
+    win.webContents.sendInputEvent({type:'mouseDown',...start,button:'left',clickCount:1});await delay(100)
+    win.webContents.sendInputEvent({type:'mouseMove',...end,button:'left'});await delay(100)
+    win.webContents.sendInputEvent({type:'mouseUp',...end,button:'left',clickCount:1});await delay(100)
+  }
+  win.showInactive()
+  await wait('document.getElementById("status").textContent.includes("Real Prism")','initial')
+  await click('import-video')
+  await wait('document.getElementById("video-name").textContent.includes("clip") && document.getElementById("cancel-media").hidden && document.getElementById("status").textContent.includes("Real Prism")','video import')
+  assert.deepEqual(await geometry(),[0,0,1280,720])
+  const handles = await evaluate(`(()=>{const h=document.querySelector('#selection .resize-handle').getBoundingClientRect(),s=document.getElementById('stage').getBoundingClientRect();return {start:{x:Math.round(h.x+h.width/2),y:Math.round(h.y+h.height/2)},end:{x:Math.round(h.x+h.width/2-s.width/2),y:Math.round(h.y+h.height/2-s.height/2)},inside:h.right<=s.right && h.bottom<=s.bottom,width:h.width}})()`)
+  assert.ok(handles.inside);assert.ok(handles.width>=16)
+  await nativeDrag(handles.start,handles.end)
+  await wait('Math.abs(Number(document.getElementById("layer-w").value)-640)<=3 && Math.abs(Number(document.getElementById("layer-h").value)-360)<=3','native resize')
+  const before=await geometry()
+  const points=await evaluate(`(()=>{const r=document.getElementById('stage').getBoundingClientRect();const p=(x,y)=>({x:Math.round(r.x+x/1280*r.width),y:Math.round(r.y+y/720*r.height)});return{start:p(200,100),end:p(400,220)}})()`)
+  await nativeDrag(points.start,points.end)
+  const moved=await geometry()
+  assert.ok(Math.abs(moved[0]-200)<=3 && Math.abs(moved[1]-120)<=3)
+  await click('undo-project');await wait('Number(document.getElementById("layer-x").value)===0 && !document.getElementById("editor-screen").inert','undo move')
+  assert.deepEqual(await geometry(),before)
+  assert.equal(await evaluate('document.getElementById("redo-project").disabled'),false,'video Undo must retain the Redo entry')
+  await click('redo-project');await wait('Number(document.getElementById("layer-x").value)>190 && !document.getElementById("editor-screen").inert','redo move')
+  assert.deepEqual(await geometry(),moved)
+  await click('video-canvas-size');assert.deepEqual(await geometry(),[0,0,1280,720])
+  await click('video-half-size');assert.deepEqual(await geometry(),[320,180,640,360])
+  await change('layer-locked',true)
+  assert.equal(await evaluate('document.getElementById("video-half-size").disabled'),true)
+  const lockedPoints=await evaluate(`(()=>{const r=document.getElementById('stage').getBoundingClientRect();const p=(x,y)=>({x:Math.round(r.x+x/1280*r.width),y:Math.round(r.y+y/720*r.height)});return{start:p(400,240),end:p(450,280)}})()`)
+  await nativeDrag(lockedPoints.start,lockedPoints.end);assert.deepEqual(await geometry(),[320,180,640,360])
+  await change('layer-locked',false)
+  await click('save-project')
+  await wait('document.getElementById("status").textContent.startsWith("Saved project:")','save transforms')
+  const savedPath=await evaluate('window.desktop.initial().then(x=>x.projectPath)')
+  assert.ok(savedPath && fs.existsSync(savedPath))
+  fs.writeFileSync(path.join(dir,'saved-path.txt'),savedPath)
+  process.env.PHASE2_TEST_PROJECT_PATH=savedPath
+  await click('open-project')
+  await wait('document.getElementById("status").textContent.includes("Real Prism") && document.getElementById("cancel-media").hidden','reopen')
+  await evaluate(`Array.from(document.querySelectorAll('.layer-item')).find(e=>e.textContent.includes('Video')).click()`)
+  assert.deepEqual(await geometry(),[320,180,640,360])
+  await delay(200);fs.writeFileSync(path.join(dir,'video-transform.png'),(await win.capturePage()).toPNG())
+  await change('export-preset','720p');await change('audio-mode','master');await click('open-export');await click('export-range-enabled')
+  await change('export-range-start',1);await change('export-range-end',1+1/30)
+  process.env.PHASE2_TEST_OUTPUT_PATH=path.join(dir,'transformed.mkv')
+  await click('render-mp4')
+  await wait('document.getElementById("status").textContent.includes("ready:") && document.getElementById("status").textContent.includes("transformed.mkv")','export transformed video')
+  console.log(JSON.stringify({event:'video-transform-pass',nativeResize:true,nativeMove:true,undoRedo:true,locked:true,quickSizes:true,saveReopen:true,regionExport:true}))
+  app.quit()
+}

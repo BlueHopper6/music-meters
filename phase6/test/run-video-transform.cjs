@@ -1,0 +1,23 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict')
+const {spawn,execFileSync}=require('node:child_process')
+const {packagedExecutable}=require('../packaged-executable.cjs')
+const run=args=>execFileSync('ffmpeg',['-v','error',...args],{windowsHide:true,maxBuffer:16*1024*1024})
+async function main(){
+  const dir=path.resolve(process.argv[3]);if(fs.existsSync(dir))throw new Error('Use a fresh output directory')
+  fs.mkdirSync(dir,{recursive:true});fs.mkdirSync(path.join(dir,'temp'))
+  const audio=path.join(dir,'song.wav'),video=path.join(dir,'clip.mkv')
+  run(['-f','lavfi','-i','sine=frequency=440:duration=3','-c:a','pcm_s24le',audio])
+  run(['-f','lavfi','-i','color=blue:s=320x180:r=30:d=3','-c:v','ffv1',video])
+  const fd=fs.openSync(path.join(dir,'editor.log'),'wx')
+  const child=spawn(packagedExecutable(path.resolve(process.argv[2])),[],{env:{...process.env,TEMP:path.join(dir,'temp'),TMP:path.join(dir,'temp'),PHASE5_TEST_USER_DATA:path.join(dir,'profile'),PHASE2_HEADLESS:'1',PHASE2_TEST_INPUT:audio,MUSICMETERS_TEST_VIDEO:video,PHASE2_TEST_SAVE_PATH:path.join(dir,'saved.json'),MUSICMETERS_VIDEO_TRANSFORM_SMOKE:'1',MUSICMETERS_VIDEO_TRANSFORM_DIR:dir},stdio:['ignore',fd,fd],windowsHide:true})
+  const code=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{child.kill();reject(new Error('Video transform smoke timed out'))},180000);child.once('error',reject);child.once('close',code=>{clearTimeout(timer);resolve(code)})})
+  fs.closeSync(fd);assert.equal(code,0,fs.readFileSync(path.join(dir,'editor.log'),'utf8'))
+  const saved=JSON.parse(fs.readFileSync(fs.readFileSync(path.join(dir,'saved-path.txt'),'utf8'))),layer=saved.layers.find(l=>l.type==='video')
+  assert.deepEqual([layer.x,layer.y,layer.w,layer.h],[320,180,640,360])
+  const pixels=run(['-i',path.join(dir,'transformed.mkv'),'-frames:v','1','-pix_fmt','rgb24','-f','rawvideo','pipe:1'])
+  const pixel=(x,y)=>[...pixels.subarray((y*1280+x)*3,(y*1280+x)*3+3)]
+  assert.ok(pixel(380,240)[2]>200,'exported video occupies its transformed frame')
+  assert.ok(pixel(10,10)[2]<100,'video does not cover the whole exported canvas')
+  console.log(JSON.stringify({dir,nativeTransforms:'PASS',savedGeometry:'PASS',exportedPlacement:'PASS'}))
+}
+main().catch(error=>{console.error(error);process.exitCode=1})

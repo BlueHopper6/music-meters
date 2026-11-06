@@ -302,6 +302,9 @@ $('import-video').addEventListener('click', async () => {
     layer.sourceName = chosen.path.split(/[\\/]/).pop()
     layer.storage = chosen.storage
     if (!existing) project.layers.unshift(layer)
+    // Record imported layers in the same canonical shape used by history restore.
+    // Otherwise normalization during Undo can look like a new edit and erase Redo.
+    project = normalizeProject(project) as Project
     selectedId = layer.id
     missingMedia = missingMedia.filter(item => item.kind !== 'video')
     await updateMedia(); refreshLayers(); renderMissingMedia(); await syncAssets()
@@ -393,6 +396,7 @@ function updateSelection() {
   selection.style.height = `${layer.h / project.height * 100}%`
   selection.style.transform = `rotate(${layer.rotation}deg)`
   selection.classList.toggle('locked', layer.locked)
+  selection.classList.toggle('video-selection', layer.type === 'video')
   selection.querySelector('.selection-label')!.textContent = layer.name
 }
 function layerIconSvg(type: Project['layers'][number]['type']): SVGSVGElement {
@@ -717,6 +721,8 @@ function refreshInspector() {
   $('selected-layer-controls').hidden = !layer
   $('image-options').hidden = layer?.type !== 'image'
   $('video-options').hidden = layer?.type !== 'video'
+  $('video-transform-tools').hidden = layer?.type !== 'video'
+  for (const id of ['video-half-size', 'video-canvas-size']) $<HTMLButtonElement>(id).disabled = !layer || layer.locked
   if (layer?.type === 'video') {
     $('video-name').textContent = layer.sourceName || layer.videoPath.split(/[\\/]/).pop() || 'No video selected'
     ;($<HTMLSelectElement>('video-fit')).value = layer.fit
@@ -1053,6 +1059,22 @@ function markPreviewStale() {
     setStatus('Audio still is out of date. Press Refresh still to update meter data.')
   }
 }
+for (const id of ['video-half-size', 'video-canvas-size']) $(id).addEventListener('click', () => {
+  const layer = selected()
+  if (layer?.type !== 'video' || layer.locked || historyBusy || exportRunning || exportSubmitting) return
+  endHistoryGroup()
+  if (id === 'video-canvas-size') {
+    Object.assign(layer, { x: 0, y: 0, w: project.width, h: project.height, rotation: 0 })
+  } else {
+    const scale = Math.max(0.5, 80 / layer.w, 80 / layer.h)
+    const w = Math.round(layer.w * scale), h = Math.round(layer.h * scale)
+    layer.x = Math.max(0, Math.min(project.width - w, Math.round(layer.x + (layer.w - w) / 2)))
+    layer.y = Math.max(0, Math.min(project.height - h, Math.round(layer.y + (layer.h - h) / 2)))
+    layer.w = w; layer.h = h
+  }
+  repaint()
+  endHistoryGroup()
+})
 for (const [id, property] of [['layer-x', 'x'], ['layer-y', 'y'], ['layer-w', 'w'], ['layer-h', 'h']] as const) {
   $<HTMLInputElement>(id).addEventListener('change', event => {
     const layer = selected()
