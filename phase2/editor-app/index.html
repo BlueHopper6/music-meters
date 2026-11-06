@@ -21,6 +21,10 @@
       </div>
     </div>
   </header>
+  <div id="error-notice" class="error-notice" role="alert" aria-atomic="true" hidden>
+    <div><strong id="error-notice-title"></strong><p id="error-notice-message"></p></div>
+    <button id="error-notice-dismiss" class="modal-close-btn" type="button" aria-label="Dismiss error">×</button>
+  </div>
   <div id="splash-screen" class="splash-screen" aria-live="polite">
     <div class="splash-card">
       <div class="splash-brand">
@@ -167,6 +171,7 @@
         <div id="snap-guide-x" class="snap-guide snap-guide-x" hidden></div>
         <div id="snap-guide-y" class="snap-guide snap-guide-y" hidden></div>
         <div id="selection" class="selection" hidden><span class="selection-label"></span><span class="resize-handle" data-handle="resize" title="Resize layer"></span></div>
+        <div id="video-loading" class="preview-busy video-loading" role="status" aria-live="polite" hidden>Loading video…</div>
         <div id="preview-busy" class="preview-busy" role="status" hidden>Updating still…</div>
       </div><button id="exit-fullscreen-preview" type="button" class="exit-fullscreen-btn" title="Exit full screen (Esc)" hidden>Exit full screen · Esc</button>
         <div id="fullscreen-transport" class="fullscreen-transport" role="group" aria-label="Full screen playback" hidden>

@@ -1,3 +1,5 @@
+import { userMessage } from './user-message.cjs'
+import { installUserFeedback } from './user-feedback'
 import { renderTemplateThumbnail, clearTemplateThumbnails } from './template-thumbnail'
 import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type VectorscopeLayer, type SpectrumLayer,
   type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer, type LoudnessLayer, type WaterfallLayer,
@@ -80,6 +82,7 @@ type Desktop = {
 declare global { interface Window { desktop: Desktop } }
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
+const feedback = installUserFeedback(setStatus)
 const canvas = $<HTMLCanvasElement>('stage')
 // A playback shortcut must not turn a pointer-focused canvas into a keyboard focus ring.
 document.addEventListener('keydown', event => {
@@ -118,7 +121,9 @@ let historyGroup = ''
 async function persistProject(asNew = false) {
   if (historyBusy) throw new Error('Wait for the current edit to finish')
   historyBusy = true; $('editor-screen').inert = true; updateHistoryControls()
+  feedback.clearError()
   try { return await window.desktop.saveProject(project, asNew) }
+  catch (error) { feedback.showError('Project could not be saved', error); throw error }
   finally { historyBusy = false; $('editor-screen').inert = false; updateHistoryControls() }
 }
 
@@ -171,6 +176,7 @@ $('undo-project').addEventListener('click', () => { void restoreEdit(-1) })
 $('redo-project').addEventListener('click', () => { void restoreEdit(1) })
 async function editArtwork(change: (path: string) => void): Promise<boolean> {
   if (historyBusy || exportRunning || exportSubmitting) return false
+  feedback.clearError()
   endHistoryGroup(); recordEdit()
   historyBusy = true; $('editor-screen').inert = true; updateHistoryControls()
   try {
@@ -181,7 +187,8 @@ async function editArtwork(change: (path: string) => void): Promise<boolean> {
     for (const layer of project.layers) if (layer.type === 'image' && layer.imagePath === chosen.path) layer.storage = chosen.storage
     refreshInspector(); refreshLayers(); renderMissingMedia(); await syncAssets()
     return true
-  } finally { historyBusy = false; $('editor-screen').inert = false; recordEdit() }
+  } catch (error) { feedback.showError('Image could not be imported', error); throw error }
+  finally { historyBusy = false; $('editor-screen').inert = false; recordEdit() }
 }
 
 function selected() { return project.layers.find(layer => layer.id === selectedId) }
@@ -191,6 +198,7 @@ function selectLayer(id: string | null) {
   refreshInspector(); refreshLayers(); updateSelection()
 }
 function setStatus(message: string) {
+  message = userMessage(message)
   status.textContent = message
   if (!$('project-manager-screen').hidden) {
     const managerStatus = $('project-manager-status')
@@ -210,6 +218,7 @@ function upgradeProject() {
   project.layers.push(title)
 }
 async function syncAssets() {
+  const finishVideoLoading = project.layers.some(layer => layer.type === 'video' && layer.videoPath) ? feedback.beginVideoLoading() : () => {}
   try {
     await composition.setAssets(await window.desktop.loadAssets(project))
     if (project.layers.some(layer => layer.type === 'video' && layer.videoPath)) setStatus('Preparing video preview…')
@@ -218,8 +227,8 @@ async function syncAssets() {
     await composition.seekVideo(project, frameIndex / 30)
     render()
   }
-  catch (error) { setStatus(`Media unavailable: ${String(error)}`); render(); throw error }
-  finally { $('cancel-media').hidden = true }
+  catch (error) { feedback.showError('Media could not be loaded', error); render(); throw error }
+  finally { finishVideoLoading(); $('cancel-media').hidden = true }
 }
 const hasMedia = () => Boolean(project.audioPath || project.layers.some(layer => layer.type === 'video' && layer.videoPath))
 function mixer(): Mixer { return normalizeMixer(project.mixer) as Mixer }
@@ -279,7 +288,9 @@ $('replace-video').addEventListener('click', () => $('import-video').click())
 $('import-video').addEventListener('click', async () => {
   if (historyBusy || exportRunning || exportSubmitting) return
   const existing = project.layers.find(layer => layer.type === 'video') as VideoLayer | undefined
-  if (!existing && project.layers.length >= (project.version === 1 ? 31 : 32)) return setStatus('Remove a layer before importing video.')
+  if (!existing && project.layers.length >= (project.version === 1 ? 31 : 32)) return feedback.showError('Video could not be imported', 'Remove a layer before importing video.')
+  feedback.clearError()
+  const finishVideoLoading = feedback.beginVideoLoading()
   endHistoryGroup(); recordEdit(); historyBusy = true; updateHistoryControls()
   try {
     const chosen = await window.desktop.chooseVideo()
@@ -293,9 +304,12 @@ $('import-video').addEventListener('click', async () => {
     selectedId = layer.id
     missingMedia = missingMedia.filter(item => item.kind !== 'video')
     await updateMedia(); refreshLayers(); renderMissingMedia(); await syncAssets()
+    // The picture is decoded and painted by syncAssets. Meter still analysis
+    // continues separately so it does not keep the import controls blocked.
+    finishVideoLoading()
     void refreshPreview()
-  } catch (error) { setStatus(String(error)) }
-  finally { historyBusy = false; updateHistoryControls(); recordEdit() }
+  } catch (error) { feedback.showError('Video could not be imported', error) }
+  finally { finishVideoLoading(); historyBusy = false; updateHistoryControls(); recordEdit() }
 })
 let savedProjectSnapshot = ''
 let pendingUnsavedAction: (() => void | Promise<void>) | null = null
@@ -1732,6 +1746,7 @@ window.addEventListener('keydown', event => {
 
 $('import-audio').addEventListener('click', async () => {
   if (historyBusy || exportRunning || exportSubmitting) return
+  feedback.clearError()
   endHistoryGroup(); recordEdit()
   historyBusy = true; $('editor-screen').inert = true; updateHistoryControls()
   try {
@@ -1744,7 +1759,7 @@ $('import-audio').addEventListener('click', async () => {
     suggestSongTitle(chosen.path, previousAudio)
     missingMedia = missingMedia.filter(item => item.kind !== 'audio')
     refreshInspector(); refreshAudio(); renderMissingMedia(); void refreshPreview()
-  } catch (error) { setStatus(String(error)) }
+  } catch (error) { feedback.showError('Audio could not be imported', error) }
   finally { historyBusy = false; $('editor-screen').inert = false; recordEdit() }
 })
 $<HTMLSelectElement>('template-list').addEventListener('change', () => {
@@ -2328,7 +2343,7 @@ async function openRecent(targetPath: string) {
     const loaded = await window.desktop.openProjectPath(targetPath)
     if (!loaded) return
     await applyLoadedProject(loaded)
-  } catch (error) { await refreshRecentProjects(); setStatus(projectActionMessage(error)) }
+  } catch (error) { await refreshRecentProjects(); feedback.showError('Project could not be opened', projectActionMessage(error)) }
 }
 
 let openProjectMenu: { trigger: HTMLButtonElement; menu: HTMLDivElement } | null = null
@@ -2590,11 +2605,12 @@ function closeTemplatePicker() {
 
 $('open-project').addEventListener('click', () => {
   confirmDiscardIfDirty(async () => {
+    feedback.clearError()
     try {
       const loaded = await window.desktop.openProject()
       if (!loaded) return
       await applyLoadedProject(loaded)
-    } catch (error) { setStatus(String(error)) }
+    } catch (error) { feedback.showError('Project could not be opened', error) }
   })
 })
 async function closeCurrentProject() {
@@ -2670,11 +2686,12 @@ window.desktop.onAppCloseRequested(() => {
   })
 })
 $('pm-open-project').addEventListener('click', async () => {
+  feedback.clearError()
   try {
     const loaded = await window.desktop.openProject()
     if (!loaded) return
     await applyLoadedProject(loaded)
-  } catch (error) { setStatus(String(error)) }
+  } catch (error) { feedback.showError('Project could not be opened', error) }
 })
 $('pm-new-blank').addEventListener('click', async () => {
   try {
@@ -2709,6 +2726,7 @@ $('template-picker-create').addEventListener('click', async () => {
 $('render-mp4').addEventListener('click', async () => {
   if (exportRunning || exportSubmitting) return
   if (!metadata || !hasMedia()) return setStatus('Import audio or video before rendering.')
+  feedback.clearError()
   exportSubmitting = true
   ;($<HTMLButtonElement>('render-mp4')).disabled = true
   ;($<HTMLButtonElement>('choose-export-destination')).disabled = true
@@ -2774,6 +2792,7 @@ window.desktop.onExport(event => {
     setStatus(event.event === 'finished' ? `${container} ready: ${event.output}`
       : event.event === 'cancelled' ? 'Export cancelled. No video was saved.'
       : `Export failed: ${event.message || ''}`)
+    if (event.event === 'failed') feedback.showError('Export failed', event.message || 'The video could not be exported. Try another output location.')
     updateHistoryControls()
   }
 })
@@ -2864,7 +2883,7 @@ async function start() {
     if (metadata) await refreshPreview()
   }
 }
-start().catch(error => setStatus(String(error)))
+start().catch(error => feedback.showError('MusicMeters could not start', error))
 
 $<HTMLSelectElement>('canvas-orientation').addEventListener('change', event => {
   try {
