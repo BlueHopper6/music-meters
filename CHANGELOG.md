@@ -4,6 +4,14 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ## Unreleased
 
+### Added
+
+- Dragged layers snap to the edges and centers of other visible layers when Snap is enabled, with pink layer-alignment guides distinct from yellow canvas/grid guides and rotated-frame bounds support.
+
+### Fixed
+
+- Space plays or pauses after canvas dragging without adding a stage focus outline; text entry and Tab focus cues are preserved.
+
 ## [1.2.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.2.0) — 2026-11-05
 
 Published November 5 in America/Indianapolis. See the [release notes](docs/releases/1.2.0.md) for exact downloads, checksums, and validation.

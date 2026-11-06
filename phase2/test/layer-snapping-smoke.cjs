@@ -1,0 +1,60 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{app}=require('electron')
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms))
+module.exports=async function(win){
+ const dir=process.env.MUSICMETERS_SNAPPING_DIR,evaluate=s=>win.webContents.executeJavaScript(s)
+ const click=id=>evaluate(`document.getElementById(${JSON.stringify(id)}).click()`)
+ async function wait(source,label){const end=Date.now()+45000;while(Date.now()<end){if(await evaluate(source))return;await delay(50)}throw new Error(label+': '+await evaluate('document.getElementById("status").textContent'))}
+ async function change(id,value){await evaluate(`(()=>{const e=document.getElementById(${JSON.stringify(id)});${typeof value==='boolean'?'e.checked':'e.value'}=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`)}
+ const point=(x,y)=>evaluate(`(()=>{const r=document.getElementById('stage').getBoundingClientRect();return{x:Math.round(r.left+${x}/1280*r.width),y:Math.round(r.top+${y}/720*r.height)}})()`)
+ async function pointer(type,x,y){const p=await point(x,y);win.webContents.sendInputEvent({type,...p,button:'left',clickCount:1});await delay(70)}
+ async function press(key){win.webContents.sendInputEvent({type:'keyDown',keyCode:key});if(key==='Space')win.webContents.sendInputEvent({type:'char',keyCode:' '});win.webContents.sendInputEvent({type:'keyUp',keyCode:key});await delay(70)}
+ async function select(id){await evaluate(`document.querySelector('.layer-item[data-id="${id}"]').click()`)}
+ async function dragNearTarget(){await pointer('mouseDown',150,140);await pointer('mouseMove',344,334)}
+ const ready=()=>wait('document.getElementById("status").textContent.includes("Real Prism") && document.getElementById("preview-busy").hidden && !document.getElementById("editor-screen").inert','ready')
+ await ready();await click('open-project');await ready();await change('snap-enabled',true);await change('snap-grid','0')
+ win.showInactive();win.focus();win.webContents.focus();await delay(100)
+ await pointer('mouseDown',1000,600);await pointer('mouseUp',1000,600)
+ await pointer('mouseDown',150,140);await pointer('mouseUp',150,140)
+ await wait('document.getElementById("layer-x").value==="100" && document.activeElement.id==="stage"','canvas-selected layer')
+ await dragNearTarget()
+ await wait('document.getElementById("layer-x").value==="300" && document.getElementById("layer-y").value==="300"','snapped edge position')
+ assert.equal(await evaluate('document.getElementById("snap-guide-x").hidden'),false)
+ assert.equal(await evaluate('document.getElementById("snap-guide-x").classList.contains("layer-snap")'),true)
+ assert.equal(await evaluate('document.getElementById("snap-guide-y").classList.contains("layer-snap")'),true)
+ const layerColor=await evaluate('getComputedStyle(document.getElementById("snap-guide-x")).backgroundColor')
+ fs.writeFileSync(path.join(dir,'layer-edge-guides.png'),(await win.capturePage()).toPNG())
+ await pointer('mouseUp',344,334)
+ assert.equal(await evaluate('document.getElementById("snap-guide-x").hidden'),true)
+ await click('undo-project');await wait('document.getElementById("layer-x").value==="100" && !document.getElementById("editor-screen").inert','drag is one undo')
+ await click('redo-project');await wait('document.getElementById("layer-x").value==="300" && !document.getElementById("editor-screen").inert','redo drag')
+ await press('Space');await wait('!document.getElementById("playback-audio").paused','Space plays after drag')
+ await press('Space');await wait('document.getElementById("playback-audio").paused','Space pauses after drag')
+ assert.equal(await evaluate('getComputedStyle(document.getElementById("stage")).outlineStyle'),'none','Space after pointer use must not draw a canvas outline')
+ await evaluate('document.getElementById("fullscreen-preview").focus()');await press('Tab')
+ await wait('document.activeElement.id==="stage"','Tab enters canvas')
+ assert.notEqual(await evaluate('getComputedStyle(document.getElementById("stage")).outlineStyle'),'none','Tab must retain a keyboard focus cue')
+ const title=await evaluate('document.getElementById("title").value')
+ await evaluate('(()=>{const t=document.getElementById("title");t.focus();t.setSelectionRange(t.value.length,t.value.length)})()');await press('Space')
+ assert.equal(await evaluate('document.getElementById("title").value'),title+' ')
+ assert.equal(await evaluate('document.getElementById("playback-audio").paused'),true,'Space typing must not start playback')
+ await click('save-project');await wait('document.getElementById("status").textContent.startsWith("Saved project:") && !document.getElementById("editor-screen").inert','save snapped geometry')
+ const saved=JSON.parse(fs.readFileSync(process.env.PHASE2_TEST_PROJECT_PATH)),moving=saved.layers.find(l=>l.id==='moving')
+ assert.deepEqual([moving.x,moving.y],[300,300])
+ // Canvas and layer guide sources are visually distinct.
+ await select('moving');await change('layer-x',100);await change('layer-y',100)
+ await pointer('mouseDown',150,140);await pointer('mouseMove',53,140)
+ await wait('document.getElementById("layer-x").value==="0"','canvas snap')
+ assert.equal(await evaluate('document.getElementById("snap-guide-x").classList.contains("layer-snap")'),false)
+ assert.notEqual(await evaluate('getComputedStyle(document.getElementById("snap-guide-x")).backgroundColor'),layerColor)
+ await pointer('mouseUp',53,140)
+ // Hidden references do not attract the moving element.
+ await select('target');await change('layer-visible',false);await select('moving');await change('layer-x',100);await change('layer-y',100)
+ await dragNearTarget();assert.ok(Math.abs(Number(await evaluate('document.getElementById("layer-x").value'))-294)<=2)
+ assert.equal(await evaluate('document.getElementById("snap-guide-x").hidden'),true);await pointer('mouseUp',344,334)
+ // Snap off returns to free movement even with a visible reference.
+ await select('target');await change('layer-visible',true);await select('moving');await change('layer-x',100);await change('layer-y',100);await change('snap-enabled',false)
+ await dragNearTarget();assert.ok(Math.abs(Number(await evaluate('document.getElementById("layer-x").value'))-294)<=2)
+ assert.equal(await evaluate('document.getElementById("snap-guide-x").hidden'),true);await pointer('mouseUp',344,334)
+ console.log(JSON.stringify({event:'layer-snapping-pass',nativeDrag:true,edgeAlignment:true,coloredGuides:true,undoRedo:true,savedGeometry:true,hiddenSkipped:true,snapOff:true,spaceNoOutline:true,tabFocus:true,spaceTypes:true}))
+ app.quit()
+}

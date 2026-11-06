@@ -4,48 +4,71 @@ const THRESHOLD = 8
 
 function clamp(value, low, high) { return Math.max(low, Math.min(high, value)) }
 
-function nearest(value, targets, grid) {
+function nearest(value, targets, grid, minimum = -Infinity, maximum = Infinity) {
   const choices = [...targets]
   if (grid > 0) choices.push(Math.round(value / grid) * grid)
-  let result = { value, guide: null, distance: THRESHOLD + 1 }
-  for (const target of choices) {
+  let result = { value, guide: null, distance: THRESHOLD + 1, targetIndex: -1 }
+  for (const [targetIndex, target] of choices.entries()) {
+    if (target < minimum || target > maximum) continue
     const distance = Math.abs(value - target)
-    if (distance <= THRESHOLD && distance < result.distance) result = { value: target, guide: target, distance }
+    if (distance <= THRESHOLD && distance < result.distance) result = { value: target, guide: target, distance, targetIndex }
   }
   return result
 }
 
-function move(box, dx, dy, snapping = false, grid = 0, width = WIDTH, height = HEIGHT) {
+// Axis-aligned outer bounds of the rotated layer frame, matching canvas transforms.
+function bounds(box) {
+  const angle = (box.rotation || 0) * Math.PI / 180
+  const w = Math.abs(box.w * Math.cos(angle)) + Math.abs(box.h * Math.sin(angle))
+  const h = Math.abs(box.w * Math.sin(angle)) + Math.abs(box.h * Math.cos(angle))
+  return { left: box.x + (box.w - w) / 2, right: box.x + (box.w + w) / 2,
+    top: box.y + (box.h - h) / 2, bottom: box.y + (box.h + h) / 2,
+    centerX: box.x + box.w / 2, centerY: box.y + box.h / 2 }
+}
+
+/** @param {Array<{x:number,y:number,w:number,h:number,rotation?:number,visible?:boolean,opacity?:number,id?:string}>} [layers] */
+function move(box, dx, dy, snapping = false, grid = 0, width = WIDTH, height = HEIGHT, layers = []) {
   let x = clamp(Math.round(box.x + dx), 0, width - box.w)
   let y = clamp(Math.round(box.y + dy), 0, height - box.h)
   let guideX = null
   let guideY = null
+  let guideXIsLayer = false, guideYIsLayer = false
   if (snapping) {
+    const edgesX = [], edgesY = [], centersX = [], centersY = []
+    for (const other of layers) {
+      if (other === box || box.id && other.id === box.id || other.visible === false || other.opacity <= 0) continue
+      if (![other.x, other.y, other.w, other.h].every(Number.isFinite) || other.w <= 0 || other.h <= 0) continue
+      const target = bounds(other)
+      edgesX.push(target.left, target.right); edgesY.push(target.top, target.bottom)
+      centersX.push(target.centerX); centersY.push(target.centerY)
+    }
+    const moving = bounds(box)
     const horizontal = [
-      { offset: 0, targets: [0] },
-      { offset: box.w / 2, targets: [width / 2] },
-      { offset: box.w, targets: [width] },
+      { offset: moving.left - box.x, targets: [0, ...edgesX] },
+      { offset: box.w / 2, targets: [width / 2, ...centersX] },
+      { offset: moving.right - box.x, targets: [width, ...edgesX] },
     ]
     const vertical = [
-      { offset: 0, targets: [0] },
-      { offset: box.h / 2, targets: [height / 2] },
-      { offset: box.h, targets: [height] },
+      { offset: moving.top - box.y, targets: [0, ...edgesY] },
+      { offset: box.h / 2, targets: [height / 2, ...centersY] },
+      { offset: moving.bottom - box.y, targets: [height, ...edgesY] },
     ]
     for (const [axis, anchors, extent] of [['x', horizontal, width], ['y', vertical, height]]) {
       const size = axis === 'x' ? box.w : box.h
       const current = axis === 'x' ? x : y
-      let best = { distance: THRESHOLD + 1, value: current, guide: null }
+      let best = { distance: THRESHOLD + 1, value: current, guide: null, isLayer: false }
       for (const anchor of anchors) {
-        const found = nearest(current + anchor.offset, anchor.targets, grid)
+        const found = nearest(current + anchor.offset, anchor.targets, grid, anchor.offset, extent - size + anchor.offset)
         if (found.guide !== null && found.distance < best.distance) {
-          best = { distance: found.distance, value: clamp(Math.round(found.value - anchor.offset), 0, extent - size), guide: found.guide }
+          best = { distance: found.distance, value: clamp(Math.round(found.value - anchor.offset), 0, extent - size), guide: found.guide,
+            isLayer: found.targetIndex > 0 && found.targetIndex < anchor.targets.length }
         }
       }
-      if (axis === 'x') { x = best.value; guideX = best.guide }
-      else { y = best.value; guideY = best.guide }
+      if (axis === 'x') { x = best.value; guideX = best.guide; guideXIsLayer = best.isLayer }
+      else { y = best.value; guideY = best.guide; guideYIsLayer = best.isLayer }
     }
   }
-  return { x, y, guideX, guideY }
+  return { x, y, guideX, guideY, ...(guideXIsLayer ? { guideXIsLayer: true } : {}), ...(guideYIsLayer ? { guideYIsLayer: true } : {}) }
 }
 
 function resize(box, dx, dy, minimum, aspectLocked = false, snapping = false, grid = 0, width = WIDTH, height = HEIGHT) {

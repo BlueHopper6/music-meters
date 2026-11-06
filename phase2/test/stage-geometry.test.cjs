@@ -33,3 +33,61 @@ test('aspect lock preserves proportions under stage bounds and minimum size', ()
   const wide = resize({ x: 100, y: 100, w: 400, h: 200 }, 100, 0, 80, true)
   assert.deepEqual([wide.w, wide.h], [500, 250])
 })
+
+
+test('dragging aligns adjacent and matching layer edges with guides', () => {
+  const box = { id: 'moving', x: 100, y: 100, w: 100, h: 80 }
+  const target = { id: 'target', x: 300, y: 250, w: 120, h: 80 }
+  assert.deepEqual(move(box, 94, 147, true, 0, 1280, 720, [target]), { x: 200, y: 250, guideX: 300, guideY: 250, guideXIsLayer: true, guideYIsLayer: true })
+  assert.equal(move(box, 317, 0, true, 0, 1280, 720, [target]).x, 420)
+  assert.equal(move(box, 195, 0, true, 0, 1280, 720, [target]).x, 300)
+  assert.equal(move(box, 0, 227, true, 0, 1280, 720, [target]).y, 330)
+})
+
+test('layer centers align independently on both axes', () => {
+  const box = { x: 100, y: 100, w: 100, h: 80 }
+  const target = { x: 300, y: 240, w: 200, h: 160 }
+  assert.deepEqual(move(box, 244, 174, true, 0, 1280, 720, [target]), { x: 350, y: 280, guideX: 400, guideY: 320, guideXIsLayer: true, guideYIsLayer: true })
+})
+
+test('nearest layer/grid alignment wins and turning Snap off gives free movement', () => {
+  const box = { x: 100, y: 100, w: 100, h: 80 }, target = { x: 330, y: 500, w: 180, h: 100 }
+  assert.equal(move(box, 226, 0, true, 32, 1280, 720, [target]).x, 330)
+  assert.equal(move(box, 221, 0, true, 32, 1280, 720, [target]).x, 320)
+  assert.deepEqual(move(box, 226, 0, false, 32, 1280, 720, [target]), { x: 326, y: 100, guideX: null, guideY: null })
+})
+
+test('hidden, transparent and self layers are ignored; locked visible layers remain alignment targets', () => {
+  const box = { id: 'moving', x: 100, y: 100, w: 100, h: 80 }
+  const target = { x: 300, y: 250, w: 120, h: 80 }
+  const skipped = [{ ...target, visible: false }, { ...target, opacity: 0 }, { ...target, id: 'moving' }]
+  assert.deepEqual(move(box, 94, 147, true, 0, 1280, 720, skipped), { x: 194, y: 247, guideX: null, guideY: null })
+  assert.equal(move(box, 94, 147, true, 0, 1280, 720, [{ ...target, locked: true }]).x, 200)
+})
+
+test('rotated layers snap their visible frame bounds instead of unrotated coordinates', () => {
+  const target = { x: 300, y: 200, w: 200, h: 100, rotation: 90 }
+  const box = { x: 100, y: 10, w: 100, h: 80 }
+  assert.equal(move(box, 144, 0, true, 0, 1280, 720, [target]).x, 250)
+  assert.equal(move({ ...box, rotation: 90 }, 155, 0, true, 0, 1280, 720, [target]).x, 260)
+})
+
+test('layer alignment never reports a guide that would require moving outside the canvas bounds', () => {
+  const box = { x: 0, y: 20, w: 100, h: 80, rotation: 90 }
+  const target = { x: 6, y: 500, w: 1000, h: 100 }
+  assert.deepEqual(move(box, 0, 0, true, 0, 1280, 720, [target]), { x: 0, y: 20, guideX: null, guideY: null })
+})
+
+
+test('guide source distinguishes layer alignment from canvas and grid alignment', () => {
+  const box = { x: 100, y: 100, w: 100, h: 80 }, target = { x: 330, y: 500, w: 180, h: 100 }
+  assert.equal(move(box, 226, 0, true, 32, 1280, 720, [target]).guideXIsLayer, true)
+  assert.equal(move(box, 221, 0, true, 32, 1280, 720, [target]).guideXIsLayer, undefined)
+  assert.equal(move(box, -100, 0, true, 0, 1280, 720, [target]).guideXIsLayer, undefined)
+})
+
+test('layer snapping uses portrait canvas dimensions', () => {
+  const box = { x: 40, y: 900, w: 100, h: 80 }, target = { x: 400, y: 1000, w: 120, h: 100 }
+  const moved = move(box, 254, 94, true, 0, 720, 1280, [target])
+  assert.deepEqual([moved.x, moved.y, moved.guideX, moved.guideY], [300, 1000, 400, 1000])
+})
