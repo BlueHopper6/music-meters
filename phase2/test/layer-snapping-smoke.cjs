@@ -3,7 +3,7 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 module.exports=async function(win){
  const dir=process.env.MUSICMETERS_SNAPPING_DIR,evaluate=s=>win.webContents.executeJavaScript(s)
  const click=id=>evaluate(`document.getElementById(${JSON.stringify(id)}).click()`)
- async function wait(source,label){const end=Date.now()+45000;while(Date.now()<end){if(await evaluate(source))return;await delay(50)}throw new Error(label+': '+await evaluate('document.getElementById("status").textContent'))}
+ async function wait(source,label){const end=Date.now()+45000;while(Date.now()<end){if(await evaluate(source))return;await delay(50)}fs.writeFileSync(path.join(dir,'failure.png'),(await win.capturePage()).toPNG());throw new Error(label+': '+await evaluate('JSON.stringify({status:document.getElementById("status").textContent,x:document.getElementById("layer-x").value,y:document.getElementById("layer-y").value,active:document.activeElement.id})'))}
  async function change(id,value){await evaluate(`(()=>{const e=document.getElementById(${JSON.stringify(id)});${typeof value==='boolean'?'e.checked':'e.value'}=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`)}
  const point=(x,y)=>evaluate(`(()=>{const r=document.getElementById('stage').getBoundingClientRect();return{x:Math.round(r.left+${x}/1280*r.width),y:Math.round(r.top+${y}/720*r.height)}})()`)
  async function pointer(type,x,y){const p=await point(x,y);win.webContents.sendInputEvent({type,...p,button:'left',clickCount:1});await delay(70)}
@@ -42,6 +42,7 @@ module.exports=async function(win){
  assert.deepEqual([moving.x,moving.y],[300,300])
  // Canvas and layer guide sources are visually distinct.
  await select('moving');await change('layer-x',100);await change('layer-y',100)
+ win.focus();win.webContents.focus();await delay(150)
  await pointer('mouseDown',150,140);await pointer('mouseMove',53,140)
  await wait('document.getElementById("layer-x").value==="0"','canvas snap')
  assert.equal(await evaluate('document.getElementById("snap-guide-x").classList.contains("layer-snap")'),false)
