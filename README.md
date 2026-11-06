@@ -12,7 +12,7 @@
 
 MusicMeters is an offline desktop music visualizer built around [Prism](https://github.com/Boof2015/prism)'s native audio analysis and meter rendering. Combine meters, video, artwork, and text into a composition, mix your soundtrack, and export a video.
 
-MusicMeters 1.2.0 adds video layers, independent soundtrack and meter routing, Copy/Link media storage, meter styling presets, lossless export options, gradient texture, and exports up to 4K at 30 FPS. See [video and export quality](docs/user-guide.md#video-layers-and-audio-routing).
+Current source adds project thumbnails, selected-region video exports, PNG still-frame export, off-canvas positioning, layer snapping, and more waveform input choices. These improvements are being prepared for MusicMeters 1.3.0; the published download below remains 1.2.0. See [video and export quality](docs/user-guide.md#video-layers-and-audio-routing).
 
 ## Features
 

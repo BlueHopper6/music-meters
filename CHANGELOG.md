@@ -2,10 +2,13 @@
 
 User-facing release history, newest first. GitHub release notes provide the download announcement and exact package details; this file keeps the feature history with the source.
 
-## Unreleased
+## 1.3.0 — release preparation
+
+Prepared for the next release; download availability and publication date will be recorded after publication.
 
 ### Added
 
+- Project Manager thumbnails show the saved composition frame, with automatic previews for older projects and refresh on Save.
 - Single-waveform input choices for left, right, mono mix, or a combined stereo envelope with left above/right below the centerline; legacy behavior and separate stereo lanes remain available.
 - Move and resize layers beyond canvas edges, with matching cropped preview/export and editable negative coordinates.
 - Export the current composition frame as lossless PNG at the selected resolution, including static compositions without audio.

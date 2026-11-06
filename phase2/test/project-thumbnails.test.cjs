@@ -1,0 +1,18 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path')
+const {projectVersion,validateThumbnail,readThumbnail,writeThumbnail}=require('../project-thumbnails.cjs')
+const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jf2kAAAAASUVORK5CYII='
+test('thumbnail cache is versioned, bounded and never changes the project',()=>{
+  const root=path.resolve('artifacts/phase2');fs.mkdirSync(root,{recursive:true})
+  const dir=fs.mkdtempSync(path.join(root,'project-thumbnail-')),file=path.join(dir,'project.json'),profile=path.join(dir,'profile')
+  fs.writeFileSync(file,'{"title":"Before"}')
+  const version=projectVersion(file),original=fs.readFileSync(file)
+  assert.equal(readThumbnail(profile,file),null)
+  assert.equal(writeThumbnail(profile,file,version,png),true)
+  assert.equal(readThumbnail(profile,file),png);assert.deepEqual(fs.readFileSync(file),original)
+  fs.writeFileSync(file,'{"title":"After"}')
+  assert.equal(readThumbnail(profile,file),null)
+  assert.equal(writeThumbnail(profile,file,version,png),false,'stale async previews must not replace a newer project')
+  for(const value of ['data:image/svg+xml,<svg/>','file:///private.png','data:image/png;base64,'+'A'.repeat(1100000)])assert.throws(()=>validateThumbnail(value))
+  const bytes=Buffer.from(png.slice(22),'base64');bytes.writeUInt32BE(321,16)
+  assert.throws(()=>validateThumbnail('data:image/png;base64,'+bytes.toString('base64')),/dimensions/)
+})
