@@ -9,7 +9,7 @@ module.exports=async function(win){
  async function pointer(type,x,y){const p=await point(x,y);win.webContents.sendInputEvent({type,...p,button:'left',clickCount:1});await delay(70)}
  async function press(key){win.webContents.sendInputEvent({type:'keyDown',keyCode:key});if(key==='Space')win.webContents.sendInputEvent({type:'char',keyCode:' '});win.webContents.sendInputEvent({type:'keyUp',keyCode:key});await delay(70)}
  async function select(id){await evaluate(`document.querySelector('.layer-item[data-id="${id}"]').click()`)}
- async function dragNearTarget(){await pointer('mouseDown',150,140);await pointer('mouseMove',344,334)}
+ async function dragNearTarget(){const start=await point(150,140),end=await point(344,334),width=await evaluate('document.getElementById("stage").getBoundingClientRect().width');win.focus();win.webContents.focus();await pointer('mouseDown',150,140);await pointer('mouseMove',344,334);return Math.round(100+(end.x-start.x)*1280/width)}
  const ready=()=>wait('document.getElementById("status").textContent.includes("Real Prism") && document.getElementById("preview-busy").hidden && !document.getElementById("editor-screen").inert','ready')
  await ready();await click('open-project');await ready();await change('snap-enabled',true);await change('snap-grid','0')
  win.showInactive();win.focus();win.webContents.focus();await delay(100)
@@ -50,11 +50,11 @@ module.exports=async function(win){
  await pointer('mouseUp',53,140)
  // Hidden references do not attract the moving element.
  await select('target');await change('layer-visible',false);await select('moving');await change('layer-x',100);await change('layer-y',100)
- await dragNearTarget();assert.ok(Math.abs(Number(await evaluate('document.getElementById("layer-x").value'))-294)<=2)
+ const expectedFreeX=await dragNearTarget();await wait(`Math.abs(Number(document.getElementById('layer-x').value)-${expectedFreeX})<=1`,'free drag coordinates')
  assert.equal(await evaluate('document.getElementById("snap-guide-x").hidden'),true);await pointer('mouseUp',344,334)
  // Snap off returns to free movement even with a visible reference.
  await select('target');await change('layer-visible',true);await select('moving');await change('layer-x',100);await change('layer-y',100);await change('snap-enabled',false)
- await dragNearTarget();assert.ok(Math.abs(Number(await evaluate('document.getElementById("layer-x").value'))-294)<=2)
+ const expectedSnapOffX=await dragNearTarget();await wait(`Math.abs(Number(document.getElementById('layer-x').value)-${expectedSnapOffX})<=1`,'Snap off drag coordinates')
  assert.equal(await evaluate('document.getElementById("snap-guide-x").hidden'),true);await pointer('mouseUp',344,334)
  console.log(JSON.stringify({event:'layer-snapping-pass',nativeDrag:true,edgeAlignment:true,coloredGuides:true,undoRedo:true,savedGeometry:true,hiddenSkipped:true,snapOff:true,spaceNoOutline:true,tabFocus:true,spaceTypes:true}))
  app.quit()
