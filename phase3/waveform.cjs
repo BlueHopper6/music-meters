@@ -48,9 +48,9 @@ async function analyze(input, metadata, lastFrame, native, config, isCurrent, on
   } finally { await reader.close() }
 }
 
-async function previewWaveforms(input, metadata, frameIndex, project, native, isCurrent = () => true) {
+async function previewWaveforms(input, metadata, frameIndex, project, native, isCurrent = () => true, scale = 1) {
   const output = {}
-  for (const config of configurations(project, metadata.sampleRate)) {
+  for (const config of configurations(project, metadata.sampleRate, scale)) {
     const entries = []
     let totalColumns = 0
     await analyze(input, metadata, frameIndex, native, config, isCurrent, (_index, summary) => {

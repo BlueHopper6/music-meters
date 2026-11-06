@@ -6,6 +6,7 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ### Added
 
+- Export the current composition frame as lossless PNG at the selected resolution, including static compositions without audio.
 - Export a selected start/end region with aligned video, audio, and meters; optional playhead boundaries and unchanged AAC/FLAC/PCM quality settings.
 - Dragged layers snap to the edges and centers of other visible layers when Snap is enabled, with pink layer-alignment guides distinct from yellow canvas/grid guides and rotated-frame bounds support.
 

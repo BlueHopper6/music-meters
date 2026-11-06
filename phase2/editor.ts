@@ -74,6 +74,7 @@ type Desktop = {
   deleteTemplate(id: string): Promise<{ id: string; name: string }>
   setExportPreset(preset: string): Promise<void>
   chooseExportDestination(project: Project, audioMode: string): Promise<string | null>
+  renderStill(project: Project, preset: string, frame: number): Promise<string | null>
   renderVideo(project: Project, preset: string, audioMode: string, destination?: string, range?: { start: number; end: number }): Promise<string | null>
   cancelRender(): Promise<void>
   confirmAppClose(): Promise<void>
@@ -2749,6 +2750,28 @@ $('template-picker-create').addEventListener('click', async () => {
   } catch (error) { setStatus(String(error)) }
 })
 
+function beginExport(output: string) {
+  exportRunning = true
+  playback?.sync()
+  exportDestination = ''
+  ;($<HTMLInputElement>('export-destination')).value = ''
+  closeExportDialog()
+  ;($<HTMLButtonElement>('open-export')).disabled = true
+  ;($<HTMLButtonElement>('render-mp4')).disabled = true
+  ;($<HTMLSelectElement>('audio-mode')).disabled = true
+  $('cancel-render').hidden = false
+  $('export-running-label').hidden = false
+  setStatus(`Rendering to ${output}`)
+}
+$('export-still').addEventListener('click', async () => {
+  if (exportRunning || exportSubmitting) return
+  playback?.pause(); feedback.clearError(); exportSubmitting = true; updateExportDialog()
+  try {
+    const output = await window.desktop.renderStill(project, $<HTMLSelectElement>('export-preset').value, frameIndex)
+    if (output) beginExport(output)
+  } catch (error) { feedback.showError('Still frame could not be exported', error); $('export-dialog-status').textContent = userMessage(error) }
+  finally { exportSubmitting = false; updateExportDialog() }
+})
 $('render-mp4').addEventListener('click', async () => {
   if (exportRunning || exportSubmitting) return
   if (!metadata || !hasMedia()) return setStatus('Import audio or video before rendering.')
@@ -2761,17 +2784,7 @@ $('render-mp4').addEventListener('click', async () => {
     const output = await window.desktop.renderVideo(project, ($<HTMLSelectElement>('export-preset')).value,
       ($<HTMLSelectElement>('audio-mode')).value, exportDestination, selectedExportRange())
     if (!output) return
-    exportRunning = true
-    playback?.sync()
-    exportDestination = ''
-    ;($<HTMLInputElement>('export-destination')).value = ''
-    closeExportDialog()
-    ;($<HTMLButtonElement>('open-export')).disabled = true
-    ;($<HTMLButtonElement>('render-mp4')).disabled = true
-    ;($<HTMLSelectElement>('audio-mode')).disabled = true
-    $('cancel-render').hidden = false
-    $('export-running-label').hidden = false
-    setStatus(`Rendering to ${output}`)
+    beginExport(output)
   } catch (error) { setStatus(String(error)); $('export-dialog-status').textContent = String(error) }
   finally { exportSubmitting = false; updateExportDialog() }
 })
@@ -2814,9 +2827,9 @@ window.desktop.onExport(event => {
     ;($<HTMLSelectElement>('audio-mode')).disabled = false
     $('cancel-render').hidden = true
     $('export-running-label').hidden = true
-    const container = String(event.output).toLowerCase().endsWith('.mkv') ? 'MKV' : 'MP4'
+    const container = String(event.output).toLowerCase().endsWith('.png') ? 'PNG' : String(event.output).toLowerCase().endsWith('.mkv') ? 'MKV' : 'MP4'
     setStatus(event.event === 'finished' ? `${container} ready: ${event.output}`
-      : event.event === 'cancelled' ? 'Export cancelled. No video was saved.'
+      : event.event === 'cancelled' ? 'Export cancelled.'
       : `Export failed: ${event.message || ''}`)
     if (event.event === 'failed') feedback.showError('Export failed', event.message || 'The video could not be exported. Try another output location.')
     updateHistoryControls()
@@ -3000,12 +3013,14 @@ function updateExportDialog() {
       $('export-range-note').textContent = enabled
         ? `${range.start.toFixed(3)}–${range.end.toFixed(3)} s · ${range.duration.toFixed(3)} seconds exported. Cuts align to 30 FPS; meter history starts at this region.`
         : `Full project · ${metadata.duration.toFixed(3)} seconds.`
-    }
+    } else $('export-range-note').textContent = 'Static composition · export the current frame as PNG.'
   } catch (error) { rangeError = userMessage(error); $('export-range-note').textContent = rangeError }
   $('export-range-note').classList.toggle('error', Boolean(rangeError))
   for (const id of ['export-range-enabled', 'export-range-start', 'export-range-end', 'export-range-in', 'export-range-out']) {
     ($<HTMLInputElement>(id)).disabled = exportRunning || exportSubmitting
   }
+  ;($<HTMLButtonElement>('export-still')).disabled = exportRunning || exportSubmitting
+  $('export-still').title = `Save frame at ${(frameIndex / 30).toFixed(3)} s as a lossless PNG at the selected resolution`
   ;($<HTMLButtonElement>('render-mp4')).disabled = !metadata || Boolean(rangeError) || exportRunning || exportSubmitting
   ;($<HTMLButtonElement>('choose-export-destination')).disabled = !metadata || exportRunning || exportSubmitting
   ;($<HTMLSelectElement>('export-preset')).disabled = exportRunning || exportSubmitting
@@ -3017,7 +3032,7 @@ function openExportDialog() {
   const end = $<HTMLInputElement>('export-range-end')
   if (!end.value || Number(end.value) > (metadata?.duration || 0)) end.value = String(metadata?.duration || 0)
   refreshExportResolution(); updateExportDialog()
-  $('export-dialog-status').textContent = metadata ? 'Existing videos are never overwritten.' : 'Import audio before exporting.'
+  $('export-dialog-status').textContent = metadata ? 'Existing exports are never overwritten.' : 'Save this composition as PNG, or import audio/video to export a video.'
   $('export-modal').hidden = false
   $('editor-screen').inert = true
   $('export-preset').focus()

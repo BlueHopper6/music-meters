@@ -505,7 +505,7 @@
   </div>
   <div id="export-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="export-title" hidden>
     <div class="modal-card export-card">
-      <div class="modal-header"><div><h2 id="export-title" class="modal-title">Export video</h2><p class="export-subtitle">Render the full project or a selected section.</p></div><button id="export-close" class="modal-close-btn" type="button" aria-label="Close export dialog">✕</button></div>
+      <div class="modal-header"><div><h2 id="export-title" class="modal-title">Export composition</h2><p class="export-subtitle">Export video or save the current frame as PNG.</p></div><button id="export-close" class="modal-close-btn" type="button" aria-label="Close export dialog">✕</button></div>
       <div class="export-project-summary"><strong id="export-project-name"></strong><span id="export-canvas-summary"></span></div>
       <div class="export-fields">
         <label>Resolution<select id="export-preset" aria-label="Export size"><option value="1080p">1080p</option><option value="720p">720p</option><option value="1440p">1440p</option><option value="2160p">2160p · 4K</option></select></label>
@@ -523,7 +523,7 @@
       <label class="export-destination-label" for="export-destination">Save to</label>
       <div class="export-destination-row"><input id="export-destination" type="text" readonly placeholder="Choose a destination…"><button id="choose-export-destination" type="button">Browse…</button></div>
       <p id="export-dialog-status" class="export-note" role="status"></p>
-      <div class="modal-actions"><button id="export-cancel" type="button">Cancel</button><button id="render-mp4" type="button" class="primary">Export MP4</button></div>
+      <div class="modal-actions"><button id="export-still" type="button">Export current frame · PNG</button><button id="export-cancel" type="button">Cancel</button><button id="render-mp4" type="button" class="primary">Export MP4</button></div>
     </div>
   </div>
   <div id="about-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="about-title" hidden>
