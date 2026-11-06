@@ -1,0 +1,12 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path')
+const {validateStillOutput,validateStillFrame,writeStill}=require('../still-output.cjs')
+test('PNG destinations and frame positions validate without overwriting files',()=>{
+  const root=path.resolve('artifacts/phase2');fs.mkdirSync(root,{recursive:true})
+  const dir=fs.mkdtempSync(path.join(root,'still-unit-')),output=path.join(dir,'frame.png')
+  for(const file of ['frame.png','https://example.com/frame.png',path.join(dir,'frame.jpg')])assert.throws(()=>validateStillOutput(file),/PNG/)
+  validateStillOutput(output);validateStillFrame(0,null);validateStillFrame(29,{totalFrames:30})
+  for(const frame of [-1,30,NaN,0.5,'1'])assert.throws(()=>validateStillFrame(frame,{totalFrames:30}),/outside/)
+  writeStill(output,Buffer.from('retained'))
+  assert.throws(()=>writeStill(output,Buffer.from('replacement')),/exist/)
+  assert.equal(fs.readFileSync(output,'utf8'),'retained')
+})

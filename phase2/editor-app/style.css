@@ -1555,3 +1555,12 @@ body.stage-fullscreen .stage-shell { top: 40px; }
 .selection.video-selection .selection-label { top: 4px; left: 4px; border-radius: 3px; }
 .video-transform-buttons { display: flex; gap: 8px; margin: 10px 0; }
 .video-transform-buttons button { flex: 1; }
+
+.palette-trigger { display:flex; align-items:center; gap:9px; width:100%; margin:4px 0 10px; padding:8px 10px; text-align:left; background:var(--bg-well); border:1px solid var(--border-control); border-radius:5px; color:var(--text-primary); }
+.palette-trigger::after { content:'⌄'; margin-left:auto; color:var(--text-muted); }
+.palette-swatches { display:inline-flex; gap:3px; flex-shrink:0; }
+.palette-swatches i { width:10px; height:10px; border-radius:50%; border:1px solid #ffffff22; }
+.palette-menu { position:fixed; z-index:1000; padding:5px; overflow:auto; background:var(--bg-panel); border:1px solid var(--border-strong); border-radius:6px; box-shadow:0 8px 24px #0008; }
+.palette-menu button { display:flex; width:100%; gap:9px; align-items:center; padding:10px 8px; border:0; text-align:left; background:transparent; color:var(--text-primary); }
+.palette-menu button:hover,.palette-menu button:focus-visible { background:var(--bg-hover); outline:1px solid var(--border-strong); }
+.palette-menu button[aria-selected="true"] { background:var(--bg-well); box-shadow:inset 2px 0 var(--accent); }

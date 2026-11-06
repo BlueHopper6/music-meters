@@ -75,9 +75,9 @@ async function analyze(input, metadata, lastFrame, native, config, isCurrent, on
   } finally { await reader.close() }
 }
 
-async function previewWaterfalls(input, metadata, frameIndex, project, native, isCurrent = () => true) {
+async function previewWaterfalls(input, metadata, frameIndex, project, native, isCurrent = () => true, scale = 1) {
   const output = {}
-  for (const config of configurations(project, 1, metadata.sampleRate)) {
+  for (const config of configurations(project, scale, metadata.sampleRate)) {
     await analyze(input, metadata, frameIndex, native, config, isCurrent, (index, frame) => {
       if (index === frameIndex) output[config.id] = unpack(pack(frame, config.columns), config.columns)
     }, 'Preview superseded', false)

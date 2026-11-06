@@ -52,8 +52,11 @@ let exportMediaCache
 function validate() {
   const project = normalizeProject(config.project)
   assertInstalledFonts(project)
-  if (!mediaPlan(project)) throw new Error('Project media is unavailable')
-  validateOutputPath(config.output, config.audioMode)
+  if (config.stillFrame !== undefined) require('../still-output.cjs').validateStillOutput(config.output)
+  else {
+    if (!mediaPlan(project)) throw new Error('Project media is unavailable')
+    validateOutputPath(config.output, config.audioMode)
+  }
   if (fs.existsSync(config.output)) throw new Error(`Output already exists: ${config.output}`)
   if (typeof config.cancelFile !== 'string') throw new Error('Missing cancellation marker path')
   if (!['720p', '1080p', '1440p', '2160p'].includes(config.preset)) throw new Error('Unsupported export preset')
@@ -122,6 +125,7 @@ function checkCancel(frame) {
 
 async function exportVideo() {
   const project = validate()
+  if (config.stillFrame !== undefined) return require('../still-render.cjs').renderStill(project, config, nativeModule)
   const plan = mediaPlan(project)
   const range = exportRange(config.range, plan.metadata.duration)
   assertRangeAudioMode(range, config.audioMode)

@@ -1,3 +1,4 @@
+import { installPalettePicker } from './meter-palette-picker'
 import { exportRange, assertRangeAudioMode } from './export-range.cjs'
 import { userMessage } from './user-message.cjs'
 import { installUserFeedback } from './user-feedback'
@@ -12,7 +13,7 @@ import { installVideoPreview, type LiveFrame } from './video-preview'
 import type { PlaybackStart } from './video-preview'
 import { formatTimecode, parseTimecode, frameAtTime } from './timecode.cjs'
 import { ProjectHistory } from './project-history.cjs'
-import { applyPalette, normalizeAppearance, appearanceDefaults } from './meter-style.cjs'
+import { applyPalette, matchingPalette, normalizeAppearance, appearanceDefaults } from './meter-style.cjs'
 import type { MeterAppearance } from './composition'
 import { videoLayer, normalizeMixer } from './project.cjs'
 
@@ -74,6 +75,7 @@ type Desktop = {
   deleteTemplate(id: string): Promise<{ id: string; name: string }>
   setExportPreset(preset: string): Promise<void>
   chooseExportDestination(project: Project, audioMode: string): Promise<string | null>
+  renderStill(project: Project, preset: string, frame: number): Promise<string | null>
   renderVideo(project: Project, preset: string, audioMode: string, destination?: string, range?: { start: number; end: number }): Promise<string | null>
   cancelRender(): Promise<void>
   confirmAppClose(): Promise<void>
@@ -85,6 +87,7 @@ declare global { interface Window { desktop: Desktop } }
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const feedback = installUserFeedback(setStatus)
 const canvas = $<HTMLCanvasElement>('stage')
+const palettePicker = installPalettePicker($<HTMLSelectElement>('meter-palette'), $<HTMLButtonElement>('meter-palette-trigger'), () => canvas.focus({ preventScroll: true }))
 // A playback shortcut must not turn a pointer-focused canvas into a keyboard focus ring.
 document.addEventListener('keydown', event => {
   if (event.key === 'Tab') document.body.classList.add('keyboard-navigation')
@@ -374,9 +377,11 @@ function render() {
   }
   stageWrap.style.setProperty('--stage-ratio', String(project.width / project.height))
   ;($<HTMLSelectElement>('canvas-orientation')).value = project.width < project.height ? 'portrait' : 'landscape'
-  ;($<HTMLInputElement>('layer-x')).max = String(project.width)
+  ;($<HTMLInputElement>('layer-x')).max = String(project.width * 4)
+  ;($<HTMLInputElement>('layer-x')).min = String(-project.width * 4)
   ;($<HTMLInputElement>('layer-w')).max = String(project.width)
-  ;($<HTMLInputElement>('layer-y')).max = String(project.height)
+  ;($<HTMLInputElement>('layer-y')).max = String(project.height * 4)
+  ;($<HTMLInputElement>('layer-y')).min = String(-project.height * 4)
   ;($<HTMLInputElement>('layer-h')).max = String(project.height)
   refreshExportResolution()
   composition.render(project, analysis, frameIndex, sampleRate)
@@ -640,7 +645,7 @@ function refreshMeterStyle() {
   const layer = selected()
   const meter = layer && !['image','text','video'].includes(layer.type) ? layer : null
   $('meter-style-options').hidden = !meter
-  if (!meter) return
+  if (!meter) { palettePicker.close(); return }
   const a = meter.appearance || {}
   $('meter-trace-row').hidden = !['vectorscope','spectrum','oscilloscope'].includes(meter.type)
   $('meter-label-row').hidden = ['spectrum','oscilloscope'].includes(meter.type)
@@ -650,7 +655,7 @@ function refreshMeterStyle() {
   $('meter-heat-hint').hidden = meter.type === 'spectrum'
   $('meter-scope-fill').hidden = meter.type !== 'oscilloscope'
   $('meter-fill-opacity-row').hidden = a.fillMode !== 'gradient'
-  ;($<HTMLSelectElement>('meter-palette')).value = ''
+  ;($<HTMLSelectElement>('meter-palette')).value = matchingPalette(meter)
   const defaults = appearanceDefaults(meter)
   for (const [id,value] of [
     ['meter-trace-width', a.lineWidth ?? defaults.lineWidth], ['meter-grid-color', a.gridColor ?? defaults.gridColor],
@@ -663,6 +668,7 @@ function refreshMeterStyle() {
   ] as const) $<HTMLInputElement>(id).value = String(value)
   ;($<HTMLInputElement>('meter-spectrum-grid')).checked = a.showGrid ?? true
   for (const input of $('meter-style-options').querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>('input,select,button')) input.disabled = meter.locked
+  palettePicker.sync()
 }
 function refreshStyledMeter() {
   repaint()
@@ -672,7 +678,7 @@ function refreshStyledMeter() {
 $('meter-palette').addEventListener('change', event => {
   const layer = selected(), id = (event.target as HTMLSelectElement).value
   if (!layer || layer.locked || historyBusy || !id) return
-  try { Object.assign(layer, applyPalette(layer,id)); refreshStyledMeter() }
+  try { Object.assign(layer, applyPalette(layer,id)); refreshStyledMeter(); canvas.focus({ preventScroll: true }) }
   catch (error) { setStatus(String(error)) }
 })
 $('meter-style-reset').addEventListener('click', () => {
@@ -813,9 +819,10 @@ function refreshInspector() {
   $('spectrogram-options').hidden = !spectrogram
   const waveform = layer?.type === 'waveform' ? layer : null
   $('waveform-options').hidden = !waveform
+  $('waveform-channel-row').hidden = waveform?.mode !== 'mono'
   if (waveform) {
     for (const [id, value] of [
-      ['waveform-mode', waveform.mode], ['waveform-speed', waveform.scrollSpeed],
+      ['waveform-mode', waveform.mode], ['waveform-channel', waveform.channel || 'left'], ['waveform-speed', waveform.scrollSpeed],
       ['waveform-low-color', waveform.bandLowColor], ['waveform-mid-color', waveform.bandMidColor],
       ['waveform-high-color', waveform.bandHighColor],
     ] as const) {
@@ -1068,8 +1075,8 @@ for (const id of ['video-half-size', 'video-canvas-size']) $(id).addEventListene
   } else {
     const scale = Math.max(0.5, 80 / layer.w, 80 / layer.h)
     const w = Math.round(layer.w * scale), h = Math.round(layer.h * scale)
-    layer.x = Math.max(0, Math.min(project.width - w, Math.round(layer.x + (layer.w - w) / 2)))
-    layer.y = Math.max(0, Math.min(project.height - h, Math.round(layer.y + (layer.h - h) / 2)))
+    layer.x = Math.max(-project.width * 4, Math.min(project.width * 4, Math.round(layer.x + (layer.w - w) / 2)))
+    layer.y = Math.max(-project.height * 4, Math.min(project.height * 4, Math.round(layer.y + (layer.h - h) / 2)))
     layer.w = w; layer.h = h
   }
   repaint()
@@ -1082,16 +1089,16 @@ for (const [id, property] of [['layer-x', 'x'], ['layer-y', 'y'], ['layer-w', 'w
     const value = Math.round(Number((event.target as HTMLInputElement).value))
     if (!Number.isFinite(value)) return refreshInspector()
     const original = { ...layer }
-    if (property === 'x') layer.x = Math.max(0, Math.min(project.width - layer.w, value))
-    if (property === 'y') layer.y = Math.max(0, Math.min(project.height - layer.h, value))
+    if (property === 'x') layer.x = Math.max(-project.width * 4, Math.min(project.width * 4, value))
+    if (property === 'y') layer.y = Math.max(-project.height * 4, Math.min(project.height * 4, value))
     const minimum = layer.type === 'text' ? 20 : layer.type === 'image' ? 40 : 80
     if (layer.aspectLocked && (property === 'w' || property === 'h')) {
       const proportional = resizeOnStage(original, property === 'w' ? value - original.w : 0,
         property === 'h' ? value - original.h : 0, minimum, true, false, 0, project.width, project.height)
       layer.w = proportional.w; layer.h = proportional.h
     } else {
-      if (property === 'w') layer.w = Math.max(minimum, Math.min(project.width - layer.x, value))
-      if (property === 'h') layer.h = Math.max(minimum, Math.min(project.height - layer.y, value))
+      if (property === 'w') layer.w = Math.max(minimum, Math.min(project.width, value))
+      if (property === 'h') layer.h = Math.max(minimum, Math.min(project.height, value))
     }
     repaint()
     if ((layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'waterfall') && (property === 'w' || property === 'h')) markPreviewStale()
@@ -1277,7 +1284,7 @@ $<HTMLInputElement>('spectrogram-grid').addEventListener('change', event => {
   render()
 })
 for (const [id, property] of [
-  ['waveform-mode', 'mode'], ['waveform-speed', 'scrollSpeed'],
+  ['waveform-mode', 'mode'], ['waveform-channel', 'channel'], ['waveform-speed', 'scrollSpeed'],
   ['waveform-low-color', 'bandLowColor'], ['waveform-mid-color', 'bandMidColor'],
   ['waveform-high-color', 'bandHighColor'],
 ] as const) {
@@ -1289,9 +1296,9 @@ for (const [id, property] of [
     ;(layer as unknown as Record<string, string | number>)[property] = property === 'scrollSpeed' ? Number(value) : value
     try {
       project = normalizeProject(project) as Project
-      if (property === 'mode' || property === 'scrollSpeed') analysis.waveforms = {}
+      if (property === 'mode' || property === 'scrollSpeed' || property === 'channel') analysis.waveforms = {}
       render(); refreshInspector()
-      if (property === 'mode' || property === 'scrollSpeed') markPreviewStale()
+      if (property === 'mode' || property === 'scrollSpeed' || property === 'channel') markPreviewStale()
     } catch (error) {
       Object.assign(layer, previous)
       refreshInspector(); setStatus(String(error))
@@ -2749,6 +2756,28 @@ $('template-picker-create').addEventListener('click', async () => {
   } catch (error) { setStatus(String(error)) }
 })
 
+function beginExport(output: string) {
+  exportRunning = true
+  playback?.sync()
+  exportDestination = ''
+  ;($<HTMLInputElement>('export-destination')).value = ''
+  closeExportDialog()
+  ;($<HTMLButtonElement>('open-export')).disabled = true
+  ;($<HTMLButtonElement>('render-mp4')).disabled = true
+  ;($<HTMLSelectElement>('audio-mode')).disabled = true
+  $('cancel-render').hidden = false
+  $('export-running-label').hidden = false
+  setStatus(`Rendering to ${output}`)
+}
+$('export-still').addEventListener('click', async () => {
+  if (exportRunning || exportSubmitting) return
+  playback?.pause(); feedback.clearError(); exportSubmitting = true; updateExportDialog()
+  try {
+    const output = await window.desktop.renderStill(project, $<HTMLSelectElement>('export-preset').value, frameIndex)
+    if (output) beginExport(output)
+  } catch (error) { feedback.showError('Still frame could not be exported', error); $('export-dialog-status').textContent = userMessage(error) }
+  finally { exportSubmitting = false; updateExportDialog() }
+})
 $('render-mp4').addEventListener('click', async () => {
   if (exportRunning || exportSubmitting) return
   if (!metadata || !hasMedia()) return setStatus('Import audio or video before rendering.')
@@ -2761,17 +2790,7 @@ $('render-mp4').addEventListener('click', async () => {
     const output = await window.desktop.renderVideo(project, ($<HTMLSelectElement>('export-preset')).value,
       ($<HTMLSelectElement>('audio-mode')).value, exportDestination, selectedExportRange())
     if (!output) return
-    exportRunning = true
-    playback?.sync()
-    exportDestination = ''
-    ;($<HTMLInputElement>('export-destination')).value = ''
-    closeExportDialog()
-    ;($<HTMLButtonElement>('open-export')).disabled = true
-    ;($<HTMLButtonElement>('render-mp4')).disabled = true
-    ;($<HTMLSelectElement>('audio-mode')).disabled = true
-    $('cancel-render').hidden = false
-    $('export-running-label').hidden = false
-    setStatus(`Rendering to ${output}`)
+    beginExport(output)
   } catch (error) { setStatus(String(error)); $('export-dialog-status').textContent = String(error) }
   finally { exportSubmitting = false; updateExportDialog() }
 })
@@ -2814,9 +2833,9 @@ window.desktop.onExport(event => {
     ;($<HTMLSelectElement>('audio-mode')).disabled = false
     $('cancel-render').hidden = true
     $('export-running-label').hidden = true
-    const container = String(event.output).toLowerCase().endsWith('.mkv') ? 'MKV' : 'MP4'
+    const container = String(event.output).toLowerCase().endsWith('.png') ? 'PNG' : String(event.output).toLowerCase().endsWith('.mkv') ? 'MKV' : 'MP4'
     setStatus(event.event === 'finished' ? `${container} ready: ${event.output}`
-      : event.event === 'cancelled' ? 'Export cancelled. No video was saved.'
+      : event.event === 'cancelled' ? 'Export cancelled.'
       : `Export failed: ${event.message || ''}`)
     if (event.event === 'failed') feedback.showError('Export failed', event.message || 'The video could not be exported. Try another output location.')
     updateHistoryControls()
@@ -3000,12 +3019,14 @@ function updateExportDialog() {
       $('export-range-note').textContent = enabled
         ? `${range.start.toFixed(3)}–${range.end.toFixed(3)} s · ${range.duration.toFixed(3)} seconds exported. Cuts align to 30 FPS; meter history starts at this region.`
         : `Full project · ${metadata.duration.toFixed(3)} seconds.`
-    }
+    } else $('export-range-note').textContent = 'Static composition · export the current frame as PNG.'
   } catch (error) { rangeError = userMessage(error); $('export-range-note').textContent = rangeError }
   $('export-range-note').classList.toggle('error', Boolean(rangeError))
   for (const id of ['export-range-enabled', 'export-range-start', 'export-range-end', 'export-range-in', 'export-range-out']) {
     ($<HTMLInputElement>(id)).disabled = exportRunning || exportSubmitting
   }
+  ;($<HTMLButtonElement>('export-still')).disabled = exportRunning || exportSubmitting
+  $('export-still').title = `Save frame at ${(frameIndex / 30).toFixed(3)} s as a lossless PNG at the selected resolution`
   ;($<HTMLButtonElement>('render-mp4')).disabled = !metadata || Boolean(rangeError) || exportRunning || exportSubmitting
   ;($<HTMLButtonElement>('choose-export-destination')).disabled = !metadata || exportRunning || exportSubmitting
   ;($<HTMLSelectElement>('export-preset')).disabled = exportRunning || exportSubmitting
@@ -3017,7 +3038,7 @@ function openExportDialog() {
   const end = $<HTMLInputElement>('export-range-end')
   if (!end.value || Number(end.value) > (metadata?.duration || 0)) end.value = String(metadata?.duration || 0)
   refreshExportResolution(); updateExportDialog()
-  $('export-dialog-status').textContent = metadata ? 'Existing videos are never overwritten.' : 'Import audio before exporting.'
+  $('export-dialog-status').textContent = metadata ? 'Existing exports are never overwritten.' : 'Save this composition as PNG, or import audio/video to export a video.'
   $('export-modal').hidden = false
   $('editor-screen').inert = true
   $('export-preset').focus()

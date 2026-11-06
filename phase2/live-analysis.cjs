@@ -15,7 +15,7 @@ function layerKey(layer, rate) {
   if (layer.type === 'spectrum') return spectrum.keyFor(layer)
   if (layer.type === 'oscilloscope') return String(layer.pitchLock)
   if (layer.type === 'spectrogram') return JSON.stringify(spectrogram.configuration(layer, 1, rate))
-  if (layer.type === 'waveform') return JSON.stringify([layer.mode, layer.scrollSpeed])
+  if (layer.type === 'waveform') return JSON.stringify([layer.mode, layer.scrollSpeed, layer.mode === 'mono' ? layer.channel || 'left' : null])
   if (layer.type === 'waterfall') { const { id, ...config } = waterfall.configuration(layer, 1, rate); return JSON.stringify(config) }
   return layer.type
 }
@@ -91,7 +91,7 @@ class LiveAnalysis {
     let spec, wave, vuFrame, loud, water
     if (this.spec) spec = { rebuild: rebuilt, entries: [spectrogram.encode(n.spectrogram.processStereo(pcm.left, pcm.right))] }
     if (this.wave) {
-      const values = this.wave.mode === 'stereo' ? n.waveform.processStereo(pcm.left, pcm.right) : n.waveform.processMono(pcm.left)
+      const values = waveform.processColumns(n.waveform, pcm, this.waveConfig)
       wave = { rebuild: rebuilt, entries: [{ columns: values.length / this.waveConfig.stride, summary: encode(values) }] }
     }
     if (this.vu) {

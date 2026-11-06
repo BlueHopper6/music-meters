@@ -147,6 +147,11 @@ module.exports = async function mediaQualitySmoke(win) {
   fs.writeFileSync(path.join(dir, 'silent-project.json'), JSON.stringify(await evaluate('window.desktop.initial()'), null, 2))
   await click('open-export'); await click('render-mp4')
   await wait('document.getElementById("status").textContent.includes("silent-4k-portrait.mkv") && document.getElementById("status").textContent.includes("ready:")', 'silent 4K portrait export')
+  process.env.MUSICMETERS_TEST_STILL_OUTPUT=path.join(dir,'video-still.png')
+  await click('open-export');await click('export-still')
+  await wait('document.getElementById("status").textContent.startsWith("PNG ready:")','video-backed PNG')
+  const png=fs.readFileSync(path.join(dir,'video-still.png'))
+  assert.deepEqual([png.readUInt32BE(16),png.readUInt32BE(20)],[2160,3840])
   console.log(JSON.stringify({ event: 'media-quality-pass', bounds, seekBounds, sliderBounds, fieldStyle, exports: 5, metadata: reopened.metadata }))
   app.quit()
 }
