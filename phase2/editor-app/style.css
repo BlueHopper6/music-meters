@@ -1522,3 +1522,17 @@ body.stage-fullscreen .stage-shell { top: 40px; }
   .template-manager-thumbnail { width: 112px; height: 64px; grid-row: span 2; }
   .template-manager-row-with-preview .template-manager-row-actions { grid-column: 2; flex-wrap: wrap; }
 }
+
+/* Important failures stay visible until dismissed; progress stays in the status area. */
+.error-notice {
+  position: fixed; top: 56px; right: 16px; z-index: 10000;
+  display: flex; align-items: flex-start; gap: 12px;
+  width: min(440px, calc(100vw - 32px)); box-sizing: border-box;
+  padding: 12px 14px; border: 1px solid #944451; border-radius: 6px;
+  background: #24191e; color: var(--text-primary); box-shadow: 0 8px 28px #0008;
+}
+.error-notice > div { flex: 1; min-width: 0; }
+.error-notice strong { font-size: 13px; }
+.error-notice p { margin: 5px 0 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; max-height: 160px; overflow: auto; }
+.error-notice .modal-close-btn { flex: 0 0 auto; color: var(--text-primary); }
+.video-loading { left: 12px; right: auto; z-index: 5; }

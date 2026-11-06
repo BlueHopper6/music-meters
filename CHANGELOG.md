@@ -6,6 +6,8 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ### Changed
 
+- Important import, save, open, and export failures show a persistent dismissible notice with plain-language messages.
+- Video imports show Loading video until preparation, picture decoding, and the first preview finish; cancellation/failure clears the indicator.
 - Image imports accept files up to 16 MB, retaining the 24 MB combined project-artwork budget and format checks.
 
 ## [1.2.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.2.0) — 2026-11-05
