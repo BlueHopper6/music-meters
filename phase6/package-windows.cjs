@@ -53,6 +53,7 @@ async function main() {
       'phase2/editor-app/index.html', 'phase2/editor-app/style.css',
       'phase2/export-app/main.cjs', 'phase2/export-app/index.html',
       'phase2/export-app/style.css',
+      'phase2/test/layer-snapping-smoke.cjs',
       'phase2/test/startup-smoke.cjs',
       'phase2/test/history-smoke.cjs',
       'phase2/test/project-manager-smoke.cjs',

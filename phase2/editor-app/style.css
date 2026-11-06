@@ -683,7 +683,9 @@ body.stage-fullscreen .selection {
   height: 100%;
 }
 
-.stage-wrap canvas:focus-visible {
+.stage-wrap canvas { outline: none; }
+
+.keyboard-navigation .stage-wrap canvas:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -705,6 +707,8 @@ body.stage-fullscreen .selection {
   background: rgba(255, 225, 100, 0.86);
   box-shadow: 0 0 7px rgba(255, 225, 100, 0.6);
 }
+
+.snap-guide.layer-snap { background: rgba(244, 114, 182, 0.95); box-shadow: 0 0 7px rgba(244, 114, 182, 0.6); }
 
 .snap-guide[hidden] { display: none; }
 .snap-guide-x { top: 0; bottom: 0; width: 1px; }

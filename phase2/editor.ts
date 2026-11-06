@@ -84,6 +84,11 @@ declare global { interface Window { desktop: Desktop } }
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const feedback = installUserFeedback(setStatus)
 const canvas = $<HTMLCanvasElement>('stage')
+// A playback shortcut must not turn a pointer-focused canvas into a keyboard focus ring.
+document.addEventListener('keydown', event => {
+  if (event.key === 'Tab') document.body.classList.add('keyboard-navigation')
+}, true)
+document.addEventListener('pointerdown', () => document.body.classList.remove('keyboard-navigation'), true)
 const composition = new Composition(canvas)
 const selection = $<HTMLDivElement>('selection')
 const stageWrap = $<HTMLDivElement>('stage-wrap')
@@ -1354,9 +1359,11 @@ for (const [id, property] of [['layer-visible', 'visible'], ['layer-locked', 'lo
 }
 
 let drag: { mode: 'move' | 'resize'; x: number; y: number; startX: number; startY: number; startW: number; startH: number } | null = null
-function showSnapGuides(x: number | null, y: number | null) {
+function showSnapGuides(x: number | null, y: number | null, layerX = false, layerY = false) {
   const vertical = $<HTMLDivElement>('snap-guide-x')
   const horizontal = $<HTMLDivElement>('snap-guide-y')
+  vertical.classList.toggle('layer-snap', layerX)
+  horizontal.classList.toggle('layer-snap', layerY)
   vertical.hidden = x === null
   horizontal.hidden = y === null
   if (x !== null) vertical.style.left = `${x / project.width * 100}%`
@@ -1381,9 +1388,9 @@ selection.addEventListener('pointermove', event => {
   const grid = Number($<HTMLSelectElement>('snap-grid').value)
   const start = { x: drag.startX, y: drag.startY, w: drag.startW, h: drag.startH }
   if (drag.mode === 'move') {
-    const moved = moveOnStage(start, dx, dy, snapping, grid, project.width, project.height)
+    const moved = moveOnStage({ ...start, id: layer.id, rotation: layer.rotation }, dx, dy, snapping, grid, project.width, project.height, project.layers)
     layer.x = moved.x; layer.y = moved.y
-    showSnapGuides(moved.guideX, moved.guideY)
+    showSnapGuides(moved.guideX, moved.guideY, moved.guideXIsLayer === true, moved.guideYIsLayer === true)
   } else {
     const minimum = layer.type === 'text' ? 20 : layer.type === 'image' ? 40 : 80
     const angle = -layer.rotation * Math.PI / 180

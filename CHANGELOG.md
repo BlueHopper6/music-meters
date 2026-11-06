@@ -4,6 +4,14 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ## Unreleased
 
+### Added
+
+- Dragged layers snap to the edges and centers of other visible layers when Snap is enabled, with pink layer-alignment guides distinct from yellow canvas/grid guides and rotated-frame bounds support.
+
+### Fixed
+
+- Space plays or pauses after canvas dragging without adding a stage focus outline; text entry and Tab focus cues are preserved.
+
 ### Changed
 
 - Important import, save, open, and export failures show a persistent dismissible notice with plain-language messages.
