@@ -27,6 +27,19 @@ module.exports=async function(win){
     await change('meter-grid-opacity',25)
     if(['vectorscope','spectrum','oscilloscope'].includes(type))await change('meter-trace-width',3)
   }
+  await select('waveform');await change('time-input','1.5')
+  await wait('document.getElementById("stage").dataset.previewFrame==="45"','waveform seek')
+  await change('waveform-mode','mono')
+  for(const channel of ['left','right','mix','stereo-envelope']) {
+    await change('waveform-channel',channel);await click('refresh-still')
+    await wait('document.getElementById("status").textContent.includes("Real Prism meter still at 1.50 s.") && document.getElementById("preview-busy").hidden','waveform input '+channel)
+    await stage('waveform-'+channel+'.png')
+  }
+  await click('undo-project');await ready();assert.equal(await evaluate('document.getElementById("waveform-channel").value'),'mix')
+  await click('redo-project');await ready();assert.equal(await evaluate('document.getElementById("waveform-channel").value'),'stereo-envelope')
+  await change('time-input','0');await click('playback-play')
+  await wait('!document.getElementById("playback-audio").paused && document.getElementById("playback-audio").currentTime>0.1','stereo-envelope live playback')
+  await click('playback-play');await change('time-input','0')
   await select('spectrum')
   await change('meter-fill-mode','none');const line=await stage('spectrum-line.png')
   await change('meter-fill-mode','gradient');const gradient=await stage('spectrum-gradient.png');assert.notEqual(line,gradient)
@@ -67,6 +80,7 @@ module.exports=async function(win){
   await click('close-project');await wait('!document.getElementById("project-manager-screen").hidden','closed')
   await click('open-project')
   await wait('document.querySelectorAll(".layer-item").length===8 && Number(document.getElementById("time-slider").value)===0 && document.getElementById("status").textContent.includes("Real Prism") && document.getElementById("preview-busy").hidden','reopened styled meters')
+  await select('waveform');assert.equal(await evaluate('document.getElementById("waveform-channel").value'),'stereo-envelope','waveform channel survives save/reopen')
   assert.notEqual(await stage('preview-first.png'),baseline)
   await change('export-preset','720p');await change('audio-mode','master')
   await click('open-export');await click('render-mp4')

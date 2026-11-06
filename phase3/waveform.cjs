@@ -7,7 +7,7 @@ const BASE_COLUMNS_PER_SECOND = 128 // Prism scopeMeasurement.ts
 
 function configurations(project, sampleRate, scale = 1) {
   return project.layers.filter(layer => layer.type === 'waveform' && layer.visible).map(layer => ({
-    id: layer.id, mode: layer.mode,
+    id: layer.id, mode: layer.mode, channel: layer.channel || 'left',
     span: Math.max(1, Math.round(layer.w * scale)),
     samplesPerColumn: Math.max(1, Math.round(sampleRate / (BASE_COLUMNS_PER_SECOND * layer.scrollSpeed))),
     stride: layer.mode === 'stereo' ? 10 : 5,
@@ -28,6 +28,27 @@ function encoded(summary) {
   return Buffer.from(summary.buffer, summary.byteOffset, summary.byteLength).toString('base64')
 }
 
+function processColumns(native, pcm, config) {
+  if (config.mode === 'stereo') return native.processStereo(pcm.left, pcm.right)
+  if (config.channel === 'stereo-envelope') {
+    const stereo = validate(native.processStereo(pcm.left, pcm.right), 10)
+    const summary = new Float32Array(stereo.length / 2)
+    for (let source=0,target=0;source<stereo.length;source+=10,target+=5) {
+      const right = Math.max(Math.abs(stereo[source+5]),Math.abs(stereo[source+6]))
+      summary[target] = right === 0 ? 0 : -right
+      summary[target+1] = Math.max(Math.abs(stereo[source]),Math.abs(stereo[source+1]))
+      for(let band=2;band<5;band++) summary[target+band] = Math.hypot(stereo[source+band],stereo[source+band+5])/Math.SQRT2
+    }
+    return summary
+  }
+  if (config.channel === 'mix') {
+    const mixed = new Float32Array(pcm.left.length)
+    for(let index=0;index<mixed.length;index++) mixed[index]=(pcm.left[index]+pcm.right[index])/2
+    return native.processMono(mixed)
+  }
+  return native.processMono(config.channel === 'right' ? pcm.right : pcm.left)
+}
+
 async function analyze(input, metadata, lastFrame, native, config, isCurrent, onFrame, cancelledMessage) {
   const reader = new PcmReader(input, metadata.sampleRate)
   let consumed = 0
@@ -41,8 +62,7 @@ async function analyze(input, metadata, lastFrame, native, config, isCurrent, on
       const pcm = await reader.readFrames(Math.max(0, nextSample - consumed))
       if (pcm.frames === 0 && index < lastFrame) throw new Error(`Audio decoder ended early at frame ${index}`)
       consumed += pcm.frames
-      const summary = config.mode === 'stereo'
-        ? native.processStereo(pcm.left, pcm.right) : native.processMono(pcm.left)
+      const summary = processColumns(native, pcm, config)
       onFrame(index, validate(summary, config.stride))
     }
   } finally { await reader.close() }
@@ -119,3 +139,5 @@ async function precomputeWaveforms(input, metadata, project, native, directory, 
 }
 
 module.exports = { configurations, previewWaveforms, precomputeWaveforms }
+
+module.exports.processColumns = processColumns

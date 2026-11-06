@@ -44,7 +44,7 @@ export type SpectrogramLayer = BaseLayer & {
   tiltDbPerOctave: number; clarityMode: 'classic' | 'focused' | 'sharp' | 'sharper'
   colorScheme: 'heat' | 'mono'; showGrid: boolean
 }
-export type WaveformLayer = BaseLayer & { type: 'waveform'; mode: 'mono' | 'stereo'
+export type WaveformLayer = BaseLayer & { type: 'waveform'; mode: 'mono' | 'stereo'; channel?: 'left' | 'right' | 'mix' | 'stereo-envelope'
   scrollSpeed: number; multiband: boolean; bandLowColor: string; bandMidColor: string; bandHighColor: string }
 export type VuLayer = BaseLayer & { type: 'vu'; mode: 'bar' | 'needle'; orientation: 'horizontal' | 'vertical'
   needleChannels: 'stereo' | 'combined'; referenceDb: number; peakColor: string
@@ -614,7 +614,7 @@ export class Composition {
               layer.scrollSpeed, layer.contrast, layer.tiltDbPerOctave, layer.clarityMode,
               layer.colorScheme, layer.showGrid])
           : layer.type === 'waveform'
-            ? JSON.stringify([layer.type, styleSignature, layer.color, layer.mode, layer.scrollSpeed, layer.multiband,
+            ? JSON.stringify([layer.type, styleSignature, layer.color, layer.mode, layer.scrollSpeed, layer.channel, layer.multiband,
               layer.bandLowColor, layer.bandMidColor, layer.bandHighColor])
           : layer.type === 'vu'
             ? JSON.stringify([layer.type, styleSignature, layer.color, layer.mode, layer.orientation,

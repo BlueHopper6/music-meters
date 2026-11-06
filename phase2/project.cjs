@@ -301,9 +301,10 @@ function normalizeProject(raw) {
     }
     if (layer.type === 'waveform') {
       if (!['mono', 'stereo'].includes(layer.mode)) throw new Error('Unsupported waveform mode')
+      if (layer.channel !== undefined && !['left','right','mix','stereo-envelope'].includes(layer.channel)) throw new Error('Unsupported waveform channel input')
       if (!Number.isInteger(layer.scrollSpeed)) throw new Error('Waveform speed must be an integer')
       if (typeof layer.multiband !== 'boolean') throw new Error('Invalid waveform multiband setting')
-      return { ...normalized, mode: layer.mode,
+      return { ...normalized, mode: layer.mode, ...(layer.channel === undefined ? {} : { channel: layer.channel }),
         scrollSpeed: number(layer.scrollSpeed, 'Waveform speed', 1, 8),
         multiband: layer.multiband,
         bandLowColor: color(layer.bandLowColor, 'Low band color'),

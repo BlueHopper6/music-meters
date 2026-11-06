@@ -6,6 +6,7 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ### Added
 
+- Single-waveform input choices for left, right, mono mix, or a combined stereo envelope with left above/right below the centerline; legacy behavior and separate stereo lanes remain available.
 - Export a selected start/end region with aligned video, audio, and meters; optional playhead boundaries and unchanged AAC/FLAC/PCM quality settings.
 - Dragged layers snap to the edges and centers of other visible layers when Snap is enabled, with pink layer-alignment guides distinct from yellow canvas/grid guides and rotated-frame bounds support.
 

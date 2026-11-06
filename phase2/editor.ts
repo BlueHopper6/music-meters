@@ -813,9 +813,10 @@ function refreshInspector() {
   $('spectrogram-options').hidden = !spectrogram
   const waveform = layer?.type === 'waveform' ? layer : null
   $('waveform-options').hidden = !waveform
+  $('waveform-channel-row').hidden = waveform?.mode !== 'mono'
   if (waveform) {
     for (const [id, value] of [
-      ['waveform-mode', waveform.mode], ['waveform-speed', waveform.scrollSpeed],
+      ['waveform-mode', waveform.mode], ['waveform-channel', waveform.channel || 'left'], ['waveform-speed', waveform.scrollSpeed],
       ['waveform-low-color', waveform.bandLowColor], ['waveform-mid-color', waveform.bandMidColor],
       ['waveform-high-color', waveform.bandHighColor],
     ] as const) {
@@ -1277,7 +1278,7 @@ $<HTMLInputElement>('spectrogram-grid').addEventListener('change', event => {
   render()
 })
 for (const [id, property] of [
-  ['waveform-mode', 'mode'], ['waveform-speed', 'scrollSpeed'],
+  ['waveform-mode', 'mode'], ['waveform-channel', 'channel'], ['waveform-speed', 'scrollSpeed'],
   ['waveform-low-color', 'bandLowColor'], ['waveform-mid-color', 'bandMidColor'],
   ['waveform-high-color', 'bandHighColor'],
 ] as const) {
@@ -1289,9 +1290,9 @@ for (const [id, property] of [
     ;(layer as unknown as Record<string, string | number>)[property] = property === 'scrollSpeed' ? Number(value) : value
     try {
       project = normalizeProject(project) as Project
-      if (property === 'mode' || property === 'scrollSpeed') analysis.waveforms = {}
+      if (property === 'mode' || property === 'scrollSpeed' || property === 'channel') analysis.waveforms = {}
       render(); refreshInspector()
-      if (property === 'mode' || property === 'scrollSpeed') markPreviewStale()
+      if (property === 'mode' || property === 'scrollSpeed' || property === 'channel') markPreviewStale()
     } catch (error) {
       Object.assign(layer, previous)
       refreshInspector(); setStatus(String(error))

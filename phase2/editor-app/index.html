@@ -358,9 +358,11 @@
       </section>
       <section class="property-group" id="waveform-options" hidden><h3>Waveform history</h3>
         <div class="number-grid">
-          <label>Channel display<select id="waveform-mode"><option value="mono">Mono (L)</option><option value="stereo">Stereo (L/R)</option></select></label>
+          <label>Channel display<select id="waveform-mode"><option value="mono">Single waveform</option><option value="stereo">Stereo lanes (L/R)</option></select></label>
           <label>Scroll speed<input id="waveform-speed" type="number" min="1" max="8" step="1"></label>
         </div>
+        <label id="waveform-channel-row">Single waveform input<select id="waveform-channel"><option value="left">Left only (legacy)</option><option value="right">Right only</option><option value="mix">Mono mix · (L + R) / 2</option><option value="stereo-envelope">Stereo envelope · L above / R below</option></select></label>
+        <p class="hint">The stereo envelope shows each channel's amplitude around one centerline. Mono mix can cancel opposite-phase audio. This choice changes the waveform only, not your soundtrack.</p>
         <div class="checks"><label><input id="waveform-multiband" type="checkbox"> Multiband colors</label></div>
         <div class="color-grid-3">
           <label>Low band<input id="waveform-low-color" type="color"></label>
