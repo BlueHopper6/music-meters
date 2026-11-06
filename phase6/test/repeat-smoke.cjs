@@ -129,7 +129,7 @@ module.exports = async function repeatSmoke(win) {
   await evaluate('document.getElementById("open-export").click(); document.getElementById("render-mp4").click()')
   await waitFor('/^Rendering \\d+\\//.test(document.getElementById("status").textContent)', 'frames rendering before cancellation')
   await evaluate('document.getElementById("cancel-render").click()')
-  await waitFor('document.getElementById("status").textContent === "Export cancelled. No video was saved."', 'clean cancellation status')
+  await waitFor('document.getElementById("status").textContent === "Export cancelled."', 'clean cancellation status')
   assert.equal(fs.existsSync(cancelled), false, 'Cancellation must not leave a final video')
   assert.equal(fs.readdirSync(dir).some(name => name.startsWith('cancelled-export.mp4.partial-')), false,
     'Cancellation must remove partial video files')

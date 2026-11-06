@@ -36,7 +36,7 @@ async function main() {
     child.once('close', result => { clearTimeout(timer); resolve(result) })
   })
   fs.closeSync(log)
-  if (code !== 0) throw new Error(`Repeat editor smoke exited ${code}; see ${logPath}`)
+  if (code !== 0) throw new Error(`Repeat editor smoke exited ${code}; see ${logPath}\n${fs.readFileSync(logPath, 'utf8')}`)
   for (const name of ['first-export.mp4', 'second-export.mp4', 'after-cancel-export.mp4']) {
     const probe = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=nb_frames',
       '-select_streams', 'v:0', '-of', 'default=nw=1:nk=1', path.join(dir, name)], { encoding: 'utf8' })
