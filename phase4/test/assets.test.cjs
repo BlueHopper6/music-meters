@@ -23,3 +23,34 @@ test('artwork is copied beside JSON, unsafe references are rejected, and missing
   fs.unlinkSync(opened.layers.at(-1).imagePath)
   assert.throws(() => assetData(opened), /ENOENT/)
 })
+
+
+test('image imports accept up to 16 MiB while keeping the 24 MiB project budget', () => {
+  const { readImage } = require('../../phase2/assets.cjs')
+  const { crc32 } = require('node:zlib')
+  const root = path.resolve(__dirname, '..', '..', 'artifacts', 'phase4')
+  fs.mkdirSync(root, { recursive: true })
+  const dir = fs.mkdtempSync(path.join(root, 'image-limit-'))
+  const original = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==', 'base64')
+  function image(name, size) {
+    const type = Buffer.from('tEXt'), data = Buffer.alloc(size - original.length - 12, 65)
+    data.write('Note\0', 0, 'ascii')
+    const length = Buffer.alloc(4), checksum = Buffer.alloc(4)
+    length.writeUInt32BE(data.length); checksum.writeUInt32BE(crc32(Buffer.concat([type, data])))
+    const target = path.join(dir, name)
+    fs.writeFileSync(target, Buffer.concat([original.subarray(0, -12), length, type, data, checksum, original.subarray(-12)]))
+    return target
+  }
+  const medium = image('9-mib.png', 9 * 1024 * 1024)
+  const maximum = image('16-mib.png', 16 * 1024 * 1024)
+  assert.equal(readImage(medium).bytes.length, 9 * 1024 * 1024)
+  assert.equal(readImage(maximum).bytes.length, 16 * 1024 * 1024)
+  assert.throws(() => readImage(image('too-large.png', 16 * 1024 * 1024 + 1)), /16 MB/)
+  const project = compositionProject()
+  project.layers = [{ ...imageLayer('one'), imagePath: maximum }, { ...imageLayer('two'), imagePath: medium }]
+  assert.throws(() => assetData(project), /24 MB in total/)
+  fs.writeFileSync(path.join(dir, 'empty.png'), '')
+  assert.throws(() => readImage(path.join(dir, 'empty.png')), /empty/)
+  fs.writeFileSync(path.join(dir, 'invalid.png'), 'not a PNG')
+  assert.throws(() => readImage(path.join(dir, 'invalid.png')), /content does not match/)
+})

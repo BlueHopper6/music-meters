@@ -12,7 +12,8 @@ function readImage(input) {
   const mime = MIME[extension]
   if (!mime) throw new Error('Artwork must be PNG, JPEG, or WebP')
   const stat = fs.statSync(input)
-  if (!stat.isFile() || stat.size === 0 || stat.size > 8 * 1024 * 1024) throw new Error('Artwork must be a nonempty file under 8 MB')
+  if (!stat.isFile() || stat.size === 0) throw new Error('This image file is empty or is not a regular file. Choose another image.')
+  if (stat.size > 16 * 1024 * 1024) throw new Error('This image is larger than 16 MB. Choose a smaller image.')
   const bytes = fs.readFileSync(input)
   const png = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
   const jpeg = bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255
