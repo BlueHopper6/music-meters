@@ -3,6 +3,7 @@ const path = require('node:path')
 const { execFileSync, spawn } = require('node:child_process')
 const { randomUUID } = require('node:crypto')
 const { normalizeMixer, localVideoPath } = require('./project.cjs')
+const { exportRange } = require('./export-range.cjs')
 const { probeAudio } = require('./audio.cjs')
 const { projectAudioReference, resolveProjectAudio } = require('./project-audio.cjs')
 
@@ -80,7 +81,7 @@ function copySource(project, plan = mediaPlan(project)) {
 }
 function audioFilter(project, plan, analysis = false) {
   const { mixer, metadata } = plan
-  const inputs = [], filters = [], labels = []
+  const inputs = [], starts = [], filters = [], labels = []
   const selected = analysis && mixer.meterSource !== 'mix' ? mixer.meterSource : null
   for (const [kind, input, info] of [['video', plan.video?.videoPath, plan.videoInfo?.audio], ['audio', project.audioPath, plan.audioInfo]]) {
     if (!info || (selected && kind !== selected)) continue
@@ -90,15 +91,19 @@ function audioFilter(project, plan, analysis = false) {
       : mixer[`${kind}Muted`] ? 0 : mixer[`${kind}Volume`] * mixer.masterVolume
     const label = `s${index}`
     const offset = kind === 'video' ? plan.videoInfo.audioOffset : 0
-    const trim = offset < 0 ? `atrim=start=${-offset},` : ''
-    const delay = offset > 0 ? `adelay=${offset * 1000}:all=1,` : ''
-    filters.push(`[${index}:a:0]aresample=${metadata.sampleRate},aformat=sample_fmts=fltp:channel_layouts=${metadata.channels === 1 ? 'mono' : 'stereo'},${trim}asetpts=PTS-STARTPTS,${delay}volume=${gain}:precision=double,apad,atrim=duration=${metadata.duration}[${label}]`)
+    const position = (plan.exportStart || 0) - offset
+    // A container with staggered streams seeks relative to container time, not
+    // audio sample zero. Trim its decoded sample clock to preserve that offset.
+    starts.push(offset === 0 ? Math.max(0, position) : 0)
+    const trim = offset !== 0 && position > 0 ? `atrim=start=${position},` : ''
+    const delay = position < 0 ? `adelay=${-position * 1000}:all=1,` : ''
+    filters.push(`[${index}:a:0]aresample=${metadata.sampleRate},aformat=sample_fmts=fltp:channel_layouts=${metadata.channels === 1 ? 'mono' : 'stereo'},asetpts=PTS-STARTPTS,${trim}asetpts=PTS-STARTPTS,${delay}volume=${gain}:precision=double,apad,atrim=duration=${metadata.duration}[${label}]`)
     labels.push(`[${label}]`)
   }
   if (!labels.length) filters.push(`anullsrc=r=${metadata.sampleRate}:cl=${metadata.channels === 1 ? 'mono' : 'stereo'},atrim=duration=${metadata.duration}[out]`)
   else if (labels.length === 1) filters.push(`${labels[0]}anull[out]`)
   else filters.push(`${labels.join('')}amix=inputs=${labels.length}:normalize=0:duration=longest:dropout_transition=0[out]`)
-  return { inputs, filter: filters.join(';') }
+  return { inputs, starts, filter: filters.join(';') }
 }
 
 function runFFmpeg(args, signal) {
@@ -152,16 +157,18 @@ async function floatWavPeak(file, signal) {
 
 class MediaCache {
   constructor(root) { this.root = path.resolve(root); this.entries = new Map(); this.controllers = new Set(); this.directories = new Set() }
-  async prepare(project, signal) {
-    const plan = mediaPlan(project)
+  async prepare(project, signal, selectedRange) {
+    let plan = mediaPlan(project)
     if (!plan) throw new Error('Import audio or video first')
+    const range = exportRange(selectedRange, plan.metadata.duration)
+    if (range.partial) plan = { ...plan, exportStart: range.start, metadata: { ...plan.metadata, duration: range.duration, totalFrames: Math.ceil(range.duration * 30 - 1e-7) } }
     // Preserve original-rate/codec playback and exact legacy behavior when untouched.
     const m = plan.mixer
-    if (!plan.videoInfo && m.audioVolume === 1 && !m.audioMuted && m.masterVolume === 1
+    if (!range.partial && !plan.videoInfo && m.audioVolume === 1 && !m.audioMuted && m.masterVolume === 1
         && (m.meterSource === 'mix' || m.meterSource === 'audio' && m.meterGainDb === 0)) {
       return { ...plan, metadata: plan.audioInfo, outputPath: project.audioPath, analysisPath: project.audioPath }
     }
-    const key = JSON.stringify([fileKey(project.audioPath), fileKey(plan.video?.videoPath), m])
+    const key = JSON.stringify([fileKey(project.audioPath), fileKey(plan.video?.videoPath), m, range])
     if (this.entries.has(key)) return this.entries.get(key)
     const controller = new AbortController()
     const abort = () => controller.abort()
@@ -178,7 +185,7 @@ class MediaCache {
       if (volume.bavail * volume.bsize < required) throw new Error('Not enough temporary disk space to prepare the soundtrack')
       const render = async (name, analysis) => {
         const recipe = audioFilter(project, plan, analysis), output = path.join(directory, name)
-        await runFFmpeg([...recipe.inputs.flatMap(input => ['-protocol_whitelist', 'file,pipe', '-i', input]),
+        await runFFmpeg([...recipe.inputs.flatMap((input, index) => ['-protocol_whitelist', 'file,pipe', ...(recipe.starts[index] > 0 ? ['-ss', String(recipe.starts[index])] : []), '-i', input]),
           '-filter_complex', recipe.filter, '-map', '[out]', '-c:a', 'pcm_f32le', '-rf64', 'auto', output], controller.signal)
         return output
       }

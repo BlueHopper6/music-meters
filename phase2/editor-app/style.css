@@ -1497,7 +1497,7 @@ body.stage-fullscreen .stage-shell { top: 40px; }
 .export-project-summary span { color: var(--text-secondary); font-size: 11px; }
 .export-fields { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; }
 .export-fields label { display: flex; flex-direction: column; gap: 8px; color: var(--text-secondary); font-size: 11px; }
-.export-fields select, #export-destination { width: 100%; min-width: 0; padding: 8px 10px; height: 36px;
+.export-fields select, .export-range input[type="number"], #export-destination { width: 100%; min-width: 0; padding: 8px 10px; height: 36px;
   background: var(--bg-well); color: var(--text-primary); border: 1px solid var(--border-control); border-radius: 5px; }
 .export-note { color: var(--text-muted); font-size: 11px; line-height: 1.6; margin: 10px 0 20px; }
 .export-destination-label { color: var(--text-secondary); font-size: 11px; }
@@ -1540,3 +1540,12 @@ body.stage-fullscreen .stage-shell { top: 40px; }
 .error-notice p { margin: 5px 0 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; max-height: 160px; overflow: auto; }
 .error-notice .modal-close-btn { flex: 0 0 auto; color: var(--text-primary); }
 .video-loading { left: 12px; right: auto; z-index: 5; }
+
+.export-range { border: 1px solid var(--border-strong); border-radius: 6px; padding: 12px; margin: 12px 0; }
+.export-range legend { color: var(--text-primary); padding: 0 6px; }
+.export-range .export-fields { margin-top: 10px; }
+.export-range .export-fields button { margin-top: 6px; }
+.export-range .error { color: #fca5a5; }
+
+.export-range input[type="number"]:focus { outline: 0; border-color: var(--text-secondary); box-shadow: none; }
+.export-range .export-fields { grid-template-columns: 1fr 1fr; }

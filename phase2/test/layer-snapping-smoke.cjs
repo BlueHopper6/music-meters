@@ -9,7 +9,7 @@ module.exports=async function(win){
  async function pointer(type,x,y){const p=await point(x,y);win.webContents.sendInputEvent({type,...p,button:'left',clickCount:1});await delay(70)}
  async function press(key){win.webContents.sendInputEvent({type:'keyDown',keyCode:key});if(key==='Space')win.webContents.sendInputEvent({type:'char',keyCode:' '});win.webContents.sendInputEvent({type:'keyUp',keyCode:key});await delay(70)}
  async function select(id){await evaluate(`document.querySelector('.layer-item[data-id="${id}"]').click()`)}
- async function dragNearTarget(){const start=await point(150,140),end=await point(344,334),width=await evaluate('document.getElementById("stage").getBoundingClientRect().width');win.focus();win.webContents.focus();await pointer('mouseDown',150,140);await pointer('mouseMove',344,334);return Math.round(100+(end.x-start.x)*1280/width)}
+ async function dragNearTarget(){const start=await point(150,140),end=await point(344,334),width=await evaluate('document.getElementById("stage").getBoundingClientRect().width');win.focus();win.webContents.focus();await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');await delay(150);await pointer('mouseDown',150,140);await pointer('mouseMove',344,334);return Math.round(100+(end.x-start.x)*1280/width)}
  const ready=()=>wait('document.getElementById("status").textContent.includes("Real Prism") && document.getElementById("preview-busy").hidden && !document.getElementById("editor-screen").inert','ready')
  await ready();await click('open-project');await ready();await change('snap-enabled',true);await change('snap-grid','0')
  win.showInactive();win.focus();win.webContents.focus();await delay(100)
