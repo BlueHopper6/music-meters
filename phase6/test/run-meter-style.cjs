@@ -31,6 +31,17 @@ async function main(){
   assert.ok(changedFill>1500,`Heat fill must follow changing audio instead of freezing: ${changedFill} pixels`)
   assert.deepEqual(lateStill,lateExport,'late heat-map still must match export without renderer history')
   run('ffmpeg',['-v','error','-xerror','-i',output,'-f','null','-'])
+  const png=fs.readFileSync(path.join(dir,'late-still.png')),portraitPng=fs.readFileSync(path.join(dir,'static-portrait.png'))
+  assert.deepEqual([png.readUInt32BE(16),png.readUInt32BE(20)],[1280,720])
+  assert.deepEqual([portraitPng.readUInt32BE(16),portraitPng.readUInt32BE(20)],[2160,3840])
+  const latePicture=run('ffmpeg',['-v','error','-ss','1.5','-i',output,'-frames:v','1','-pix_fmt','rgb24','-f','rawvideo','pipe:1'])
+  const pngPixels=pixels(path.join(dir,'late-still.png'))
+  let stillDifference=0;for(let i=0;i<pngPixels.length;i++)stillDifference+=Math.abs(pngPixels[i]-latePicture[i])
+  assert.ok(stillDifference/pngPixels.length<=1,`Still PNG/export mismatch ${stillDifference/pngPixels.length}`)
+  const waves=['left','right','mix','stereo-envelope'].map(channel=>run('ffmpeg',['-v','error','-i',path.join(dir,'waveform-'+channel+'.png'),'-vf','crop=300:325:20:365','-pix_fmt','rgb24','-f','rawvideo','pipe:1']))
+  assert.equal(new Set(waves.map(bytes=>createHash('sha256').update(bytes).digest('hex'))).size,4,'all four waveform input choices must be visually distinct')
+  const audioPixels=file=>run('ffmpeg',['-v','error','-i',file,'-map','0:a:0','-f','f32le','-c:a','pcm_f32le','pipe:1'])
+  assert.deepEqual(audioPixels(output),audioPixels(audio),'waveform input changes leave the exported soundtrack unchanged')
   const result={code,meanDifference,pixelHash:createHash('sha256').update(encoded).digest('hex')}
   fs.writeFileSync(path.join(dir,'verification.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({dir,...result}))
 }

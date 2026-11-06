@@ -6,11 +6,15 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ### Added
 
+- Single-waveform input choices for left, right, mono mix, or a combined stereo envelope with left above/right below the centerline; legacy behavior and separate stereo lanes remain available.
+- Move and resize layers beyond canvas edges, with matching cropped preview/export and editable negative coordinates.
+- Export the current composition frame as lossless PNG at the selected resolution, including static compositions without audio.
 - Export a selected start/end region with aligned video, audio, and meters; optional playhead boundaries and unchanged AAC/FLAC/PCM quality settings.
 - Dragged layers snap to the edges and centers of other visible layers when Snap is enabled, with pink layer-alignment guides distinct from yellow canvas/grid guides and rotated-frame bounds support.
 
 ### Fixed
 
+- Meter preset names track applied colors; a themed swatch picker returns focus to the canvas so Space plays/pauses after selection.
 - Undoing imported video changes preserves the Redo entry.
 - Space plays or pauses after canvas dragging without adding a stage focus outline; text entry and Tab focus cues are preserved.
 

@@ -78,7 +78,7 @@ const editorDocument = join(__dirname, 'index.html')
 function handle(channel, callback) {
   ipcMain.handle(channel, (event, ...args) => {
     assertTrustedSender(event, win?.webContents, editorDocument)
-    if ((projectManagementRunning || pendingStorage) && ['new-blank-project', 'new-project-from-template', 'close-project', 'open-project', 'open-project-path', 'save-project', 'choose-audio', 'choose-video', 'choose-image', 'restore-project', 'media-info', 'load-template', 'render-video'].includes(channel)) {
+    if ((projectManagementRunning || pendingStorage) && ['new-blank-project', 'new-project-from-template', 'close-project', 'open-project', 'open-project-path', 'save-project', 'choose-audio', 'choose-video', 'choose-image', 'restore-project', 'media-info', 'load-template', 'render-video', 'render-still'].includes(channel)) {
       throw new Error('Wait for the project operation to finish')
     }
     return callback(event, ...args)
@@ -639,13 +639,36 @@ handle('render-video', async (_event, raw, preset, audioMode, destination = '', 
   output = resolve(output)
   validateOutputPath(output, audioMode)
   if (fs.existsSync(output)) throw new Error(`Output already exists: ${output}`)
+  return launchExport(value, output, preset, audioMode, range)
+})
+handle('render-still', async (_event, raw, preset, frame) => {
+  if (exportJob) throw new Error('An export is already running')
+  if (!['720p','1080p','1440p','2160p'].includes(preset)) throw new Error('Unsupported export preset')
+  const value = validateActiveProject(raw)
+  const { validateStillOutput, validateStillFrame } = require('../still-output.cjs')
+  validateStillFrame(frame, mediaPlan(value)?.metadata)
+  assetData(value)
+  const result = process.env.MUSICMETERS_TEST_STILL_OUTPUT
+    ? { filePath: process.env.MUSICMETERS_TEST_STILL_OUTPUT }
+    : await dialog.showSaveDialog(win, { title: 'Export current frame as PNG',
+      defaultPath: suggestedOutput(value, 'aac').replace(/\.mp4$/i, `_frame-${frame}.png`),
+      filters: [{ name: 'PNG image', extensions: ['png'] }] })
+  if (result.canceled) return null
+  let output = resolve(result.filePath)
+  if (!extname(output)) output += '.png'
+  validateStillOutput(output)
+  if (fs.existsSync(output)) throw new Error('That PNG already exists. Choose a different filename.')
+  if (exportJob) throw new Error('An export is already running')
+  return launchExport(value, output, preset, undefined, undefined, frame)
+})
+function launchExport(value, output, preset, audioMode, range, stillFrame) {
   const controlDir = jobPath('jobs')
   fs.mkdirSync(controlDir, { recursive: true })
   const cancelFile = join(controlDir, `${randomUUID()}.cancel`)
   const exportProfile = fs.mkdtempSync(join(controlDir, 'export-profile-'))
   const child = spawn(process.execPath, [join(ROOT, 'phase2', 'export-app')], {
     env: { ...process.env, MUSICMETERS_EXPORT_PROFILE: exportProfile,
-      PHASE2_JOB: JSON.stringify({ project: value, output, cancelFile, preset, audioMode, range }) },
+      PHASE2_JOB: JSON.stringify({ project: value, output, cancelFile, preset, audioMode, range, stillFrame }) },
     stdio: ['ignore', 'pipe', 'pipe'], shell: false, detached: true, windowsHide: true,
   })
   const job = { child, cancelFile, output, finishedEvent: null, errors: '' }
@@ -679,7 +702,7 @@ handle('render-video', async (_event, raw, preset, audioMode, destination = '', 
     if (closingAfterExport) app.quit()
   })
   return output
-})
+}
 handle('confirm-app-close', () => {
   forceQuit = true
   if (win && !win.isDestroyed()) win.close()

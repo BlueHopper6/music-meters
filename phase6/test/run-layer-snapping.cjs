@@ -11,6 +11,6 @@ async function main(){
  const fd=fs.openSync(path.join(dir,'editor.log'),'wx')
  const child=spawn(packagedExecutable(path.resolve(process.argv[2])),[],{env:{...process.env,TEMP:path.join(dir,'temp'),TMP:path.join(dir,'temp'),PHASE2_HEADLESS:'1',PHASE2_TEST_INPUT:audio,PHASE2_TEST_PROJECT_PATH:file,PHASE5_TEST_USER_DATA:path.join(dir,'profile'),MUSICMETERS_SNAPPING_SMOKE:'1',MUSICMETERS_SNAPPING_DIR:dir},stdio:['ignore',fd,fd],windowsHide:true})
  const code=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{child.kill();reject(new Error('Snapping smoke timed out'))},120000);child.once('error',reject);child.once('close',code=>{clearTimeout(timer);resolve(code)})})
- fs.closeSync(fd);const log=fs.readFileSync(path.join(dir,'editor.log'),'utf8');assert.equal(code,0,log);assert.match(log,/layer-snapping-pass/);console.log(JSON.stringify({dir,code}))
+ fs.closeSync(fd);const log=fs.readFileSync(path.join(dir,'editor.log'),'utf8');assert.equal(code,0,log);assert.match(log,/layer-snapping-pass/);const pixels=file=>execFileSync('ffmpeg',['-v','error','-i',file,'-frames:v','1','-pix_fmt','rgb24','-f','rawvideo','pipe:1'],{windowsHide:true,maxBuffer:16*1024*1024});assert.deepEqual(pixels(path.join(dir,'clipped.mkv')),pixels(path.join(dir,'clipped-preview.png')),'off-canvas clipping matches preview and lossless export');console.log(JSON.stringify({dir,code}))
 }
 main().catch(e=>{console.error(e);process.exitCode=1})

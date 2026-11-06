@@ -33,3 +33,16 @@ test('editing one appearance field preserves the other displayed defaults',()=>{
   assert.equal(nativeAppearance({...project.waterfallLayer(),appearance:{gridColor:'#ff0000'}}).gridColor,'rgba(255,0,0,0.25)')
   assert.equal(nativeAppearance({...project.oscilloscopeLayer(),appearance:{scopeFillOpacity:0.4}}).underfillColor,'rgba(245,248,252,0.4)')
 })
+
+test('preset labels follow normalized applied colors and custom edits',()=>{
+  const {matchingPalette}=require('../meter-style.cjs')
+  for(const type of factories)for(const id of Object.keys(PALETTES)){
+    const layer=applyPalette(project[type+'Layer'](),id)
+    const saved=project.normalizeProject({...project.defaultProject(),layers:[layer]}).layers[0]
+    assert.equal(matchingPalette(saved),id)
+    saved.appearance.lineWidth=3
+    assert.equal(matchingPalette(saved),id,'trace tuning keeps the color preset identity')
+    saved.color='#123456'
+    assert.equal(matchingPalette(saved),'','custom colors must not claim a preset')
+  }
+})

@@ -69,9 +69,9 @@ async function analyze(input, metadata, lastFrame, native, config, isCurrent, on
   } finally { await reader.close() }
 }
 
-async function previewSpectrograms(input, metadata, frameIndex, project, native, isCurrent = () => true) {
+async function previewSpectrograms(input, metadata, frameIndex, project, native, isCurrent = () => true, scale = 1) {
   const output = {}
-  for (const config of configurations(project, 1, metadata.sampleRate)) {
+  for (const config of configurations(project, scale, metadata.sampleRate)) {
     const entries = []
     let totalColumns = 0
     await analyze(input, metadata, frameIndex, native, config, isCurrent, (_index, columns) => {
