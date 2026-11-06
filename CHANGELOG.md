@@ -11,6 +11,9 @@ User-facing release history, newest first. GitHub release notes provide the down
 ### Fixed
 
 - Space plays or pauses after canvas dragging without adding a stage focus outline; text entry and Tab focus cues are preserved.
+### Changed
+
+- Image imports accept files up to 16 MB, retaining the 24 MB combined project-artwork budget and format checks.
 
 ## [1.2.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.2.0) — 2026-11-05
 
