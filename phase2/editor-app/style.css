@@ -1564,3 +1564,6 @@ body.stage-fullscreen .stage-shell { top: 40px; }
 .palette-menu button { display:flex; width:100%; gap:9px; align-items:center; padding:10px 8px; border:0; text-align:left; background:transparent; color:var(--text-primary); }
 .palette-menu button:hover,.palette-menu button:focus-visible { background:var(--bg-hover); outline:1px solid var(--border-strong); }
 .palette-menu button[aria-selected="true"] { background:var(--bg-well); box-shadow:inset 2px 0 var(--accent); }
+
+.project-card-thumb img { width:100%; height:100%; object-fit:contain; display:block; }
+.project-card-thumb.thumbnail-loading { opacity:0.65; }

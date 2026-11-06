@@ -20,7 +20,8 @@ const { lockWindowNavigation, assertTrustedSender } = require('../window-securit
 const { mediaResponse } = require('../playback-video.cjs')
 const { LivePlayback } = require('../live-playback.cjs')
 const { videoOf, probeVideo, mediaPlan, copySource, MediaCache, saveVideoReferences, resolveVideoReferences } = require('../project-media.cjs')
-const { VideoPreviewCache } = require('../video-frames.cjs')
+const thumbnails = require('../project-thumbnails.cjs')
+const { VideoFrames, VideoPreviewCache } = require('../video-frames.cjs')
 const mediaCache = new MediaCache(jobPath('media', randomUUID()))
 const videoCache = new VideoPreviewCache(jobPath('video-preview', randomUUID()))
 const allowedVideos = new Set([''])
@@ -208,6 +209,7 @@ handle('load-videos', async (_event, raw) => {
 handle('cancel-media-preparation', () => { ++playbackRequest; cancelPreview(); mediaCache.cancel(); videoCache.cancel(); return playbackVideo.cancel() })
 
 const isAutomatedTest = Boolean(
+  process.env.MUSICMETERS_THUMBNAIL_SMOKE ||
   process.env.MUSICMETERS_VIDEO_TRANSFORM_SMOKE ||
   process.env.MUSICMETERS_RANGE_SMOKE ||
   process.env.MUSICMETERS_SNAPPING_SMOKE ||
@@ -245,6 +247,32 @@ handle('initial', () => ({ project, metadata, projectPath, fonts: installedFonts
   isStartupSession: process.env.PHASE2_STARTUP_SMOKE === '1' || !isAutomatedTest,
   isAutomatedTest: Boolean(isAutomatedTest) }))
 handle('get-recent-projects', () => availableRecentProjects(userData()))
+function assertRecentThumbnailPath(input) {
+  if (typeof input !== 'string' || !readPreferences(userData()).recentProjects.some(item => item.path.toLowerCase() === input.toLowerCase())) throw new Error('Project is not in recent projects')
+  return resolve(input)
+}
+async function thumbnailSource(value, frame) {
+  if (!Number.isSafeInteger(frame) || frame < 0 || frame > 2592000) throw new Error('Invalid thumbnail frame')
+  let videoFrame = ''
+  const layer = videoOf(value)
+  if (layer?.videoPath && layer.visible && layer.opacity > 0) {
+    const reader = new VideoFrames(layer, 1 / 30, 480, frame / 30)
+    try { videoFrame = await reader.read() } finally { await reader.close() }
+  }
+  return { assets: assetData(value), videoFrame, frame }
+}
+handle('project-thumbnail-source', (_event, raw, frame) => thumbnailSource(validateActiveProject(raw),frame))
+handle('get-project-thumbnail', async (_event, input) => {
+  const file = assertRecentThumbnailPath(input), version = thumbnails.projectVersion(file)
+  const url = thumbnails.readThumbnail(userData(),file,version)
+  if (url) return { url, version }
+  const { project: saved } = readLibraryProject(file)
+  const layer = videoOf(saved)
+  const frame = saved.previewFrame || (layer?.videoPath ? Math.round(Math.min(1,probeVideo(layer.videoPath).duration * 0.1)*30) : 0)
+  return { project: saved, source: await thumbnailSource(saved,frame), version }
+})
+handle('cache-project-thumbnail', (_event, input, version, png) => thumbnails.writeThumbnail(userData(),assertRecentThumbnailPath(input),version,png))
+
 function freshBlankProject() {
   const fresh = compositionProject()
   fresh.layers = []
@@ -419,9 +447,10 @@ handle('prepare-playback', async (_event, raw, frame) => {
 })
 handle('playback-frames', (_event, session, count) => playbackVideo.pull(session, count))
 handle('cancel-playback', () => { ++playbackRequest; return playbackVideo.cancel() })
-handle('save-project', async (_event, raw, asNew = false) => {
+handle('save-project', async (_event, raw, asNew = false, thumbnail) => {
   const value = validateActiveProject(raw)
   if (typeof asNew !== 'boolean') throw new Error('Invalid Save As setting')
+  if (thumbnail !== undefined) thumbnails.validateThumbnail(thumbnail)
   let target = process.env.PHASE2_TEST_PROJECT_PATH || (asNew ? null : projectPath)
   if (!target) {
     if (process.env.PHASE2_TEST_SAVE_PATH) {
@@ -452,6 +481,7 @@ handle('save-project', async (_event, raw, asNew = false) => {
     activeAudio = reference; historyAudio.add(reference)
     projectPath = target
     recordRecentProject(userData(), target, project.title)
+    if (thumbnail) { try { thumbnails.writeThumbnail(userData(),target,thumbnails.projectVersion(target),thumbnail) } catch (error) { console.warn('Project thumbnail cache could not be updated:',error.message) } }
     savedSuccessfully = true
     return { path: target, project, missingMedia: missingMedia(project) }
   } finally {
@@ -767,9 +797,10 @@ app.whenReady().then(() => {
     win.webContents.send('app-close-requested')
   })
   return win.loadFile(editorDocument).then(async () => {
-    if (process.env.MUSICMETERS_VIDEO_TRANSFORM_SMOKE === '1' || process.env.MUSICMETERS_RANGE_SMOKE === '1' || process.env.MUSICMETERS_FEEDBACK_SMOKE === '1' || process.env.MUSICMETERS_SNAPPING_SMOKE === '1' || process.env.MUSICMETERS_STYLE_SMOKE === '1' || process.env.MUSICMETERS_STORAGE_SMOKE === '1' || process.env.MUSICMETERS_MEDIA_SMOKE === '1' || process.env.PHASE2_PLAYBACK_SMOKE === '1' || process.env.PHASE2_PORTRAIT_SMOKE === '1' || process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
+    if (process.env.MUSICMETERS_THUMBNAIL_SMOKE === '1' || process.env.MUSICMETERS_VIDEO_TRANSFORM_SMOKE === '1' || process.env.MUSICMETERS_RANGE_SMOKE === '1' || process.env.MUSICMETERS_FEEDBACK_SMOKE === '1' || process.env.MUSICMETERS_SNAPPING_SMOKE === '1' || process.env.MUSICMETERS_STYLE_SMOKE === '1' || process.env.MUSICMETERS_STORAGE_SMOKE === '1' || process.env.MUSICMETERS_MEDIA_SMOKE === '1' || process.env.PHASE2_PLAYBACK_SMOKE === '1' || process.env.PHASE2_PORTRAIT_SMOKE === '1' || process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
-        if (process.env.MUSICMETERS_VIDEO_TRANSFORM_SMOKE === '1') await require('../test/video-transform-smoke.cjs')(win)
+        if (process.env.MUSICMETERS_THUMBNAIL_SMOKE === '1') await require('../test/project-thumbnails-smoke.cjs')(win)
+        else if (process.env.MUSICMETERS_VIDEO_TRANSFORM_SMOKE === '1') await require('../test/video-transform-smoke.cjs')(win)
         else if (process.env.MUSICMETERS_RANGE_SMOKE === '1') await require('../test/export-range-smoke.cjs')(win)
         else if (process.env.MUSICMETERS_SNAPPING_SMOKE === '1') await require('../test/layer-snapping-smoke.cjs')(win)
         else if (process.env.MUSICMETERS_FEEDBACK_SMOKE === '1') await require('../test/user-feedback-smoke.cjs')(win)

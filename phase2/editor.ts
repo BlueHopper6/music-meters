@@ -1,3 +1,4 @@
+import { renderProjectThumbnail, type ThumbnailSource } from './project-thumbnail'
 import { installPalettePicker } from './meter-palette-picker'
 import { exportRange, assertRangeAudioMode } from './export-range.cjs'
 import { userMessage } from './user-message.cjs'
@@ -58,12 +59,15 @@ type Desktop = {
   preparePlayback(project: Project, frame: number): Promise<PlaybackStart>
   playbackFrames(session: string, count: number): Promise<LiveFrame[]>
   cancelPlayback(): Promise<void>
-  saveProject(project: Project, asNew?: boolean): Promise<{ path: string; project: Project; missingMedia: MissingMedia[] } | null>
+  saveProject(project: Project, asNew?: boolean, thumbnail?: string): Promise<{ path: string; project: Project; missingMedia: MissingMedia[] } | null>
   openProject(): Promise<Initial | null>
   openProjectPath(path: string): Promise<Initial | null>
   newBlankProject(): Promise<Initial>
   newProjectFromTemplate(id: string): Promise<Initial>
   closeProject(): Promise<Initial>
+  projectThumbnailSource(project: Project, frame: number): Promise<ThumbnailSource>
+  getProjectThumbnail(path: string): Promise<{url?:string;version:string;project?:Project;source?:ThumbnailSource}>
+  cacheProjectThumbnail(path: string, version: string, png: string): Promise<boolean>
   getRecentProjects(): Promise<RecentProject[]>
   manageProject(path: string, action: ProjectAction, name?: string): Promise<{ path: string; name: string } | null>
   listTemplates(): Promise<TemplateEntry[]>
@@ -126,7 +130,11 @@ async function persistProject(asNew = false) {
   if (historyBusy) throw new Error('Wait for the current edit to finish')
   historyBusy = true; $('editor-screen').inert = true; updateHistoryControls()
   feedback.clearError()
-  try { return await window.desktop.saveProject(project, asNew) }
+  try {
+    let thumbnail: string | undefined
+    try { thumbnail = await renderProjectThumbnail(project,await window.desktop.projectThumbnailSource(project,frameIndex),analysis,sampleRate) } catch { /* A preview must never prevent saving a project. */ }
+    return await window.desktop.saveProject(project, asNew, thumbnail)
+  }
   catch (error) { feedback.showError('Project could not be saved', error); throw error }
   finally { historyBusy = false; $('editor-screen').inert = false; updateHistoryControls() }
 }
@@ -2392,6 +2400,27 @@ let renderedRecentProjects = ''
 window.addEventListener('focus', () => {
   if (!$('project-manager-screen').hidden && !$('project-manager-screen').inert) void refreshRecentProjects()
 })
+let projectThumbnailQueue = Promise.resolve()
+function loadProjectThumbnail(path: string, thumb: HTMLElement) {
+  thumb.classList.add('thumbnail-loading')
+  projectThumbnailQueue = projectThumbnailQueue.catch(() => {}).then(async () => {
+    if (!thumb.isConnected) return
+    try {
+      const result = await window.desktop.getProjectThumbnail(path)
+      let url = result.url
+      if (!url && result.project && result.source) {
+        url = await renderProjectThumbnail(result.project,result.source)
+        if (!await window.desktop.cacheProjectThumbnail(path,result.version,url)) return
+      }
+      if (url && thumb.isConnected) {
+        const image = document.createElement('img'); image.alt = ''; image.src = url; image.decoding = 'async'
+        await image.decode()
+        if (thumb.isConnected) thumb.replaceChildren(image)
+      }
+    } catch { /* Missing media keeps the existing project icon. */ }
+    finally { thumb.classList.remove('thumbnail-loading') }
+  })
+}
 function renderRecentProjects(list: RecentProject[]) {
   const signature = JSON.stringify(list)
   if (signature === renderedRecentProjects) return
@@ -2499,6 +2528,7 @@ function renderRecentProjects(list: RecentProject[]) {
       }
     })
     grid.appendChild(card)
+    loadProjectThumbnail(item.path,thumb)
   }
 }
 
