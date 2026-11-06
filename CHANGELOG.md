@@ -11,10 +11,12 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ### Fixed
 
+- Undoing imported video changes preserves the Redo entry.
 - Space plays or pauses after canvas dragging without adding a stage focus outline; text entry and Tab focus cues are preserved.
 
 ### Changed
 
+- Video layers have an enlarged resize handle inside their frame and quick Half size / Canvas size controls for easier positioning.
 - Important import, save, open, and export failures show a persistent dismissible notice with plain-language messages.
 - Video imports show Loading video until preparation, picture decoding, and the first preview finish; cancellation/failure clears the indicator.
 - Image imports accept files up to 16 MB, retaining the 24 MB combined project-artwork budget and format checks.

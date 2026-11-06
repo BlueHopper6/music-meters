@@ -71,6 +71,7 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           node phase6/package-windows.cjs --output artifacts/phase6/ci-package
           node phase6/test/package-branding.cjs artifacts/phase6/ci-package
+          node phase6/test/run-video-transform.cjs artifacts/phase6/ci-package artifacts/phase6/ci-video-transform
           node phase6/test/run-export-range.cjs artifacts/phase6/ci-package artifacts/phase6/ci-export-range
           node phase6/test/run-layer-snapping.cjs artifacts/phase6/ci-package artifacts/phase6/ci-layer-snapping
           node phase2/test/run-startup-smoke.cjs --package artifacts/phase6/ci-package
