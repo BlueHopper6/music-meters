@@ -374,9 +374,11 @@ function render() {
   }
   stageWrap.style.setProperty('--stage-ratio', String(project.width / project.height))
   ;($<HTMLSelectElement>('canvas-orientation')).value = project.width < project.height ? 'portrait' : 'landscape'
-  ;($<HTMLInputElement>('layer-x')).max = String(project.width)
+  ;($<HTMLInputElement>('layer-x')).max = String(project.width * 4)
+  ;($<HTMLInputElement>('layer-x')).min = String(-project.width * 4)
   ;($<HTMLInputElement>('layer-w')).max = String(project.width)
-  ;($<HTMLInputElement>('layer-y')).max = String(project.height)
+  ;($<HTMLInputElement>('layer-y')).max = String(project.height * 4)
+  ;($<HTMLInputElement>('layer-y')).min = String(-project.height * 4)
   ;($<HTMLInputElement>('layer-h')).max = String(project.height)
   refreshExportResolution()
   composition.render(project, analysis, frameIndex, sampleRate)
@@ -1068,8 +1070,8 @@ for (const id of ['video-half-size', 'video-canvas-size']) $(id).addEventListene
   } else {
     const scale = Math.max(0.5, 80 / layer.w, 80 / layer.h)
     const w = Math.round(layer.w * scale), h = Math.round(layer.h * scale)
-    layer.x = Math.max(0, Math.min(project.width - w, Math.round(layer.x + (layer.w - w) / 2)))
-    layer.y = Math.max(0, Math.min(project.height - h, Math.round(layer.y + (layer.h - h) / 2)))
+    layer.x = Math.max(-project.width * 4, Math.min(project.width * 4, Math.round(layer.x + (layer.w - w) / 2)))
+    layer.y = Math.max(-project.height * 4, Math.min(project.height * 4, Math.round(layer.y + (layer.h - h) / 2)))
     layer.w = w; layer.h = h
   }
   repaint()
@@ -1082,16 +1084,16 @@ for (const [id, property] of [['layer-x', 'x'], ['layer-y', 'y'], ['layer-w', 'w
     const value = Math.round(Number((event.target as HTMLInputElement).value))
     if (!Number.isFinite(value)) return refreshInspector()
     const original = { ...layer }
-    if (property === 'x') layer.x = Math.max(0, Math.min(project.width - layer.w, value))
-    if (property === 'y') layer.y = Math.max(0, Math.min(project.height - layer.h, value))
+    if (property === 'x') layer.x = Math.max(-project.width * 4, Math.min(project.width * 4, value))
+    if (property === 'y') layer.y = Math.max(-project.height * 4, Math.min(project.height * 4, value))
     const minimum = layer.type === 'text' ? 20 : layer.type === 'image' ? 40 : 80
     if (layer.aspectLocked && (property === 'w' || property === 'h')) {
       const proportional = resizeOnStage(original, property === 'w' ? value - original.w : 0,
         property === 'h' ? value - original.h : 0, minimum, true, false, 0, project.width, project.height)
       layer.w = proportional.w; layer.h = proportional.h
     } else {
-      if (property === 'w') layer.w = Math.max(minimum, Math.min(project.width - layer.x, value))
-      if (property === 'h') layer.h = Math.max(minimum, Math.min(project.height - layer.y, value))
+      if (property === 'w') layer.w = Math.max(minimum, Math.min(project.width, value))
+      if (property === 'h') layer.h = Math.max(minimum, Math.min(project.height, value))
     }
     repaint()
     if ((layer.type === 'spectrogram' || layer.type === 'waveform' || layer.type === 'waterfall') && (property === 'w' || property === 'h')) markPreviewStale()

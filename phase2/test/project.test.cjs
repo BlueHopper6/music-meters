@@ -19,7 +19,7 @@ test('portrait projects fit without cropping, retain media and marker, and expor
   assert.equal(portrait.layers[0].w, portrait.layers[0].h, 'square meter must stay square')
   assert.deepEqual([orientProject(portrait, 'landscape').width, orientProject(portrait, 'landscape').height], [1280, 720])
   assert.throws(() => normalizeProject({ ...portrait, width: 1080, height: 1920 }), /canvas/)
-  assert.throws(() => normalizeProject({ ...portrait, layers: [{ ...portrait.layers[0], y: 1200 }] }), /outside/)
+  assert.equal(normalizeProject({ ...portrait, layers: [{ ...portrait.layers[0], y: 1200 }] }).layers[0].y, 1200)
   assert.throws(() => orientProject(portrait, 'square'), /orientation/)
   assert.throws(() => normalizeProject({ ...defaultProject(), width: 720, height: 1280 }), /canvas/)
 })
@@ -186,8 +186,8 @@ test('default project is a valid 16:9 composition with one real meter layer', ()
 
 test('rejects invalid geometry and duplicate layer IDs before saving or rendering', () => {
   const outside = defaultProject()
-  outside.layers[0].x = 1000
-  assert.throws(() => normalizeProject(outside), /outside the canvas/)
+  outside.layers[0].x = 100000
+  assert.throws(() => normalizeProject(outside), /X/)
   const duplicate = defaultProject()
   duplicate.layers.push({ ...duplicate.layers[0] })
   assert.throws(() => normalizeProject(duplicate), /duplicate ID/)
@@ -334,4 +334,14 @@ test('unnamed projects adopt the saved filename while explicit titles stay intac
   assert.equal(projectTitleForSave('', 'x'.repeat(230)+'.json').length, 200)
   assert.equal(projectTitleForSave('My song', 'test.json'), 'My song')
   assert.equal(projectTitleForSave('Untitled project remix', 'test.json'), 'Untitled project remix')
+})
+
+
+test('partly and fully off-canvas geometry round-trips without moving the content',()=>{
+  for(const [x,y] of [[-300,-100],[1200,680],[-1280,-720],[2560,1440]]) {
+    const project=compositionProject();project.layers=[{...imageLayer(),x,y}]
+    const saved=normalizeProject(JSON.parse(JSON.stringify(project)))
+    assert.deepEqual([saved.layers[0].x,saved.layers[0].y],[x,y])
+  }
+  for(const x of [NaN,Infinity,-5121,5121]) assert.throws(()=>normalizeProject({...defaultProject(),layers:[{...vectorscopeLayer(),x}]}),/X/)
 })

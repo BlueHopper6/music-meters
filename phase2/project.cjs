@@ -192,12 +192,11 @@ function normalizeProject(raw) {
     if (typeof layer.name !== 'string' || !layer.name.trim() || layer.name.length > 80) {
       throw new Error(`Layer ${index + 1} has an invalid name`)
     }
-    const x = number(layer.x, 'X', 0, width)
-    const y = number(layer.y, 'Y', 0, height)
+    const x = number(layer.x, 'X', -width * 4, width * 4)
+    const y = number(layer.y, 'Y', -height * 4, height * 4)
     const minimum = layer.type === 'text' ? 20 : layer.type === 'image' ? 40 : 80
     const w = number(layer.w, 'Width', minimum, width)
     const h = number(layer.h, 'Height', minimum, height)
-    if (x + w > width || y + h > height) throw new Error(`Layer ${index + 1} extends outside the canvas`)
     if (typeof layer.visible !== 'boolean' || typeof layer.locked !== 'boolean') {
       throw new Error(`Layer ${index + 1} has invalid visibility or lock state`)
     }
@@ -361,8 +360,8 @@ function fitLayer(layer, fromWidth, fromHeight, width, height) {
   const w = Math.min(width, Math.max(minimum, Math.round(layer.w * scale)))
   const h = Math.min(height, Math.max(minimum, Math.round(layer.h * scale)))
   const fitted = { ...layer, w, h,
-    x: Math.max(0, Math.min(width - w, Math.round(layer.x * scale + (width - fromWidth * scale) / 2))),
-    y: Math.max(0, Math.min(height - h, Math.round(layer.y * scale + (height - fromHeight * scale) / 2))) }
+    x: Math.max(-width * 4, Math.min(width * 4, Math.round(layer.x * scale + (width - fromWidth * scale) / 2))),
+    y: Math.max(-height * 4, Math.min(height * 4, Math.round(layer.y * scale + (height - fromHeight * scale) / 2))) }
   if (layer.type === 'text') fitted.fontSize = Math.max(12, Math.min(160, Math.round(layer.fontSize * scale)))
   if ('shadow' in layer) fitted.shadow = Math.min(40, Math.round(layer.shadow * scale))
   return fitted

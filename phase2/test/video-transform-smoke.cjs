@@ -47,6 +47,8 @@ module.exports = async function (win) {
   assert.deepEqual(await geometry(),moved)
   await click('video-canvas-size');assert.deepEqual(await geometry(),[0,0,1280,720])
   await click('video-half-size');assert.deepEqual(await geometry(),[320,180,640,360])
+  await change('layer-x',-200);await click('video-half-size');assert.deepEqual(await geometry(),[-40,270,320,180],'Half size preserves an off-canvas center')
+  await click('video-canvas-size');await click('video-half-size');assert.deepEqual(await geometry(),[320,180,640,360])
   await change('layer-locked',true)
   assert.equal(await evaluate('document.getElementById("video-half-size").disabled'),true)
   const lockedPoints=await evaluate(`(()=>{const r=document.getElementById('stage').getBoundingClientRect();const p=(x,y)=>({x:Math.round(r.x+x/1280*r.width),y:Math.round(r.y+y/720*r.height)});return{start:p(400,240),end:p(450,280)}})()`)
