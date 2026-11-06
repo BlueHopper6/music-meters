@@ -2,7 +2,9 @@
 
 User-facing release history, newest first. GitHub release notes provide the download announcement and exact package details; this file keeps the feature history with the source.
 
-## Unreleased
+## 1.3.0 — release preparation
+
+Prepared for the next release; download availability and publication date will be recorded after publication.
 
 ### Added
 
