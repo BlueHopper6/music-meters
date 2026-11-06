@@ -2,9 +2,9 @@
 
 User-facing release history, newest first. GitHub release notes provide the download announcement and exact package details; this file keeps the feature history with the source.
 
-## 1.3.0 — release preparation
+## [1.3.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.3.0) — 2026-11-06
 
-Prepared for the next release; download availability and publication date will be recorded after publication.
+Published November 6 in America/Indianapolis. See the [release notes](docs/releases/1.3.0.md) for exact downloads, checksums, and validation.
 
 ### Added
 

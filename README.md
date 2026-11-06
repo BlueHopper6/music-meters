@@ -12,7 +12,7 @@
 
 MusicMeters is an offline desktop music visualizer built around [Prism](https://github.com/Boof2015/prism)'s native audio analysis and meter rendering. Combine meters, video, artwork, and text into a composition, mix your soundtrack, and export a video.
 
-Current source adds project thumbnails, selected-region video exports, PNG still-frame export, off-canvas positioning, layer snapping, and more waveform input choices. These improvements are being prepared for MusicMeters 1.3.0; the published download below remains 1.2.0. See [video and export quality](docs/user-guide.md#video-layers-and-audio-routing).
+MusicMeters 1.3.0 adds project thumbnails, selected-region video exports, PNG still-frame export, off-canvas positioning, layer snapping, and more waveform input choices. See [video and export quality](docs/user-guide.md#video-layers-and-audio-routing).
 
 ## Features
 
@@ -55,11 +55,11 @@ Each meter has its own settings, colors, and placement, with six coordinated col
 - **Lossless master:** MKV with lossless RGB video and 32-bit float PCM audio; files can be much larger.
 - Track export progress, cancel an export, and keep existing videos safe from silent overwrites.
 
-The latest release is [MusicMeters 1.2.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.2.0), with video mixing, separate meter inputs, richer meter styling, media storage choices, and higher-quality exports. See the [changelog](CHANGELOG.md) for the release history.
+The latest release is [MusicMeters 1.3.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.3.0), with project thumbnails, video-region and still-frame exports, and improved composition controls. See the [changelog](CHANGELOG.md) for the release history.
 
 ## Download
 
-MusicMeters targets **Windows x64**. Download the setup EXE or portable ZIP from [MusicMeters 1.2.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.2.0) and check its requirements and checksums. Linux and macOS builds have not been validated.
+MusicMeters targets **Windows x64**. Download the setup EXE or portable ZIP from [MusicMeters 1.3.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.3.0) and check its requirements and checksums. Linux and macOS builds have not been validated.
 
 1. Install the FFmpeg command-line tools and put both `ffmpeg` and `ffprobe` on your Windows `PATH`. Check `ffmpeg -version` and `ffprobe -version` in a new terminal.
 2. For the **setup EXE**, run it to install MusicMeters for your Windows account, then open **MusicMeters** from the Start menu. Setup adds an uninstall entry and preserves the existing templates/preferences location.
