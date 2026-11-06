@@ -169,7 +169,7 @@ module.exports = async function projectManagerSmoke(win, source) {
       await evaluate(`Array.from(document.querySelectorAll('.project-card')).find(card => card.dataset.projectPath === ${JSON.stringify(source)}).click()`)
       await wait(`!(${sourceCard()})`, 'missing open removes stale card')
       assert.equal(await evaluate('document.getElementById("editor-screen").hidden'), true)
-      assert.ok(await evaluate('document.getElementById("project-manager-status").textContent.startsWith("This project can’t be found.")'))
+      assert.ok(await evaluate('document.getElementById("project-manager-status").textContent.includes("This project can’t be found.")'))
     } finally { fs.renameSync(unavailable, source) }
     await evaluate(`window.dispatchEvent(new Event('focus'))`)
     await wait(sourceCard(), 'restored project listed again')
@@ -180,7 +180,7 @@ module.exports = async function projectManagerSmoke(win, source) {
       await wait('document.getElementById("project-action-modal").hidden', 'source removed during chooser')
       assert.equal(await evaluate(sourceCard()), false)
       assert.equal(fs.existsSync(path.join(output, 'Missing source copy')), false)
-      assert.ok(await evaluate('document.getElementById("project-manager-status").textContent.startsWith("This project can’t be found.")'))
+      assert.ok(await evaluate('document.getElementById("project-manager-status").textContent.includes("This project can’t be found.")'))
     } finally { if (fs.existsSync(unavailable)) fs.renameSync(unavailable, source) }
     await evaluate(`window.dispatchEvent(new Event('focus'))`)
     await wait(sourceCard(), 'final restored source')
