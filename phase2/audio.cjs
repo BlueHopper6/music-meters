@@ -1,8 +1,12 @@
 const { execFileSync } = require('node:child_process')
 const { PcmReader } = require('../phase1/pcm-reader.cjs')
 const { ffprobeExecutable, missingFfmpegMessage } = require('./ffmpeg.cjs')
+const { isForeignPlatformReference } = require('./project-audio.cjs')
 
 function probeAudio(input) {
+  if (typeof input !== 'string' || !input || isForeignPlatformReference(input)) {
+    throw new Error('Could not read audio metadata: Choose a local audio file')
+  }
   let raw
   try {
     raw = execFileSync(ffprobeExecutable(), [

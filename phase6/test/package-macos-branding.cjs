@@ -2,11 +2,16 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const os = require('node:os')
+const { createHash } = require('node:crypto')
 const { spawnSync } = require('node:child_process')
 const identity = require('../application.cjs')
 const { packagedBundleRoot, packagedExecutable, packagedAppRoot } = require('../packaged-executable.cjs')
 const { buildIcnsFromBrandAssets } = require('../package-macos.cjs')
 const { scanBinaryPrivacy } = require('../build-native.cjs')
+
+function sha256(file) {
+  return createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+}
 
 function verifyMacBranding(directory) {
   const bundleDir = packagedBundleRoot(directory)
@@ -26,9 +31,14 @@ function verifyMacBranding(directory) {
   assert.ok(fs.existsSync(helperExec), `Missing branded helper executable: ${helperExec}`)
   assert.ok((fs.statSync(helperExec).mode & 0o111) !== 0, 'Helper executable must have execute permissions')
 
-  const frameworkCurrent = path.join(frameworksDir, 'Electron Framework.framework', 'Versions', 'Current')
-  if (fs.existsSync(frameworkCurrent)) {
-    assert.equal(fs.lstatSync(frameworkCurrent).isSymbolicLink(), true, 'Framework Versions/Current must remain a relative symlink')
+  const frameworkRoot = path.join(frameworksDir, 'Electron Framework.framework')
+  for (const relLink of ['Versions/Current', 'Electron Framework', 'Resources', 'Libraries', 'Helpers']) {
+    const linkPath = path.join(frameworkRoot, relLink)
+    if (fs.existsSync(linkPath)) {
+      assert.equal(fs.lstatSync(linkPath).isSymbolicLink(), true, `Framework ${relLink} must remain a symbolic link`)
+      const target = fs.readlinkSync(linkPath)
+      assert.equal(path.posix.isAbsolute(target), false, `Framework ${relLink} symlink must be relative, got: ${target}`)
+    }
   }
 
   assert.equal(fs.existsSync(path.join(resourcesDir, 'electron.icns')), false, 'Stock electron.icns must be removed')
@@ -59,6 +69,25 @@ function verifyMacBranding(directory) {
   assert.ok(fs.existsSync(addon), 'Missing packaged Prism native addon')
   scanBinaryPrivacy(addon, [path.resolve(__dirname, '..', '..'), os.homedir()])
 
+  const packageRoot = path.resolve(directory) === bundleDir ? path.dirname(bundleDir) : path.resolve(directory)
+  const readmePath = path.join(packageRoot, 'README.md')
+  assert.ok(fs.existsSync(readmePath), `Missing top-level macOS README.md: ${readmePath}`)
+  const readmeText = fs.readFileSync(readmePath, 'utf8')
+  assert.match(readmeText, /MusicMeters\.app/, 'macOS README.md must reference MusicMeters.app')
+  assert.doesNotMatch(readmeText, /Run `MusicMeters\.exe`/, 'macOS README.md must not copy Windows MusicMeters.exe instructions')
+  assert.doesNotMatch(readmeText, /xattr\s+-cr/, 'macOS README.md must not prescribe quarantine removal')
+
+  const provenancePath = path.join(packageRoot, 'BUILD-PROVENANCE.json')
+  assert.ok(fs.existsSync(provenancePath), `Missing BUILD-PROVENANCE.json: ${provenancePath}`)
+  const provenance = JSON.parse(fs.readFileSync(provenancePath, 'utf8'))
+  assert.equal(provenance.platform, 'darwin')
+  assert.equal(provenance.signingMode, 'adhoc')
+  for (const [relFile, expectedHash] of Object.entries(provenance.appFileSha256 || {})) {
+    const fullPath = path.join(packageRoot, relFile)
+    assert.ok(fs.existsSync(fullPath), `Missing provenance-tracked file: ${relFile}`)
+    assert.equal(sha256(fullPath), expectedHash, `Provenance hash mismatch for ${relFile}`)
+  }
+
   if (process.platform === 'darwin') {
     const lint = spawnSync('plutil', ['-lint', plistPath], { encoding: 'utf8', shell: false })
     assert.equal(lint.status, 0, `plutil failed: ${lint.stderr || lint.stdout}`)
@@ -67,17 +96,17 @@ function verifyMacBranding(directory) {
     assert.equal(verify.status, 0, `codesign verify failed: ${verify.stderr}`)
 
     const expectedMachArch = process.arch === 'arm64' ? 'arm64' : 'x86_64'
-    for (const bin of [executable, addon]) {
+    for (const bin of [executable, helperExec, addon]) {
       const fileOut = spawnSync('file', ['-b', bin], { encoding: 'utf8', shell: false })
       assert.equal(fileOut.status, 0)
       assert.match(fileOut.stdout, /Mach-O 64-bit/, `${bin} must be a 64-bit Mach-O binary: ${fileOut.stdout}`)
       assert.match(fileOut.stdout, new RegExp(expectedMachArch), `${bin} architecture mismatch: ${fileOut.stdout}`)
-    }
 
-    const otool = spawnSync('otool', ['-L', addon], { encoding: 'utf8', shell: false })
-    assert.equal(otool.status, 0)
-    const linkedLibs = otool.stdout.trim().split(/\r?\n/).slice(1).join('\n')
-    assert.doesNotMatch(linkedLibs, /\/Users\/|\/opt\/homebrew\/|\/usr\/local\//, `Native addon links non-system path: ${linkedLibs}`)
+      const otool = spawnSync('otool', ['-L', bin], { encoding: 'utf8', shell: false })
+      assert.equal(otool.status, 0)
+      const linkedLibs = otool.stdout.trim().split(/\r?\n/).slice(1).join('\n')
+      assert.doesNotMatch(linkedLibs, /\/Users\/|\/opt\/homebrew\/|\/usr\/local\//, `Mach-O binary links non-system path (${bin}): ${linkedLibs}`)
+    }
   }
 
   console.log(JSON.stringify({

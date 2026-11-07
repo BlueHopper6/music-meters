@@ -30,7 +30,7 @@ type Desktop = {
   toggleWindowFullscreen(): Promise<void>
   minimizeWindow(): Promise<void>
   maximizeWindow(): Promise<void>
-  closeWindow(): Promise<void>
+  closeWindow(quitApp?: boolean): Promise<void>
   windowState(): Promise<{ fullscreen: boolean; maximized: boolean }>
   onWindowState(listener: (state: { fullscreen: boolean; maximized: boolean }) => void): () => void
   initial(): Promise<Initial>
@@ -83,7 +83,9 @@ type Desktop = {
   renderVideo(project: Project, preset: string, audioMode: string, destination?: string, range?: { start: number; end: number }): Promise<string | null>
   cancelRender(): Promise<void>
   confirmAppClose(): Promise<void>
+  cancelAppClose(): Promise<void>
   onAppCloseRequested(listener: () => void): () => void
+  onMenuCommand(listener: (command: string) => void): () => void
   onExport(listener: (event: Record<string, unknown>) => void): () => void
 }
 declare global { interface Window { desktop: Desktop } }
@@ -2716,10 +2718,13 @@ $('close-project').addEventListener('click', () => {
 })
 // Quit shares the caption/OS-close path and its unsaved-change guard.
 for (const id of ['pm-quit', 'quit-app']) {
-  $(id).addEventListener('click', () => $('window-close').click())
+  $(id).addEventListener('click', () => {
+    void window.desktop.closeWindow(true).catch(error => setStatus(String(error)))
+  })
 }
 $('unsaved-changes-cancel').addEventListener('click', () => {
   closeUnsavedChangesModal()
+  void window.desktop.cancelAppClose().catch(() => {})
 })
 $('unsaved-changes-discard').addEventListener('click', async () => {
   const action = pendingUnsavedAction
@@ -2741,8 +2746,11 @@ $('unsaved-changes-save').addEventListener('click', async () => {
       await syncAssets()
       setStatus(`Saved project: ${result.path}`)
       if (action) await action()
+    } else {
+      await window.desktop.cancelAppClose().catch(() => {})
     }
   } catch (error) {
+    await window.desktop.cancelAppClose().catch(() => {})
     setStatus(`Save failed: ${String(error)}`)
   }
 })
@@ -3155,14 +3163,67 @@ $('media-storage-copy').addEventListener('click', () => { void finishStorageChoi
 $('media-storage-link').addEventListener('click', () => { void finishStorageChoice('link') })
 $('media-storage-cancel').addEventListener('click', () => { void finishStorageChoice(null) })
 function openAbout() {
-  $('about-modal').hidden = false; $('editor-screen').inert = true; $('about-close').focus()
+  $('about-modal').hidden = false; $('editor-screen').inert = true; $('project-manager-screen').inert = true; $('about-close').focus()
 }
 function closeAbout() {
-  $('about-modal').hidden = true; $('editor-screen').inert = false; $('toolbar-help').focus()
+  $('about-modal').hidden = true; $('editor-screen').inert = false; $('project-manager-screen').inert = false
+  ;($('editor-screen').hidden ? $('pm-new-blank') : $('toolbar-help')).focus()
 }
 $('about-app').addEventListener('click', openAbout)
 $('show-license').addEventListener('click', openAbout)
 $('about-close').addEventListener('click', closeAbout)
+window.desktop.onMenuCommand(command => {
+  if (command === 'undo' || command === 'redo') {
+    const active = document.activeElement as HTMLElement | null
+    if (active && active.closest('input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="button"]), textarea, [contenteditable="true"]')) {
+      document.execCommand(command)
+      return
+    }
+    if (active && active.closest('input, select')) return
+    if (document.querySelector('.modal-backdrop:not([hidden])') || $('editor-screen').hidden) return
+    void restoreEdit(command === 'redo' ? 1 : -1)
+    return
+  }
+  if (command === 'about') {
+    if ($('about-modal').hidden && !document.querySelector('.modal-backdrop:not([hidden])')) openAbout()
+    return
+  }
+  if (document.querySelector('.modal-backdrop:not([hidden])') || historyBusy) return
+  const inEditor = !$('editor-screen').hidden
+  if (command === 'new-project') {
+    $(inEditor ? 'new-project' : 'pm-new-blank').click()
+  } else if (command === 'new-from-template') {
+    if (inEditor) {
+      confirmDiscardIfDirty(async () => {
+        try {
+          await closeCurrentProject()
+          openTemplatePicker()
+        } catch (error) { setStatus(String(error)) }
+      })
+    } else {
+      openTemplatePicker()
+    }
+  } else if (command === 'use-template') {
+    if (inEditor) $('load-template').click()
+    else openTemplatePicker()
+  } else if (command === 'open-project') {
+    $(inEditor ? 'open-project' : 'pm-open-project').click()
+  } else if (command === 'save-project' && inEditor) {
+    $('save-project').click()
+  } else if (command === 'save-project-as' && inEditor) {
+    $('save-project-as').click()
+  } else if (command === 'open-export' && inEditor) {
+    $('open-export').click()
+  } else if (command === 'close-project' && inEditor) {
+    $('close-project').click()
+  } else if (command === 'save-template' && inEditor) {
+    $('save-template').click()
+  } else if (command === 'manage-templates') {
+    $('open-template-manager').click()
+  } else if (command === 'fullscreen-preview' && inEditor) {
+    $('fullscreen-preview').click()
+  }
+})
 for (const [id, close] of [['export-modal', closeExportDialog], ['about-modal', closeAbout], ['media-storage-modal', () => { void finishStorageChoice(null) }]] as const) {
   const modal = $(id)
   modal.addEventListener('click', event => { if (event.target === modal) close() })

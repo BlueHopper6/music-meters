@@ -18,15 +18,28 @@ function validateThumbnail(data) {
       || bytes.readUInt32BE(16) > 320 || bytes.readUInt32BE(20) > 320) throw new Error('Invalid project thumbnail dimensions')
   return data
 }
+function canonicalProjectKey(file) {
+  const resolved = path.resolve(file)
+  assertLocal(resolved)
+  if (typeof fs.realpathSync?.native === 'function') {
+    try { return fs.realpathSync.native(resolved) } catch {}
+  }
+  if (typeof fs.realpathSync === 'function') {
+    try { return fs.realpathSync(resolved) } catch {}
+  }
+  return resolved
+}
 function cachePath(userData, file) {
   const root = path.resolve(userData, 'project-thumbnails')
+  let key
   try {
     assertLocal(root)
+    key = canonicalProjectKey(file)
   } catch {
     throw new Error('Unsafe thumbnail cache')
   }
   if (fs.existsSync(root) && fs.lstatSync(root).isSymbolicLink()) throw new Error('Unsafe thumbnail cache')
-  return path.join(root, hash(path.resolve(file).toLowerCase()).slice(0,32) + '.json')
+  return path.join(root, hash(key).slice(0,32) + '.json')
 }
 function readThumbnail(userData, file, version = projectVersion(file)) {
   try {

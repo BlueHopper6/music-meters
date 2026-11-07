@@ -1,6 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { createHash, randomUUID } = require('node:crypto')
+const { isForeignPlatformReference } = require('./project-audio.cjs')
 
 function isDarwinRootSystemSymlink(targetPath, platform = process.platform) {
   return platform === 'darwin' && (targetPath === '/var' || targetPath === '/tmp' || targetPath === '/etc')
@@ -102,11 +103,11 @@ async function copyMedia(input, target) {
 }
 async function prepareStoredMedia(project, target) {
   const copied = structuredClone(project)
-  if (copied.audioPath && copied.audioStorage === 'copy') {
+  if (copied.audioPath && copied.audioStorage === 'copy' && !isForeignPlatformReference(copied.audioPath)) {
     copied.audioName ??= path.basename(copied.audioPath)
     copied.audioPath = await copyMedia(copied.audioPath, target)
   }
-  for (const layer of copied.layers) if (layer.type === 'video' && layer.videoPath && layer.storage === 'copy') {
+  for (const layer of copied.layers) if (layer.type === 'video' && layer.videoPath && layer.storage === 'copy' && !isForeignPlatformReference(layer.videoPath)) {
     layer.sourceName ??= path.basename(layer.videoPath)
     layer.videoPath = await copyMedia(layer.videoPath, target)
   }

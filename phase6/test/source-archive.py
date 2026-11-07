@@ -35,6 +35,8 @@ def main():
             "BUILD-CONFIGURATION.md",
             "PACKAGE-BUILD-PROVENANCE.json",
             "docs/macos-port-prd.md",
+            "phase2/editor-app/darwin-platform.cjs",
+            "phase6/MACOS-README.md",
             "phase2/composition.ts", "phase6/package-windows.cjs", "phase6/package-macos.cjs", "phase6/release-source.py",
             "phase2/editor-app/assets/brand/icon-32.png",
             "phase2/editor-app/assets/brand/icon-64.png",

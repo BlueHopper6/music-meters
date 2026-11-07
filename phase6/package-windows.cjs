@@ -49,7 +49,7 @@ async function main() {
     }
     for (const from of [
       'phase1/pcm-reader.cjs',
-      'phase2/editor-app/main.cjs', 'phase2/editor-app/preload.cjs',
+      'phase2/editor-app/main.cjs', 'phase2/editor-app/darwin-platform.cjs', 'phase2/editor-app/preload.cjs',
       'phase2/editor-app/index.html', 'phase2/editor-app/style.css',
       'phase2/export-app/main.cjs', 'phase2/export-app/index.html',
       'phase2/export-app/style.css',
@@ -113,6 +113,7 @@ async function main() {
       'resources/app/phase6/application.cjs',
       'resources/app/phase2/entry.cjs',
       'resources/app/phase2/editor-app/main.cjs',
+      'resources/app/phase2/editor-app/darwin-platform.cjs',
       'BUILD-CONFIGURATION.md',
       'resources/app/upstream/prism/native/build/Release/visualizer_dsp.node',
       'resources/app/artifacts/phase2/editor.js',

@@ -13,8 +13,8 @@ Included in scope:
 - Bounded, injection-safe macOS font discovery and deterministic cross-platform font fallback so built-in factory layouts and projects created on either Windows or macOS open, preview, and export consistently without silently corrupting saved project files.
 - Deterministic FFmpeg and FFprobe discovery that works both from terminal sessions and when `MusicMeters.app` is launched from Finder/Dock (where macOS provides a minimal `PATH` that omits `/opt/homebrew/bin` and `/usr/local/bin`).
 - macOS filesystem, canonical temporary path (`/var/folders` -> `/private/var/folders`), symlink/junction defense, external volume (`/Volumes/...`), cross-OS missing-media relink recovery, case-sensitivity, and Trash semantics.
-- Native macOS window chrome (`titleBarStyle: 'hiddenInset'` with traffic-light inset), macOS application menu integration, `Command`-key (`metaKey`) shortcuts, and Dock `activate` / `window-all-closed` / `before-quit` lifecycle management.
-- Self-contained macOS `.app` bundle and `.zip` archive packaging (`phase6/package-macos.cjs`) with `Info.plist`, `.icns` bundle icon, preserved `Framework` symbolic links, ad-hoc or Developer ID code signing support, license notices, and `BUILD-PROVENANCE.json`.
+- Native macOS window chrome (`titleBarStyle: 'hiddenInset'` with traffic-light inset), macOS application menu integration (`MusicMeters`, `File`, `Edit`, `Templates`, `View`, `Window`, `Help`), `Command`-key (`metaKey`) shortcuts, and Dock `activate` / `window-all-closed` / `before-quit` lifecycle management.
+- Self-contained macOS `.app` bundle and full package `.zip` archive packaging (`phase6/package-macos.cjs`) with `Info.plist`, `.icns` bundle icon, preserved `Framework` symbolic links, ad-hoc code signing (`--sign -`) for contribution/CI builds, `phase6/MACOS-README.md` (`README.md`), license notices, `BUILD-PROVENANCE.json`, and `SOURCE-ARCHIVE.json`.
 - Corresponding-source archive generation and verification (`phase6/release-source.py`, `phase6/test/source-archive.py`) supporting both Windows and macOS packages.
 - Automated GitHub Actions macOS CI workflow (`.github/workflows/macos-build.yml`) executing native builds, unit tests, strict TypeScript checks, `.app` packaging, Mach-O and path-privacy audits, packaged smoke/security/export suites, and extracted-source rebuild verification.
 
@@ -29,10 +29,12 @@ Included in scope:
 
 ## 2. Target macOS Versions and Architectures
 
-| Target | Architecture | Minimum OS | CI Runner Image | Packaging Output |
+| Target | Architecture | Bundle Minimum OS (`LSMinimumSystemVersion`) | CI Runner Image (Verified OS) | Packaging Output |
 | :--- | :--- | :--- | :--- | :--- |
-| Apple Silicon | `arm64` | macOS 11.0+ (Big Sur or later; native addon deployment target `10.15`) | `macos-14` (`arm64`) | `MusicMeters.app` + `MusicMeters-macos-arm64.zip` |
-| Intel Mac | `x64` | macOS 11.0+ (native addon deployment target `10.15`) | `macos-15-intel` / `macos-13` (`x64`, or `--arch=x64` cross-target when Intel runner images are retired) | `MusicMeters.app` + `MusicMeters-macos-x64.zip` |
+| Apple Silicon | `arm64` | macOS `12.0` (`phase6/application.cjs`; native addon `MACOSX_DEPLOYMENT_TARGET: 10.15`) | `macos-15` (`arm64`, macOS 15.7.5) | `MusicMeters.app` + `MusicMeters-macos-arm64.zip` |
+| Intel Mac | `x64` | macOS `12.0` (`phase6/application.cjs`; native addon `MACOSX_DEPLOYMENT_TARGET: 10.15`) | `macos-15-intel` (`x64`, macOS 15.7.5) | `MusicMeters.app` + `MusicMeters-macos-x64.zip` |
+
+> **Runtime verification scope:** `LSMinimumSystemVersion: 12.0` in `Info.plist` is a bundle metadata floor matching the Electron 45 runtime requirement. Automated CI verification is executed on GitHub-hosted macOS 15 (`macos-15` and `macos-15-intel`) runners; macOS 12–14 remain unverified until tested on target OS hardware or VMs.
 
 Pinned runtime dependencies remain identical across Windows and macOS:
 
@@ -84,7 +86,8 @@ All Windows security controls remain mandatory on macOS:
 | Packaged executable | `<package>/MusicMeters.exe` | `<package>/MusicMeters.app/Contents/MacOS/MusicMeters` (or `<app>/Contents/MacOS/MusicMeters`) |
 | Packaged app payload | `<package>/resources/app` | `<package>/MusicMeters.app/Contents/Resources/app` |
 | Bundle metadata & icon | PE resources + `music-meters.ico` | `Contents/Info.plist` (`com.musicmeters.app`) + `Contents/Resources/music-meters.icns` |
-| Top-level notices & provenance | `<package>/<NOTICE>` and `BUILD-PROVENANCE.json` | `<package>/<NOTICE>`, `<package>/BUILD-PROVENANCE.json`, and `MusicMeters.app/Contents/Resources/<NOTICE>` |
+| Top-level notices & provenance | `<package>/<NOTICE>`, `README.md` (`phase6/PORTABLE-README.md`), `BUILD-PROVENANCE.json`, and `SOURCE-ARCHIVE.json` | `<package>/<NOTICE>`, `<package>/README.md` (`phase6/MACOS-README.md`), `<package>/BUILD-PROVENANCE.json`, `<package>/SOURCE-ARCHIVE.json`, and `MusicMeters.app/Contents/Resources/<NOTICE>` |
+| Final downloadable `.zip` | Portable directory archive | Full `<package>` directory archive (`node phase6/package-macos.cjs --pack-existing <package-dir> --zip <zip>`) containing `MusicMeters.app`, `BUILD-PROVENANCE.json`, `SOURCE-ARCHIVE.json`, `README.md`, `BUILD-CONFIGURATION.md`, and all license/notice files |
 
 `phase6/electron-runtime.cjs` and `phase6/packaged-executable.cjs` resolve both layouts deterministically and expose helpers (`packagedExecutable`, `packagedAppRoot`, `packagedNoticePath`) used across runtime, smoke tests, and source-archive verification.
 
@@ -97,7 +100,7 @@ All Windows security controls remain mandatory on macOS:
 ### 4.3 Installed Font Discovery and Cross-Platform Font Fallback (`phase2/fonts.cjs`, `phase2/composition.ts`)
 
 - **macOS Discovery**:
-  - `phase2/fonts.cjs` queries `/usr/sbin/system_profiler SPFontsDataType -json` (`shell: false`, bounded timeout and buffer) to extract enabled, valid typographic font families, supplemented by bounded directory scanning of `/System/Library/Fonts`, `/System/Library/Fonts/Supplemental`, `/Library/Fonts`, and `~/Library/Fonts`.
+  - `phase2/fonts.cjs` queries `/usr/sbin/system_profiler SPFontsDataType -json` (`shell: false`, bounded timeout and buffer) to extract enabled, valid typographic font family names (`typefaces[].family`) and merges the cross-platform baseline font families (`BASELINE_FONTS`). Raw font filenames are not used as family names on macOS because file stems differ from typographic family names.
   - Every discovered family name is validated through `validFontFamily()` (`phase2/project.cjs`), deduplicated, and sorted with deterministic locale comparison.
 - **Cross-Platform Font Equivalence & Fallback**:
   - Built-in baseline families (`Segoe UI`, `Arial`, `Georgia`, `Consolas`, `Bahnschrift`) and macOS counterparts (`Helvetica Neue`, `Menlo`, `SF Pro`, `Avenir`, `Courier New`) map to deterministic fallback chains (`CROSS_PLATFORM_FONT_FALLBACKS` and `canvasFontStack(fontFamily)`).
@@ -119,32 +122,34 @@ All Windows security controls remain mandatory on macOS:
   - On macOS, `os.tmpdir()` points under `/var/folders/...`, where `/var` is a Darwin root symlink to `/private/var`. `realTempDir()` resolves `fs.realpathSync` so temporary job files, media caches, and preview caches operate on canonical `/private/var/folders/...` paths.
 - **Symlink Defense (`phase2/media-storage.cjs`, `phase2/project-library.cjs`)**:
   - `assertLocal()` walks every ancestor component from the target path to the filesystem root and rejects any symbolic link or junction, while recognizing the three immutable Darwin root system aliases (`/var`, `/tmp`, `/etc` -> `/private/...`) at root depth so canonical and non-canonical temp paths work without weakening symlink rejection inside any subdirectory.
-- **Cross-Volume and Cross-OS Media References (`phase2/project-audio.cjs`, `phase2/editor-app/main.cjs`)**:
+- **Cross-Volume and Cross-OS Media References (`phase2/project-audio.cjs`, `phase2/editor-app/main.cjs`, `phase2/project-library.cjs`)**:
   - `projectAudioReference()` accepts POSIX absolute paths on macOS as well as Windows drive paths on Windows, producing portable relative paths within the same volume and preserving `/Volumes/<Drive>/...` references when a project links media on an external macOS volume.
-  - Unresolvable Windows drive paths (`C:\...`) opened on macOS are never fabricated into local paths; `readProjectState()` and `load-videos` gracefully report missing audio, video, or image files through `missingMedia` so the user can relink them via `Relink…`.
-- **Case-Sensitivity and Inode Identity**:
+  - Foreign-platform references (`C:\...`, `D:\...` opened on macOS, or `/Volumes/<Drive>/...` opened on Windows) are detected via `isForeignPlatformReference()` and preserved verbatim by `resolveProjectAudio()`, `projectAudioReference()`, and `renameLibraryProject()` without inventing local paths, colliding distinct drive letters, or probing local disk. `missingMedia` reports foreign-platform references as missing so the user can relink them via `Relink…`, or keep them intact across unrelated edits, Save, Save As, and library operations.
+- **Case-Sensitivity, Inode Identity, and Thumbnail Cache Keys (`phase2/media-storage.cjs`, `phase2/project-thumbnails.cjs`)**:
   - `samePath()` compares resolved paths and, when both paths exist on disk, verifies `stat.dev` and `stat.ino` so case-only renames (`New Project` -> `new project`) work on case-insensitive APFS/NTFS while distinct files on case-sensitive APFS volumes are never conflated.
+  - `phase2/project-thumbnails.cjs` keys cached thumbnails by the canonical on-disk path (`fs.realpathSync.native` with `path.resolve(file)` fallback, without `.toLowerCase()`) so case-distinct projects on case-sensitive volumes never overwrite or return each other's cached thumbnails.
 - **Trash Semantics**:
-  - Project deletion uses `shell.trashItem()` with platform-accurate confirmation and status copy (`Move to Trash` / `Trash` on macOS; `Move to Recycle Bin` / `Recycle Bin` on Windows).
+  - Project deletion uses `shell.trashItem()` with platform-accurate confirmation and status copy (`Trash` on macOS; `Recycle Bin` on Windows).
 
 ### 4.6 Window Chrome, Menus, Shortcuts, and App Lifecycle
 
 - **Window Chrome**:
   - On macOS, `BrowserWindow` uses `titleBarStyle: 'hiddenInset'` with `trafficLightPosition: { x: 14, y: 12 }`.
   - When `document.body.classList.contains('platform-darwin')` is active, `.app-titlebar-content` reserves left inset (`82px`, collapsing to `12px` in fullscreen) for the native traffic lights and hides the Windows right-hand `.window-controls` cluster.
-- **Application Menu and Shortcuts**:
-  - On macOS, `configureApplication()` installs a native macOS application menu (`MusicMeters`, `File`, `Edit`, `Templates`, `Window`, `Help`) while keeping the in-window command toolbar functional.
+- **Application Menu and Shortcuts (`phase2/editor-app/darwin-platform.cjs`, `phase2/editor-app/main.cjs`, `phase2/editor.ts`)**:
+  - On macOS, `Menu.setApplicationMenu` installs a native macOS application menu (`MusicMeters`, `File`, `Edit`, `Templates`, `View`, `Window`, `Help`) wired through `menu-command` IPC (`onMenuCommand` in `preload.cjs` and `editor.ts`) while keeping the in-window command toolbar functional.
+  - `Edit -> Undo` and `Edit -> Redo` preserve native text editing (`document.execCommand`) when a text input or textarea is focused and route to project-history `restoreEdit(-1 | 1)` otherwise.
   - Command-key shortcuts (`Cmd+N`, `Cmd+O`, `Cmd+S`, `Cmd+Shift+S`, `Cmd+W`, `Cmd+Z`, `Cmd+Shift+Z`, `Cmd+Y`, `Cmd+E`, `Cmd+F`, `Cmd+Q`, and `Ctrl+Cmd+F` / `F11`) work alongside native text-input editing (`Cmd+C`, `Cmd+V`, `Cmd+X`, `Cmd+A`, `Cmd+Z` inside text fields).
 - **Lifecycle (`activate`, `window-all-closed`, `before-quit`)**:
-  - IPC handlers in `phase2/editor-app/main.cjs` are registered once at application startup and bound to the active `editorWindow` instance so closing and reopening a window via the macOS Dock (`activate`) never duplicates IPC handlers.
-  - Closing the editor window stops and disposes active preview/export/playback workers (`preview`, `exporter`, `playback`, `mediaCache`, `videoPreview`).
-  - Unsaved changes are guarded on window close, `Cmd+W`, `Cmd+Q`, and menu Quit. Automated test sessions (`isAutomatedTest()`) quit deterministically when the test window closes.
+  - IPC handlers in `phase2/editor-app/main.cjs` are registered once at application startup and bound to the current `win` reference so closing the window on macOS (`Window -> Close Window` or the traffic-light close button) keeps the application process alive (`shouldQuitOnWindowAllClosed` returns `false` when `!quitRequested`) and clicking the Dock icon (`activate`) recreates the window via `createWindow()` without duplicating IPC handlers.
+  - Closing the editor window on macOS stops active preview/playback/media preparation and resets the project session (`resetProjectSession()`), or cancels an in-flight export before closing the window.
+  - Unsaved changes are guarded on window close, `Cmd+W`, `Cmd+Q`, Dock/OS Quit (`before-quit`), and menu Quit (`cancel-app-close` resets `quitRequested` and `forceQuit` when the user cancels the unsaved-changes prompt or native Save dialog). Automated test sessions (`isAutomatedTest`) quit deterministically when the test finishes.
 
 ### 4.7 Code Signing, Notarization, and Public Release Gates
 
-- `phase6/package-macos.cjs` applies an ad-hoc signature (`codesign --force --deep --sign -`) by default on macOS when `MUSICMETERS_MACOS_SIGN_IDENTITY` is not set (required by Apple Silicon's kernel task policy for modified `.app` bundles), or signs with `--options runtime` using `MUSICMETERS_MACOS_SIGN_IDENTITY` when Developer ID credentials are provided.
-- Optional notarization hooks (`xcrun notarytool submit` + `xcrun stapler staple`) are documented and gated behind explicit Apple Developer credentials.
-- Unsigned / ad-hoc signed CI builds must be clearly labeled as unsigned test/development artifacts in release and handoff documentation (`xattr -cr MusicMeters.app` required if downloaded through a browser with Quarantine attributes).
+- `phase6/package-macos.cjs` supports ad-hoc Mach-O code signing (`codesign --force --sign -`) only (`assertSupportedSignIdentity`) for local contributor and CI builds (required by Apple Silicon's kernel task policy when modifying bundled Mach-O executables and frameworks), and records `signingMode: "adhoc"` in `BUILD-PROVENANCE.json`.
+- Passing any non-ad-hoc signing identity (`MUSICMETERS_MACOS_SIGN_IDENTITY`) is explicitly rejected until a dedicated Developer ID release-signing workflow (with `--options runtime`, secure `--timestamp`, Electron helper entitlements, `xcrun notarytool submit`, and `xcrun stapler staple`) is separately implemented and approved.
+- Ad-hoc signed CI builds are strictly development/contribution verification artifacts, not notarized public releases. Documentation and release notes must never instruct users to strip quarantine extended attributes or bypass macOS Gatekeeper; public macOS binary distribution requires Developer ID Application signing and Apple notarization on the exact release archive.
 
 ---
 

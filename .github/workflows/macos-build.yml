@@ -91,7 +91,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node phase6/package-macos.cjs --output artifacts/phase6/ci-package --zip "artifacts/phase6/MusicMeters-macos-${{ matrix.arch }}.zip"
+          node phase6/package-macos.cjs --output artifacts/phase6/ci-package
           node phase6/test/package-macos-branding.cjs artifacts/phase6/ci-package
           node phase6/test/run-project-thumbnails.cjs artifacts/phase6/ci-package artifacts/phase6/ci-project-thumbnails
           node phase6/test/run-video-transform.cjs artifacts/phase6/ci-package artifacts/phase6/ci-video-transform
@@ -117,7 +117,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 phase6/release-source.py --package artifacts/phase6/ci-package --output artifacts/phase6/ci-source.zip
-          python3 phase6/test/source-archive.py artifacts/phase6/ci-package artifacts/phase6/ci-source.zip artifacts/phase6/ci-extracted
+          node phase6/package-macos.cjs --pack-existing artifacts/phase6/ci-package --zip "artifacts/phase6/MusicMeters-macos-${{ matrix.arch }}.zip"
+          mkdir -p "artifacts/phase6/Relocated Café App"
+          ditto -x -k "artifacts/phase6/MusicMeters-macos-${{ matrix.arch }}.zip" "artifacts/phase6/Relocated Café App"
+          python3 phase6/test/source-archive.py "artifacts/phase6/Relocated Café App" artifacts/phase6/ci-source.zip artifacts/phase6/ci-extracted
+          node phase6/test/package-macos-branding.cjs "artifacts/phase6/Relocated Café App"
+          codesign --verify --deep --strict "artifacts/phase6/Relocated Café App/MusicMeters.app"
+          node phase6/test/run-security.cjs "artifacts/phase6/Relocated Café App" artifacts/phase6/ci-relocated-security
           pushd artifacts/phase6/ci-extracted/musicmeters/phase6/build-tools
           npm ci --ignore-scripts --no-audit --no-fund
           popd
@@ -133,10 +139,6 @@ jobs:
           node phase6/test/package-macos-branding.cjs ../../ci-rebuilt-package
           node phase6/test/package-smoke.cjs ../../ci-rebuilt-package ../../ci-rebuilt-smoke
           popd
-          mkdir -p "artifacts/phase6/Relocated Café App"
-          ditto -x -k "artifacts/phase6/MusicMeters-macos-${{ matrix.arch }}.zip" "artifacts/phase6/Relocated Café App"
-          codesign --verify --deep --strict "artifacts/phase6/Relocated Café App/MusicMeters.app"
-          node phase6/test/run-security.cjs "artifacts/phase6/Relocated Café App" artifacts/phase6/ci-relocated-security
           shasum -a 256 "artifacts/phase6/MusicMeters-macos-${{ matrix.arch }}.zip" artifacts/phase6/ci-source.zip
-          cat artifacts/phase6/ci-package/BUILD-PROVENANCE.json
-          cat artifacts/phase6/ci-package/SOURCE-ARCHIVE.json
+          cat "artifacts/phase6/Relocated Café App/BUILD-PROVENANCE.json"
+          cat "artifacts/phase6/Relocated Café App/SOURCE-ARCHIVE.json"

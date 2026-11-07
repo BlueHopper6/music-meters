@@ -5,7 +5,7 @@ const { randomUUID } = require('node:crypto')
 const { normalizeMixer, localVideoPath } = require('./project.cjs')
 const { exportRange } = require('./export-range.cjs')
 const { probeAudio } = require('./audio.cjs')
-const { projectAudioReference, resolveProjectAudio } = require('./project-audio.cjs')
+const { projectAudioReference, resolveProjectAudio, isForeignPlatformReference } = require('./project-audio.cjs')
 const { ffmpegExecutable, ffprobeExecutable, missingFfmpegMessage } = require('./ffmpeg.cjs')
 
 const videoOf = project => project.layers.find(layer => layer.type === 'video')
@@ -44,6 +44,7 @@ function resolveVideoReferences(project, source) {
     ? { ...layer, videoPath: resolveProjectAudio(source, layer.videoRelativePath) } : layer) }
 }
 function probeVideo(input) {
+  if (isForeignPlatformReference(input)) throw new Error('Choose a local video file')
   localVideoPath(input)
   if (!path.isAbsolute(input) || !fs.statSync(input).isFile()) throw new Error('Choose a local video file')
   let raw
@@ -138,7 +139,7 @@ function runFFmpeg(args, signal) {
   })
 }
 function fileKey(input) {
-  if (!input) return ''
+  if (!input || isForeignPlatformReference(input)) return ''
   const stat = fs.statSync(input)
   return [input, stat.size, stat.mtimeMs]
 }

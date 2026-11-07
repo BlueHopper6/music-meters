@@ -196,6 +196,14 @@ function rebrandMacHelpers(bundleDir) {
   }
 }
 
+function assertSupportedSignIdentity(signIdentity = process.env.MUSICMETERS_MACOS_SIGN_IDENTITY || '-') {
+  const resolved = typeof signIdentity === 'string' && signIdentity.trim() ? signIdentity.trim() : '-'
+  if (resolved !== '-') {
+    throw new Error('Developer ID release signing (hardened runtime, Electron entitlements, and secure timestamping) is not yet configured; only ad-hoc signing ("-") is supported for contribution builds')
+  }
+  return '-'
+}
+
 function runCodesign(targetPath, signIdentity, extraArgs = []) {
   const result = spawnSync('codesign', ['--force', '--sign', signIdentity, ...extraArgs, targetPath], {
     encoding: 'utf8',
@@ -207,6 +215,7 @@ function runCodesign(targetPath, signIdentity, extraArgs = []) {
 }
 
 function signMacBundle(bundleDir, signIdentity = process.env.MUSICMETERS_MACOS_SIGN_IDENTITY || '-') {
+  signIdentity = assertSupportedSignIdentity(signIdentity)
   const addon = path.join(bundleDir, 'Contents', 'Resources', 'app', 'upstream', 'prism', 'native', 'build', 'Release', 'visualizer_dsp.node')
   if (fs.existsSync(addon)) {
     runCodesign(addon, signIdentity)
@@ -261,29 +270,84 @@ function signMacBundle(bundleDir, signIdentity = process.env.MUSICMETERS_MACOS_S
   }
 }
 
+function packExistingMacPackage(packageDir, zipPath, options = {}) {
+  const resolvedDir = path.resolve(packageDir)
+  const resolvedZip = path.resolve(zipPath)
+  if (!fs.existsSync(resolvedDir)) {
+    throw new Error(`Package directory does not exist: ${resolvedDir}`)
+  }
+  if (fs.existsSync(resolvedZip)) {
+    throw new Error(`Archive output already exists: ${resolvedZip}`)
+  }
+  const requireSourceArchive = options.requireSourceArchive !== false
+  const bundleDir = path.join(resolvedDir, identity.macosBundleName)
+  const provenancePath = path.join(resolvedDir, 'BUILD-PROVENANCE.json')
+  const sourceArchivePath = path.join(resolvedDir, 'SOURCE-ARCHIVE.json')
+  const readmePath = path.join(resolvedDir, 'README.md')
+  if (!fs.existsSync(bundleDir)) {
+    throw new Error(`Missing ${identity.macosBundleName} in package directory: ${resolvedDir}`)
+  }
+  if (!fs.existsSync(provenancePath)) {
+    throw new Error(`Missing BUILD-PROVENANCE.json in package directory: ${resolvedDir}`)
+  }
+  if (requireSourceArchive && !fs.existsSync(sourceArchivePath)) {
+    throw new Error(`Missing SOURCE-ARCHIVE.json in package directory: ${resolvedDir} (run phase6/release-source.py before creating the final archive)`)
+  }
+  if (!fs.existsSync(readmePath)) {
+    throw new Error(`Missing README.md in package directory: ${resolvedDir}`)
+  }
+  if (process.platform !== 'darwin') {
+    throw new Error('Archiving macOS bundles with ditto requires darwin')
+  }
+  const verify = spawnSync('codesign', ['--verify', '--deep', '--strict', bundleDir], {
+    encoding: 'utf8',
+    shell: false,
+  })
+  if (verify.status !== 0) {
+    throw new Error(`codesign verification failed for ${bundleDir}: ${verify.stderr || verify.error}`)
+  }
+  fs.mkdirSync(path.dirname(resolvedZip), { recursive: true })
+  const ditto = spawnSync('ditto', ['-c', '-k', '--sequesterRsrc', resolvedDir, resolvedZip], {
+    encoding: 'utf8',
+    shell: false,
+  })
+  if (ditto.status !== 0) {
+    throw new Error(`ditto failed creating ${resolvedZip}: ${ditto.stderr || ditto.error}`)
+  }
+  return { packageDir: resolvedDir, zip: resolvedZip }
+}
+
 function parseArgs(argv) {
   let output = ''
+  let packExisting = ''
   let zip = ''
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--output' && i + 1 < argv.length) {
       output = path.resolve(argv[++i])
+    } else if (argv[i] === '--pack-existing' && i + 1 < argv.length) {
+      packExisting = path.resolve(argv[++i])
     } else if (argv[i] === '--zip' && i + 1 < argv.length) {
       zip = path.resolve(argv[++i])
     } else {
-      throw new Error('Usage on macOS: node phase6/package-macos.cjs --output <new-directory> [--zip <new-zip-path>]')
+      throw new Error('Usage on macOS: node phase6/package-macos.cjs (--output <new-directory> [--zip <new-zip-path>] | --pack-existing <package-directory> --zip <new-zip-path>)')
     }
   }
-  if (!output) {
-    throw new Error('Usage on macOS: node phase6/package-macos.cjs --output <new-directory> [--zip <new-zip-path>]')
+  if ((output && packExisting) || (!output && !packExisting) || (packExisting && !zip)) {
+    throw new Error('Usage on macOS: node phase6/package-macos.cjs (--output <new-directory> [--zip <new-zip-path>] | --pack-existing <package-directory> --zip <new-zip-path>)')
   }
-  return { output, zip }
+  return { output, packExisting, zip }
 }
 
 async function main() {
   if (process.platform !== 'darwin') {
-    throw new Error('Usage on macOS: node phase6/package-macos.cjs --output <new-directory> [--zip <new-zip-path>]')
+    throw new Error('Usage on macOS: node phase6/package-macos.cjs (--output <new-directory> [--zip <new-zip-path>] | --pack-existing <package-directory> --zip <new-zip-path>)')
   }
-  const { output, zip } = parseArgs(process.argv.slice(2))
+  const { output, packExisting, zip } = parseArgs(process.argv.slice(2))
+  if (packExisting) {
+    const packed = packExistingMacPackage(packExisting, zip, { requireSourceArchive: true })
+    console.log(JSON.stringify(packed))
+    return
+  }
   if (fs.existsSync(output)) throw new Error(`Package output already exists: ${output}`)
   if (zip && fs.existsSync(zip)) throw new Error(`Archive output already exists: ${zip}`)
 
@@ -357,7 +421,7 @@ async function main() {
     }
     for (const from of [
       'phase1/pcm-reader.cjs',
-      'phase2/editor-app/main.cjs', 'phase2/editor-app/preload.cjs',
+      'phase2/editor-app/main.cjs', 'phase2/editor-app/darwin-platform.cjs', 'phase2/editor-app/preload.cjs',
       'phase2/editor-app/index.html', 'phase2/editor-app/style.css',
       'phase2/export-app/main.cjs', 'phase2/export-app/index.html',
       'phase2/export-app/style.css',
@@ -403,7 +467,7 @@ async function main() {
       [path.join(root, 'LICENSE'), 'MUSICMETERS-LICENSE.txt'],
       [path.join(root, 'LICENSE-NOTICES.md'), 'LICENSE-NOTICES.md'],
       [path.join(root, 'phase6', 'THIRD_PARTY_NOTICES.md'), 'THIRD_PARTY_NOTICES.md'],
-      [path.join(root, 'phase6', 'PORTABLE-README.md'), 'README.md'],
+      [path.join(root, 'phase6', 'MACOS-README.md'), 'README.md'],
       [path.join(root, 'BUILD-CONFIGURATION.md'), 'BUILD-CONFIGURATION.md'],
     ]
     for (const [src, destName] of noticePairs) {
@@ -411,7 +475,7 @@ async function main() {
       fs.copyFileSync(src, path.join(resourcesDir, destName))
     }
 
-    const signIdentity = process.env.MUSICMETERS_MACOS_SIGN_IDENTITY || '-'
+    const signIdentity = assertSupportedSignIdentity(process.env.MUSICMETERS_MACOS_SIGN_IDENTITY || '-')
     signMacBundle(bundleDir, signIdentity)
 
     const sourceManifest = path.join(root, 'SOURCE-MANIFEST.json')
@@ -433,6 +497,8 @@ async function main() {
       `${bundlePrefix}/Resources/app/phase6/application.cjs`,
       `${bundlePrefix}/Resources/app/phase2/entry.cjs`,
       `${bundlePrefix}/Resources/app/phase2/editor-app/main.cjs`,
+      `${bundlePrefix}/Resources/app/phase2/editor-app/darwin-platform.cjs`,
+      'README.md',
       'BUILD-CONFIGURATION.md',
       `${bundlePrefix}/Resources/app/upstream/prism/native/build/Release/visualizer_dsp.node`,
       `${bundlePrefix}/Resources/app/artifacts/phase2/editor.js`,
@@ -447,7 +513,7 @@ async function main() {
       platform: 'darwin',
       arch: process.arch,
       minimumSystemVersion: identity.macosMinimumSystemVersion,
-      signingMode: signIdentity === '-' ? 'adhoc' : 'identity',
+      signingMode: 'adhoc',
       applicationRevision: revision,
       trackedChanges,
       prismTrackedChanges,
@@ -459,14 +525,7 @@ async function main() {
     }, null, 2) + '\n')
 
     if (zip) {
-      fs.mkdirSync(path.dirname(zip), { recursive: true })
-      const ditto = spawnSync('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', bundleDir, zip], {
-        encoding: 'utf8',
-        shell: false,
-      })
-      if (ditto.status !== 0) {
-        throw new Error(`ditto failed creating ${zip}: ${ditto.stderr || ditto.error}`)
-      }
+      packExistingMacPackage(output, zip, { requireSourceArchive: false })
     }
 
     console.log(JSON.stringify({
@@ -475,7 +534,7 @@ async function main() {
       executable: newExec,
       zip: zip || null,
       arch: process.arch,
-      signingMode: signIdentity === '-' ? 'adhoc' : 'identity',
+      signingMode: 'adhoc',
       ffmpeg: 'system PATH or Homebrew/MacPorts prerequisite',
       prismNative: nativeTarget,
     }))
@@ -499,6 +558,8 @@ module.exports = {
   buildIcnsBuffer,
   buildIcnsFromBrandAssets,
   buildInfoPlist,
+  assertSupportedSignIdentity,
   signMacBundle,
+  packExistingMacPackage,
   main,
 }

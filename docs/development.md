@@ -124,7 +124,7 @@ node phase6/package-macos.cjs --output artifacts/phase6/my-new-package --zip art
 node phase6/test/package-macos-branding.cjs artifacts/phase6/my-new-package
 ```
 
-Choose a fresh output directory that does not already exist. On Windows, launch `MusicMeters.exe` and keep the whole folder together. On macOS, launch `MusicMeters.app` (or `MusicMeters.app/Contents/MacOS/MusicMeters`) and keep the `.app` bundle together; local development builds use ad-hoc signing (`--sign -`) unless a Developer ID identity is explicitly configured. Each package includes Electron, built renderer code, runtime icons, and the pinned Prism native addon. System FFmpeg and FFprobe are required separately. See the [macOS port PRD](macos-port-prd.md) for the macOS test matrix and release gates.
+Choose a fresh output directory that does not already exist. On Windows, launch `MusicMeters.exe` and keep the whole folder together. On macOS, launch `MusicMeters.app` (or `MusicMeters.app/Contents/MacOS/MusicMeters`) and keep the package folder together; local development and CI contribution builds use ad-hoc signing (`--sign -`), and `phase6/package-macos.cjs` rejects non-ad-hoc signing identities until a dedicated Developer ID + hardened runtime release-signing implementation is configured. Each package includes Electron, built renderer code, runtime icons, and the pinned Prism native addon. System FFmpeg and FFprobe are required separately. See the [macOS port PRD](macos-port-prd.md) for the macOS test matrix and release gates.
 
 Work files and export analysis caches use the current user's temp directory. Tests and development can redirect profiles/caches to isolated locations. Export checks estimated workspace needs and removes partial output after cancellation or failure.
 

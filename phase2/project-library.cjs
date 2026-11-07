@@ -5,7 +5,7 @@ const { normalizeProject } = require('./project.cjs')
 const { imagePaths, readImage, resolveArtwork, saveArtwork } = require('./assets.cjs')
 const { isDarwinRootSystemSymlink, samePath, prepareStoredMedia, renameLocal } = require('./media-storage.cjs')
 const { projectSaveName } = require('./project-path.cjs')
-const { resolveProjectAudio, projectAudioReference } = require('./project-audio.cjs')
+const { resolveProjectAudio, projectAudioReference, isForeignPlatformReference } = require('./project-audio.cjs')
 const { saveVideoReferences, resolveVideoReferences } = require('./project-media.cjs')
 const OWNED_MEDIA = '.musicmeters-owned-media'
 
@@ -87,6 +87,7 @@ function renameLibraryProject(source, title) {
   const next = structuredClone(snapshot.stored)
   next.title = title.trim()
   const movedReference = original => {
+    if (!original || isForeignPlatformReference(original)) return original
     const relative = path.relative(root, original)
     if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) return original
     return path.join(destination, relative.startsWith(oldAssets + path.sep) ? newAssets + relative.slice(oldAssets.length) : relative)
@@ -98,14 +99,14 @@ function renameLibraryProject(source, title) {
     for (const layer of next.layers) if (layer.type === 'image') layer.imagePath = rewrite(layer.imagePath, layer.storage)
   }
   const audio = snapshot.project.audioPath
-  const relativeAudio = audio ? path.relative(root, audio) : ''
-  const audioInside = audio && relativeAudio !== '..' && !relativeAudio.startsWith('..' + path.sep) && !path.isAbsolute(relativeAudio)
+  const relativeAudio = audio && !isForeignPlatformReference(audio) ? path.relative(root, audio) : ''
+  const audioInside = Boolean(audio && !isForeignPlatformReference(audio) && relativeAudio !== '..' && !relativeAudio.startsWith('..' + path.sep) && !path.isAbsolute(relativeAudio))
   const movedRelative = relative => relative.startsWith(oldAssets + path.sep) ? newAssets + relative.slice(oldAssets.length) : relative
   next.audioRelativePath = projectAudioReference(target, audioInside ? path.join(destination, movedRelative(relativeAudio)) : audio)
   for (const layer of next.layers) if (layer.type === 'video') {
     const original = snapshot.project.layers.find(item => item.id === layer.id).videoPath
-    const relative = original ? path.relative(root, original) : ''
-    const inside = original && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)
+    const relative = original && !isForeignPlatformReference(original) ? path.relative(root, original) : ''
+    const inside = Boolean(original && !isForeignPlatformReference(original) && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative))
     layer.videoRelativePath = projectAudioReference(target, inside ? path.join(destination, movedRelative(relative)) : original)
   }
   const manifestPath = path.join(root, OWNED_MEDIA)
@@ -176,12 +177,12 @@ async function copyLibraryProject(source, target, title, onCopied = () => {}) {
   assertLocal(path.dirname(root))
   const originals = [{ path: source, bytes: snapshot.bytes }]
   const linked = new Set()
-  if (snapshot.project.audioStorage !== 'copy') linked.add(snapshot.project.audioPath)
+  if (snapshot.project.audioStorage !== 'copy' || isForeignPlatformReference(snapshot.project.audioPath)) linked.add(snapshot.project.audioPath)
   if (snapshot.project.version === 2) {
-    if (snapshot.project.background.storage === 'link') linked.add(snapshot.project.background.imagePath)
+    if (snapshot.project.background.storage === 'link' || isForeignPlatformReference(snapshot.project.background.imagePath)) linked.add(snapshot.project.background.imagePath)
     for (const layer of snapshot.project.layers) {
-      if (layer.type==='image' && layer.storage==='link') linked.add(layer.imagePath)
-      if (layer.type==='video' && layer.storage!=='copy') linked.add(layer.videoPath)
+      if (layer.type==='image' && (layer.storage==='link' || isForeignPlatformReference(layer.imagePath))) linked.add(layer.imagePath)
+      if (layer.type==='video' && (layer.storage!=='copy' || isForeignPlatformReference(layer.videoPath))) linked.add(layer.videoPath)
     }
   }
   let bytesNeeded = BigInt(snapshot.bytes.length)
