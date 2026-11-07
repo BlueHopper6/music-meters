@@ -76,7 +76,8 @@ function verifyMacBranding(directory) {
 
     const otool = spawnSync('otool', ['-L', addon], { encoding: 'utf8', shell: false })
     assert.equal(otool.status, 0)
-    assert.doesNotMatch(otool.stdout, /\/Users\/|\/opt\/homebrew\/|\/usr\/local\//, `Native addon links non-system path: ${otool.stdout}`)
+    const linkedLibs = otool.stdout.trim().split(/\r?\n/).slice(1).join('\n')
+    assert.doesNotMatch(linkedLibs, /\/Users\/|\/opt\/homebrew\/|\/usr\/local\//, `Native addon links non-system path: ${linkedLibs}`)
   }
 
   console.log(JSON.stringify({

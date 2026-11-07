@@ -213,22 +213,37 @@ function signMacBundle(bundleDir, signIdentity = process.env.MUSICMETERS_MACOS_S
   }
   const frameworksDir = path.join(bundleDir, 'Contents', 'Frameworks')
   if (fs.existsSync(frameworksDir)) {
-    const librariesDir = path.join(frameworksDir, 'Electron Framework.framework', 'Versions', 'A', 'Libraries')
-    if (fs.existsSync(librariesDir)) {
-      for (const name of fs.readdirSync(librariesDir)) {
-        if (name.endsWith('.dylib')) {
-          runCodesign(path.join(librariesDir, name), signIdentity)
+    for (const entry of fs.readdirSync(frameworksDir)) {
+      if (!entry.endsWith('.framework')) continue
+      const fwPath = path.join(frameworksDir, entry)
+      const librariesDir = path.join(fwPath, 'Versions', 'A', 'Libraries')
+      if (fs.existsSync(librariesDir)) {
+        for (const name of fs.readdirSync(librariesDir)) {
+          const libPath = path.join(librariesDir, name)
+          if (fs.lstatSync(libPath).isFile()) {
+            runCodesign(libPath, signIdentity)
+          }
         }
       }
-    }
-    const crashpad = path.join(frameworksDir, 'Electron Framework.framework', 'Versions', 'A', 'Helpers', 'chrome_crashpad_handler')
-    if (fs.existsSync(crashpad)) {
-      runCodesign(crashpad, signIdentity)
-    }
-    for (const entry of fs.readdirSync(frameworksDir)) {
-      if (entry.endsWith('.framework')) {
-        runCodesign(path.join(frameworksDir, entry), signIdentity)
+      const helpersDir = path.join(fwPath, 'Versions', 'A', 'Helpers')
+      if (fs.existsSync(helpersDir)) {
+        for (const name of fs.readdirSync(helpersDir)) {
+          const helperPath = path.join(helpersDir, name)
+          if (fs.lstatSync(helperPath).isFile()) {
+            runCodesign(helperPath, signIdentity)
+          }
+        }
       }
+      const resourcesDir = path.join(fwPath, 'Versions', 'A', 'Resources')
+      if (fs.existsSync(resourcesDir)) {
+        for (const name of fs.readdirSync(resourcesDir)) {
+          const resPath = path.join(resourcesDir, name)
+          if (name === 'ShipIt' && fs.lstatSync(resPath).isFile()) {
+            runCodesign(resPath, signIdentity)
+          }
+        }
+      }
+      runCodesign(fwPath, signIdentity)
     }
     for (const entry of fs.readdirSync(frameworksDir)) {
       if (entry.endsWith('.app')) {
