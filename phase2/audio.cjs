@@ -1,14 +1,16 @@
 const { execFileSync } = require('node:child_process')
 const { PcmReader } = require('../phase1/pcm-reader.cjs')
+const { ffprobeExecutable, missingFfmpegMessage } = require('./ffmpeg.cjs')
 
 function probeAudio(input) {
   let raw
   try {
-    raw = execFileSync('ffprobe', [
+    raw = execFileSync(ffprobeExecutable(), [
       '-v', 'error', '-show_entries', 'stream=codec_type,codec_name,channels,sample_rate,duration:format=duration',
       '-of', 'json', input,
     ], { encoding: 'utf8', maxBuffer: 1024 * 1024 })
   } catch (error) {
+    if (error && error.code === 'ENOENT') throw new Error(missingFfmpegMessage('FFprobe'))
     throw new Error(`Could not read audio metadata: ${error.stderr?.toString().trim() || error.message}`)
   }
   const data = JSON.parse(raw)

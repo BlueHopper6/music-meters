@@ -1,0 +1,142 @@
+name: macOS build and synthetic export
+
+on:
+  push:
+    branches: [main, 'feature/macos-*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: macOS (${{ matrix.arch }} on ${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Record runner and toolchain metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          sw_vers
+          uname -m
+          sysctl -n hw.optional.arm64 || true
+          node -v
+          node -e '
+            const expected = process.argv[1];
+            const info = { platform: process.platform, arch: process.arch, versions: process.versions };
+            console.log(JSON.stringify(info, null, 2));
+            if (process.platform !== "darwin" || process.arch !== expected) {
+              throw new Error(`Expected darwin/${expected}, got ${process.platform}/${process.arch}`);
+            }
+          ' "${{ matrix.arch }}"
+          xcodebuild -version || true
+          xcrun --show-sdk-version
+          clang --version
+          python3 --version
+      - name: Prepare FFmpeg
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+            HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install ffmpeg
+          fi
+          ffmpeg -version
+          ffprobe -version
+      - name: Prepare pinned Prism
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/Boof2015/prism.git upstream/prism
+          git -C upstream/prism checkout 49721802252b115d169e353c98b27408daa5e2b7
+          pushd phase6/build-tools
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm audit --audit-level=low
+          popd
+          node phase6/build-native.cjs
+          file upstream/prism/native/build/Release/visualizer_dsp.node
+          otool -L upstream/prism/native/build/Release/visualizer_dsp.node
+      - name: Prepare locked Electron runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          pushd phase6/electron-runtime
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm audit --audit-level=low
+          node node_modules/electron/install.js
+          popd
+      - name: Build and unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 phase1/make-fixtures.py
+          node phase2/build.cjs
+          node phase6/build-tools/node_modules/typescript/lib/tsc.js --noEmit --strict --skipLibCheck --allowJs --checkJs false --target es2022 --module esnext --moduleResolution bundler --lib es2022,dom,dom.iterable --typeRoots phase6/build-tools/node_modules/@types --types node upstream/prism/src/renderer/env.d.ts phase2/composition.ts phase2/editor.ts phase2/export-renderer.ts
+          node --test phase2/test/macos-support.test.cjs phase2/test/project-thumbnails.test.cjs phase2/test/waveform-channels.test.cjs phase2/test/still-output.test.cjs phase6/test/space.test.cjs phase6/test/window-security.test.cjs phase5/test/templates.test.cjs phase2/test/template-thumbnail.test.cjs phase2/test/project.test.cjs phase2/test/stage-geometry.test.cjs phase2/test/audio-output.test.cjs phase4/test/assets.test.cjs phase2/test/fonts.test.cjs phase1/test/pcm-reader.test.cjs phase3/test/vectorscope-correlation.test.cjs phase3/test/spectrum-payload.test.cjs phase2/test/user-message.test.cjs
+          node --test phase2/test/playback-media.test.cjs phase2/test/timecode.test.cjs
+          node --test phase2/test/project-history.test.cjs phase2/test/project-library.test.cjs phase2/test/project-audio.test.cjs phase2/test/recent-projects.test.cjs
+          node --test phase2/test/export-range.test.cjs phase2/test/project-media.test.cjs phase2/test/video-frames.test.cjs phase2/test/media-storage.test.cjs phase2/test/meter-style.test.cjs
+      - name: macOS application bundle and packaged smokes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node phase6/package-macos.cjs --output artifacts/phase6/ci-package --zip "artifacts/phase6/MusicMeters-macos-${{ matrix.arch }}.zip"
+          node phase6/test/package-macos-branding.cjs artifacts/phase6/ci-package
+          node phase6/test/run-project-thumbnails.cjs artifacts/phase6/ci-package artifacts/phase6/ci-project-thumbnails
+          node phase6/test/run-video-transform.cjs artifacts/phase6/ci-package artifacts/phase6/ci-video-transform
+          node phase6/test/run-export-range.cjs artifacts/phase6/ci-package artifacts/phase6/ci-export-range
+          node phase6/test/run-layer-snapping.cjs artifacts/phase6/ci-package artifacts/phase6/ci-layer-snapping
+          node phase2/test/run-startup-smoke.cjs --package artifacts/phase6/ci-package
+          node phase2/test/run-portrait-smoke.cjs --package artifacts/phase6/ci-package artifacts/phase6/ci-portrait
+          node phase6/test/run-user-feedback.cjs artifacts/phase6/ci-package artifacts/phase6/ci-user-feedback
+          node phase6/test/run-media-storage.cjs artifacts/phase6/ci-package artifacts/phase6/ci-media-storage
+          node phase6/test/run-meter-style.cjs artifacts/phase6/ci-package artifacts/phase6/ci-meter-style
+          node phase6/test/run-media-quality.cjs artifacts/phase6/ci-package artifacts/phase6/ci-media-quality
+          node phase2/test/run-history-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-history
+          node phase2/test/run-playback-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-playback
+          node phase6/test/package-smoke.cjs artifacts/phase6/ci-package artifacts/phase6/ci-smoke
+          node phase6/test/run-security.cjs artifacts/phase6/ci-package artifacts/phase6/ci-security
+          node phase6/test/run-repeat.cjs --package artifacts/phase6/ci-package artifacts/phase6/ci-editor-smoke
+          node phase6/test/audio-copy.cjs artifacts/phase6/ci-package artifacts/phase6/ci-audio-copy
+          node phase6/test/run-audio-copy-editor.cjs artifacts/phase6/ci-package artifacts/phase6/ci-audio-copy-editor
+          node phase6/test/audio-matrix.cjs artifacts/phase6/ci-package artifacts/phase6/ci-audio-matrix
+          node phase6/test/run-preview-performance.cjs artifacts/phase6/ci-package artifacts/phase6/ci-preview-performance
+      - name: Matching source archive, extracted rebuild, and bundle relocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 phase6/release-source.py --package artifacts/phase6/ci-package --output artifacts/phase6/ci-source.zip
+          python3 phase6/test/source-archive.py artifacts/phase6/ci-package artifacts/phase6/ci-source.zip artifacts/phase6/ci-extracted
+          pushd artifacts/phase6/ci-extracted/musicmeters/phase6/build-tools
+          npm ci --ignore-scripts --no-audit --no-fund
+          popd
+          node artifacts/phase6/ci-extracted/musicmeters/phase6/build-native.cjs
+          pushd artifacts/phase6/ci-extracted/musicmeters/phase6/electron-runtime
+          npm ci --ignore-scripts --no-audit --no-fund
+          node node_modules/electron/install.js
+          popd
+          pushd artifacts/phase6/ci-extracted/musicmeters
+          python3 phase1/make-fixtures.py
+          node phase2/build.cjs
+          node phase6/package-macos.cjs --output ../../ci-rebuilt-package --zip "../../ci-rebuilt-MusicMeters-macos-${{ matrix.arch }}.zip"
+          node phase6/test/package-macos-branding.cjs ../../ci-rebuilt-package
+          node phase6/test/package-smoke.cjs ../../ci-rebuilt-package ../../ci-rebuilt-smoke
+          popd
+          mkdir -p "artifacts/phase6/Relocated Café App"
+          ditto -x -k "artifacts/phase6/MusicMeters-macos-${{ matrix.arch }}.zip" "artifacts/phase6/Relocated Café App"
+          codesign --verify --deep --strict "artifacts/phase6/Relocated Café App/MusicMeters.app"
+          node phase6/test/run-security.cjs "artifacts/phase6/Relocated Café App" artifacts/phase6/ci-relocated-security
+          shasum -a 256 "artifacts/phase6/MusicMeters-macos-${{ matrix.arch }}.zip" artifacts/phase6/ci-source.zip
+          cat artifacts/phase6/ci-package/BUILD-PROVENANCE.json
+          cat artifacts/phase6/ci-package/SOURCE-ARCHIVE.json

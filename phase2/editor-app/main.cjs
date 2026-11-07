@@ -1,10 +1,10 @@
-const { app, BrowserWindow, dialog, ipcMain, protocol, shell } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, shell } = require('electron')
 const { join, resolve, dirname, basename, extname, isAbsolute } = require('node:path')
 const { spawn } = require('node:child_process')
 const { Worker } = require('node:worker_threads')
 const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
-const { prepareStoredMedia, writeAtomic } = require('../media-storage.cjs')
+const { prepareStoredMedia, samePath, writeAtomic } = require('../media-storage.cjs')
 const { jobPath } = require('../runtime.cjs')
 const { resolveProjectAudio, projectAudioReference } = require('../project-audio.cjs')
 const { defaultProject, compositionProject, normalizeProject } = require('../project.cjs')
@@ -172,14 +172,19 @@ function validateActiveProject(raw, restoring = false) {
   return normalized
 }
 
-function currentMediaInfo(value) {
+function availableMediaProject(value) {
   const available = { ...value, audioPath: value.audioPath && fs.existsSync(value.audioPath) ? value.audioPath : '',
     layers: value.layers.filter(layer => layer.type !== 'video' || layer.videoPath && fs.existsSync(layer.videoPath)) }
-  // Keep missing references in the project; metadata describes available sources.
-  if (!available.audioPath && !videoOf(available)?.videoPath) return null
   const mode = value.mixer?.durationMode
   const missingDurationSource = mode === 'video' && !videoOf(available)?.videoPath || mode === 'audio' && !available.audioPath
-  return mediaPlan({ ...available, mixer: { ...value.mixer, ...(missingDurationSource ? { durationMode: 'longest' } : {}) } })?.metadata || null
+  return { ...available, mixer: { ...value.mixer, ...(missingDurationSource ? { durationMode: 'longest' } : {}) } }
+}
+
+function currentMediaInfo(value) {
+  const available = availableMediaProject(value)
+  // Keep missing references in the project; metadata describes available sources.
+  if (!available.audioPath && !videoOf(available)?.videoPath) return null
+  return mediaPlan(available)?.metadata || null
 }
 handle('media-info', (_event, raw) => {
   const value = validateActiveProject(raw)
@@ -242,13 +247,13 @@ const isAutomatedTest = Boolean(
   process.env.PHASE2_SMOKE
 )
 
-handle('initial', () => ({ project, metadata, projectPath, fonts: installedFonts(),
+handle('initial', () => ({ platform: process.platform, project, metadata, projectPath, fonts: installedFonts(),
   templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project),
   isStartupSession: process.env.PHASE2_STARTUP_SMOKE === '1' || !isAutomatedTest,
   isAutomatedTest: Boolean(isAutomatedTest) }))
 handle('get-recent-projects', () => availableRecentProjects(userData()))
 function assertRecentThumbnailPath(input) {
-  if (typeof input !== 'string' || !readPreferences(userData()).recentProjects.some(item => item.path.toLowerCase() === input.toLowerCase())) throw new Error('Project is not in recent projects')
+  if (typeof input !== 'string' || !readPreferences(userData()).recentProjects.some(item => samePath(item.path, input))) throw new Error('Project is not in recent projects')
   return resolve(input)
 }
 async function thumbnailSource(value, frame) {
@@ -421,7 +426,7 @@ handle('preview-at', async (_event, frame, raw) => {
   const value = validateActiveProject(raw)
   cancelPreview()
   const id = previewGeneration
-  const prepared = await mediaCache.prepare(value)
+  const prepared = await mediaCache.prepare(availableMediaProject(value))
   if (id !== previewGeneration) return { superseded: true }
   const worker = getPreviewWorker()
   return new Promise((resolve, reject) => {
@@ -440,7 +445,7 @@ handle('prepare-playback', async (_event, raw, frame) => {
   assetData(value)
   cancelPreview()
   const generation = ++playbackRequest
-  const prepared = await mediaCache.prepare(value)
+  const prepared = await mediaCache.prepare(availableMediaProject(value))
   if (generation !== playbackRequest) return { superseded: true }
   const result = await playbackVideo.open({ ...value, audioPath: prepared.analysisPath }, prepared.metadata, frame, prepared.outputPath)
   return { ...result, peak: prepared.peak }
@@ -573,12 +578,12 @@ handle('manage-project', async (_event, source, action, name = '') => {
     if (action === 'delete') {
       const choice = await dialog.showMessageBox(win, { type: 'warning', title: 'Delete project',
         message: `Delete “${original.project.title || basename(source, '.json')}”?`,
-        detail: `${source}\n\nThe project and its recorded copied media will go to the Recycle Bin. Original media and unrelated files will be kept.`,
+        detail: `${source}\n\nThe project and its recorded copied media will go to the ${process.platform === 'darwin' ? 'Trash' : 'Recycle Bin'}. Original media and unrelated files will be kept.`,
         buttons: ['Cancel', 'Delete project'], defaultId: 0, cancelId: 0, noLink: true })
       if (choice.response !== 1) return null
       const deleted = await deleteLibraryProject(source, folder => shell.trashItem(folder))
       const current = readPreferences(userData())
-      writePreferences(userData(), { recentProjects: current.recentProjects.filter(item => item.path.toLowerCase() !== source.toLowerCase()) })
+      writePreferences(userData(), { recentProjects: current.recentProjects.filter(item => !samePath(item.path, source)) })
       return deleted
     }
     const folder = dirname(source)
@@ -598,7 +603,7 @@ handle('manage-project', async (_event, source, action, name = '') => {
       try { removeOriginalProject(copied) }
       catch (error) { throw new Error(`Copy is available at ${target}. Move did not finish: ${error.message}`) }
       const current = readPreferences(userData())
-      writePreferences(userData(), { recentProjects: current.recentProjects.filter(item => item.path.toLowerCase() !== source.toLowerCase()) })
+      writePreferences(userData(), { recentProjects: current.recentProjects.filter(item => !samePath(item.path, source)) })
     }
     return { path: copied.path, name: copied.name }
   } catch (error) {
@@ -737,18 +742,36 @@ handle('confirm-app-close', () => {
   forceQuit = true
   if (win && !win.isDestroyed()) win.close()
 })
+let restoreBounds = null
+function maximizeEditorWindow(targetWin = win) {
+  if (!targetWin || targetWin.isDestroyed()) return
+  restoreBounds = targetWin.getBounds()
+  targetWin.maximize()
+  if (process.platform === 'darwin' && !targetWin.isMaximized()) {
+    const display = screen.getDisplayMatching(targetWin.getBounds()) || screen.getPrimaryDisplay()
+    targetWin.setBounds(display.workArea)
+  }
+  targetWin.webContents.send('window-state', windowState())
+}
+
 handle('toggle-window-fullscreen', () => {
-  win.setFullScreen(!win.isFullScreen())
+  if (win && !win.isDestroyed()) win.setFullScreen(!win.isFullScreen())
 })
-const windowState = () => ({ fullscreen: win.isFullScreen(), maximized: win.isMaximized() })
+const windowState = () => ({ fullscreen: Boolean(win && !win.isDestroyed() && win.isFullScreen()), maximized: Boolean(win && !win.isDestroyed() && win.isMaximized()) })
 handle('window-state', windowState)
-handle('minimize-window', () => win.minimize())
+handle('minimize-window', () => { if (win && !win.isDestroyed()) win.minimize() })
 handle('maximize-window', () => {
+  if (!win || win.isDestroyed()) return
   if (win.isFullScreen()) win.setFullScreen(false)
-  else if (win.isMaximized()) win.unmaximize()
-  else win.maximize()
+  else if (win.isMaximized()) {
+    win.unmaximize()
+    if (process.platform === 'darwin' && win.isMaximized()) {
+      win.setBounds(restoreBounds || { x: 80, y: 80, width: 1480, height: 900 })
+    }
+    win.webContents.send('window-state', windowState())
+  } else maximizeEditorWindow(win)
 })
-handle('close-window', () => win.close())
+handle('close-window', () => { if (win && !win.isDestroyed()) win.close() })
 handle('cancel-render', () => {
   if (exportJob) fs.writeFileSync(exportJob.cancelFile, 'cancel')
 })
@@ -767,19 +790,54 @@ app.whenReady().then(() => {
     previewAudioRevision++
   }
   win = new BrowserWindow({
-    titleBarStyle: 'hidden',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 12 } } : {}),
     backgroundColor: '#09090b',
     width: 1480, height: 900, minWidth: 1000, minHeight: 700,
-    icon: join(__dirname, 'assets', 'brand', 'music-meters.ico'),
+    icon: join(__dirname, 'assets', 'brand', process.platform === 'darwin' ? 'icon-64.png' : 'music-meters.ico'),
     show: false,
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true,
       nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   })
   win.once('ready-to-show', () => {
-    if (process.env.PHASE2_HEADLESS !== '1') { win.maximize(); win.show() }
+    if (process.env.PHASE2_HEADLESS !== '1') {
+      if (process.platform === 'darwin') {
+        win.show()
+        maximizeEditorWindow(win)
+      } else {
+        win.maximize()
+        win.show()
+      }
+    }
   })
-  win.setMenuBarVisibility(false)
-  win.setMenu(null)
+  if (process.platform === 'darwin') {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      {
+        label: identity.productName,
+        submenu: [
+          { role: 'about', label: `About ${identity.productName}` },
+          { type: 'separator' },
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          {
+            label: `Quit ${identity.productName}`,
+            accelerator: 'CommandOrControl+Q',
+            click: () => { if (win && !win.isDestroyed()) win.close(); else app.quit() },
+          },
+        ],
+      },
+      { role: 'editMenu' },
+      { role: 'viewMenu' },
+      { role: 'windowMenu' },
+    ]))
+  } else {
+    win.setMenuBarVisibility(false)
+    win.setMenu(null)
+  }
   for (const event of ['enter-full-screen', 'leave-full-screen', 'maximize', 'unmaximize']) {
     win.on(event, () => win.webContents.send('window-state', windowState()))
   }
@@ -836,6 +894,13 @@ app.whenReady().then(() => {
     }
   })
 }).catch(error => { console.error(error); app.exit(1) })
+app.on('activate', () => {
+  if (win && !win.isDestroyed()) {
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+  }
+})
 app.on('window-all-closed', () => app.quit())
 app.on('before-quit', event => {
   if (projectManagementRunning) { event.preventDefault(); quitAfterProjectManagement = true; return }

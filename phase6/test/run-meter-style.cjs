@@ -12,7 +12,7 @@ async function main(){
   layers[0].multiband=true;layers[1].showSideLine=true;layers[2].underfillEnabled=true;layers[4].multiband=true;layers[7].colorMode='heat'
   fs.writeFileSync(file,JSON.stringify({...project.compositionProject(),title:'Meter styling',audioPath:undefined,audioRelativePath:'song.wav',layers}))
   const fd=fs.openSync(path.join(dir,'editor.log'),'wx')
-  const child=spawn(packagedExecutable(path.resolve(process.argv[2])),[],{env:{...process.env,TEMP:path.join(dir,'temp'),TMP:path.join(dir,'temp'),PHASE2_HEADLESS:'1',PHASE2_TEST_INPUT:audio,PHASE2_TEST_PROJECT_PATH:file,PHASE2_TEST_OUTPUT_PATH:output,PHASE5_TEST_USER_DATA:path.join(dir,'profile'),MUSICMETERS_STYLE_SMOKE:'1',MUSICMETERS_STYLE_DIR:dir},stdio:['ignore',fd,fd],windowsHide:true})
+  const child=spawn(packagedExecutable(path.resolve(process.argv[2])),[],{env:{...process.env,TEMP:path.join(dir,'temp'),TMP:path.join(dir,'temp'),TMPDIR:path.join(dir,'temp'),PHASE2_HEADLESS:'1',PHASE2_TEST_INPUT:audio,PHASE2_TEST_PROJECT_PATH:file,PHASE2_TEST_OUTPUT_PATH:output,PHASE5_TEST_USER_DATA:path.join(dir,'profile'),MUSICMETERS_STYLE_SMOKE:'1',MUSICMETERS_STYLE_DIR:dir},stdio:['ignore',fd,fd],windowsHide:true})
   const code=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{child.kill();reject(new Error('Meter style smoke timed out'))},300000);child.once('error',reject);child.once('close',code=>{clearTimeout(timer);resolve(code)})})
   fs.closeSync(fd);const log=fs.readFileSync(path.join(dir,'editor.log'),'utf8');assert.equal(code,0,log);assert.match(log,/"event":"meter-style-pass"/)
   const pixels=input=>run('ffmpeg',['-v','error','-i',input,'-frames:v','1','-pix_fmt','rgb24','-f','rawvideo','pipe:1'])

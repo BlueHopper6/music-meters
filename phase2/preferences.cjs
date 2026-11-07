@@ -1,5 +1,6 @@
 const fs = require('node:fs')
 const path = require('node:path')
+const { samePath } = require('./media-storage.cjs')
 
 function recentProjectName(projectPath, name) {
   const supplied = typeof name === 'string' ? name.trim() : ''
@@ -69,7 +70,7 @@ function recordRecentProject(userData, projectPath, projectName = '') {
   const current = readPreferences(userData)
   const resolved = path.resolve(projectPath)
   const name = recentProjectName(resolved, projectName)
-  const filtered = current.recentProjects.filter(p => path.resolve(p.path) !== resolved)
+  const filtered = current.recentProjects.filter(p => !samePath(p.path, resolved))
   filtered.unshift({ path: resolved, name, lastOpened: Date.now() })
   return writePreferences(userData, { recentProjects: filtered.slice(0, 10) })
 }

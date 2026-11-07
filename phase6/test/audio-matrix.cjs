@@ -17,10 +17,16 @@ async function exportCase(executable, dir, name, input, options = {}) {
   const project = options.project || { ...defaultProject(), title: name, layers: [spectrumLayer()], audioPath: input }
   const logPath = path.join(dir, `${name}.log`)
   const log = fs.openSync(logPath, 'w')
-  const child = spawn(executable, [], { env: { ...process.env, PHASE2_JOB: JSON.stringify({
-    project, output, preset: '720p', cancelFile: path.join(dir, `${name}.cancel`),
-    cancelAfterFrames: options.cancelAfterFrames,
-  }) }, stdio: ['ignore', log, log], shell: false, windowsHide: true })
+  const tempDir = path.join(dir, 'temp')
+  fs.mkdirSync(tempDir, { recursive: true })
+  const child = spawn(executable, [], { env: { ...process.env,
+    TEMP: tempDir, TMP: tempDir, TMPDIR: tempDir,
+    PHASE5_TEST_USER_DATA: path.join(dir, 'user-data'),
+    PHASE2_JOB: JSON.stringify({
+      project, output, preset: '720p', cancelFile: path.join(dir, `${name}.cancel`),
+      cancelAfterFrames: options.cancelAfterFrames,
+    }),
+  }, stdio: ['ignore', log, log], shell: false, windowsHide: true })
   const code = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => { child.kill(); reject(new Error(`${name} timed out`)) }, 180000)
     child.once('error', error => { clearTimeout(timer); reject(error) })

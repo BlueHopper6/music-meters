@@ -7,7 +7,7 @@ import { renderTemplateThumbnail, clearTemplateThumbnails } from './template-thu
 import { Composition, decodeAnalysis, type AnalysisFrame, type Project, type VectorscopeLayer, type SpectrumLayer,
   type OscilloscopeLayer, type SpectrogramLayer, type WaveformLayer, type VuLayer, type LoudnessLayer, type WaterfallLayer,
   type ImageLayer, type TextLayer, type Background, type VideoLayer, type Mixer } from './composition'
-import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject, fitLayer, orientProject, exportDimensions } from './project.cjs'
+import { defaultProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, textLayer, normalizeProject, fitLayer, orientProject, exportDimensions, canvasFontStack } from './project.cjs'
 import { move as moveOnStage, resize as resizeOnStage } from './stage-geometry.cjs'
 import { installCommandMenus } from './command-menus'
 import { installVideoPreview, type LiveFrame } from './video-preview'
@@ -23,7 +23,7 @@ type TemplateEntry = { id: string; name: string; builtIn: boolean }
 type MissingMedia = { kind: 'audio' | 'background' | 'layer' | 'video'; id?: string; label: string; path: string }
 type RecentProject = { path: string; name: string; lastOpened: number }
 type ProjectAction = 'rename' | 'move' | 'copy' | 'delete'
-type Initial = { project: Project; metadata: Metadata | null; projectPath: string | null; fonts: string[];
+type Initial = { platform?: string; project: Project; metadata: Metadata | null; projectPath: string | null; fonts: string[];
   templates: TemplateEntry[]; preferences: { exportPreset: string; lastTemplateId: string; recentProjects?: RecentProject[] };
   missingMedia: MissingMedia[]; isStartupSession?: boolean; isAutomatedTest?: boolean }
 type Desktop = {
@@ -594,7 +594,10 @@ function refreshLayers() {
 function syncFontPreview() {
   const select = $<HTMLSelectElement>('text-font')
   const menu = $('text-font-menu')
-  const formatFamily = (name: string) => `"${name.replace(/["\\]/g, '')}", sans-serif`
+  const formatFamily = (name: string) => {
+    try { return `${canvasFontStack(name)}, sans-serif` }
+    catch { return `"${name.replace(/["\\]/g, '')}", sans-serif` }
+  }
   const active = (select.value || '').trim()
   select.style.fontFamily = active ? formatFamily(active) : ''
   select.title = active
@@ -608,7 +611,8 @@ function setInstalledFonts(fonts: string[]) {
   const select = $<HTMLSelectElement>('text-font')
   select.replaceChildren(...fonts.map(family => {
     const option = new Option(family, family)
-    option.style.fontFamily = `"${family.replace(/["\\]/g, '')}", sans-serif`
+    try { option.style.fontFamily = `${canvasFontStack(family)}, sans-serif` }
+    catch { option.style.fontFamily = `"${family.replace(/["\\]/g, '')}", sans-serif` }
     return option
   }))
   syncFontPreview()
@@ -773,6 +777,13 @@ function refreshInspector() {
   }
   if (layer?.type !== 'text') $('text-font-menu').hidden = true
   if (layer?.type === 'text') {
+    const fontSelect = $<HTMLSelectElement>('text-font')
+    if (layer.fontFamily && !Array.from(fontSelect.options).some(opt => opt.value === layer.fontFamily)) {
+      const option = new Option(layer.fontFamily, layer.fontFamily)
+      try { option.style.fontFamily = `${canvasFontStack(layer.fontFamily)}, sans-serif` }
+      catch { option.style.fontFamily = `"${layer.fontFamily.replace(/["\\]/g, '')}", sans-serif` }
+      fontSelect.add(option)
+    }
     for (const [id, value] of [['text-content', layer.text], ['text-font', layer.fontFamily],
       ['text-size', layer.fontSize], ['text-weight', layer.fontWeight], ['text-align', layer.align],
       ['text-rotation', layer.rotation], ['text-shadow', layer.shadow]] as const) {
@@ -2615,7 +2626,8 @@ async function deleteRecentProject(item: RecentProject, focus: HTMLElement) {
     const result = await window.desktop.manageProject(item.path, 'delete')
     if (!result) { setStatus('Delete cancelled. No changes made.'); return }
     await refreshRecentProjects()
-    setStatus(`Moved project and copied media to the Recycle Bin: ${result.name}`)
+    const trashLabel = document.body.classList.contains('platform-darwin') ? 'Trash' : 'Recycle Bin'
+    setStatus(`Moved project and copied media to the ${trashLabel}: ${result.name}`)
   } catch (error) { await refreshRecentProjects(); setStatus(projectActionMessage(error)) }
   finally {
     projectActionBusy = false; $('project-manager-screen').inert = false
@@ -2923,8 +2935,27 @@ document.addEventListener('pointerdown', event => {
     closeAddLayerMenu()
   }
 })
+function applyPlatformChrome(platform?: string) {
+  const isMac = platform === 'darwin'
+  document.body.classList.toggle('platform-darwin', isMac)
+  if (!isMac) return
+  for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>('.window-controls button'))) {
+    button.tabIndex = -1
+    button.setAttribute('aria-hidden', 'true')
+  }
+  for (const kbd of Array.from(document.querySelectorAll<HTMLElement>('.command-popup kbd'))) {
+    const text = (kbd.textContent || '').trim()
+    if (text === 'Ctrl+Y') kbd.textContent = 'Cmd+Shift+Z'
+    else if (text.startsWith('Ctrl+')) kbd.textContent = `Cmd+${text.slice(5)}`
+  }
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>('[title*="Ctrl+"]'))) {
+    el.title = el.title.replace(/Ctrl\+Y/g, 'Cmd+Shift+Z').replace(/Ctrl\+/g, 'Cmd+')
+  }
+}
+
 async function start() {
   const initial = await window.desktop.initial()
+  applyPlatformChrome(initial.platform)
   isAutomatedTestSession = Boolean(initial.isAutomatedTest)
   project = normalizeProject(initial.project) as Project
   setInstalledFonts(initial.fonts)
@@ -3146,6 +3177,11 @@ for (const [id, close] of [['export-modal', closeExportDialog], ['about-modal', 
   })
 }
 window.addEventListener('keydown', event => {
+  if (event.ctrlKey && event.metaKey && !event.altKey && !event.shiftKey && !event.repeat && event.key.toLowerCase() === 'f') {
+    event.preventDefault()
+    void window.desktop.toggleWindowFullscreen().catch(error => setStatus(String(error)))
+    return
+  }
   if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && !event.repeat) {
     const command = event.key.toLowerCase()
     if (command === 'q') {

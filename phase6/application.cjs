@@ -5,4 +5,6 @@ module.exports = {
   version: '1.3.0',
   appId: 'com.bluehopper6.musicmeters',
   executable: 'MusicMeters.exe',
+  macosExecutable: 'MusicMeters',
+  macosBundleName: 'MusicMeters.app',
 }

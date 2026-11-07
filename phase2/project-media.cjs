@@ -6,12 +6,18 @@ const { normalizeMixer, localVideoPath } = require('./project.cjs')
 const { exportRange } = require('./export-range.cjs')
 const { probeAudio } = require('./audio.cjs')
 const { projectAudioReference, resolveProjectAudio } = require('./project-audio.cjs')
+const { ffmpegExecutable, ffprobeExecutable, missingFfmpegMessage } = require('./ffmpeg.cjs')
 
 const videoOf = project => project.layers.find(layer => layer.type === 'video')
+function isDarwinSystemAlias(targetPath, platform = process.platform) {
+  return platform === 'darwin' && (targetPath === '/var' || targetPath === '/tmp' || targetPath === '/etc')
+}
 function assertCachePath(root, input) {
   const relative = path.relative(root, input)
   if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Cache path escaped its session directory')
-  if (fs.existsSync(root) && fs.realpathSync(root).toLowerCase() !== path.resolve(root).toLowerCase()) throw new Error('Cache directory follows a link or junction')
+  if (process.platform === 'win32' && fs.existsSync(root) && fs.realpathSync(root).toLowerCase() !== path.resolve(root).toLowerCase()) {
+    throw new Error('Cache directory follows a link or junction')
+  }
   let current = input
   for (;;) {
     if (fs.existsSync(current) && fs.lstatSync(current).isSymbolicLink()) throw new Error('Cache paths must not follow links')
@@ -19,6 +25,14 @@ function assertCachePath(root, input) {
     const parent = path.dirname(current)
     if (parent === current) throw new Error('Invalid cache directory')
     current = parent
+  }
+  for (let ancestor = path.resolve(root); ;) {
+    if (fs.existsSync(ancestor) && !isDarwinSystemAlias(ancestor) && fs.lstatSync(ancestor).isSymbolicLink()) {
+      throw new Error('Cache directory follows a link or junction')
+    }
+    const parent = path.dirname(ancestor)
+    if (parent === ancestor) break
+    ancestor = parent
   }
 }
 function saveVideoReferences(project, target) {
@@ -32,8 +46,14 @@ function resolveVideoReferences(project, source) {
 function probeVideo(input) {
   localVideoPath(input)
   if (!path.isAbsolute(input) || !fs.statSync(input).isFile()) throw new Error('Choose a local video file')
-  const raw = execFileSync('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file,pipe',
-    '-show_streams', '-show_format', '-of', 'json', input], { encoding: 'utf8', maxBuffer: 1024 * 1024, windowsHide: true })
+  let raw
+  try {
+    raw = execFileSync(ffprobeExecutable(), ['-v', 'error', '-protocol_whitelist', 'file,pipe',
+      '-show_streams', '-show_format', '-of', 'json', input], { encoding: 'utf8', maxBuffer: 1024 * 1024, windowsHide: true })
+  } catch (error) {
+    if (error && error.code === 'ENOENT') throw new Error(missingFfmpegMessage('FFprobe'))
+    throw error
+  }
   const data = JSON.parse(raw), stream = data.streams?.find(s => s.codec_type === 'video' && !s.disposition?.attached_pic)
   if (!stream) throw new Error('This file has no video stream')
   if (['smpte2084', 'arib-std-b67'].includes(stream.color_transfer)) throw new Error('HDR video is not supported yet. Convert to SDR BT.709 before importing.')
@@ -108,13 +128,13 @@ function audioFilter(project, plan, analysis = false) {
 
 function runFFmpeg(args, signal) {
   return new Promise((resolve, reject) => {
-    const child = spawn('ffmpeg', ['-nostdin', '-hide_banner', '-loglevel', 'error', '-n', ...args],
+    const child = spawn(ffmpegExecutable(), ['-nostdin', '-hide_banner', '-loglevel', 'error', '-n', ...args],
       { stdio: ['ignore', 'ignore', 'pipe'], shell: false, windowsHide: true, signal })
     let errors = ''
     child.stderr.on('data', chunk => { errors = (errors + chunk).slice(-4096) })
     let failure
     child.once('error', error => { failure = error })
-    child.once('close', code => code === 0 && !failure ? resolve() : reject(new Error(signal?.aborted ? 'Media preparation cancelled' : `Media preparation failed: ${failure?.message || errors || code}`)))
+    child.once('close', code => code === 0 && !failure ? resolve() : reject(new Error(signal?.aborted ? 'Media preparation cancelled' : failure?.code === 'ENOENT' ? missingFfmpegMessage('FFmpeg') : `Media preparation failed: ${failure?.message || errors || code}`)))
   })
 }
 function fileKey(input) {

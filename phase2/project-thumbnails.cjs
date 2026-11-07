@@ -1,6 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { createHash, randomUUID } = require('node:crypto')
+const { assertLocal } = require('./media-storage.cjs')
 const hash = value => createHash('sha256').update(value).digest('hex')
 
 function projectVersion(file) {
@@ -19,7 +20,12 @@ function validateThumbnail(data) {
 }
 function cachePath(userData, file) {
   const root = path.resolve(userData, 'project-thumbnails')
-  if (fs.existsSync(root) && (fs.lstatSync(root).isSymbolicLink() || fs.realpathSync(root).toLowerCase() !== root.toLowerCase())) throw new Error('Unsafe thumbnail cache')
+  try {
+    assertLocal(root)
+  } catch {
+    throw new Error('Unsafe thumbnail cache')
+  }
+  if (fs.existsSync(root) && fs.lstatSync(root).isSymbolicLink()) throw new Error('Unsafe thumbnail cache')
   return path.join(root, hash(path.resolve(file).toLowerCase()).slice(0,32) + '.json')
 }
 function readThumbnail(userData, file, version = projectVersion(file)) {

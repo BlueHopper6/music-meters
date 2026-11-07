@@ -16,7 +16,7 @@ async function main(){
   fs.writeFileSync(image, Buffer.concat([original.subarray(0, -12), length, type, data, checksum, original.subarray(-12)]))
   fs.copyFileSync(audio,path.join(dir,'next-song.wav'))
   const fd=fs.openSync(path.join(dir,'editor.log'),'wx')
-  const child=spawn(packagedExecutable(path.resolve(process.argv[2])),[],{env:{...process.env,TEMP:path.join(dir,'temp'),TMP:path.join(dir,'temp'),PHASE2_HEADLESS:'1',PHASE2_TEST_INPUT:audio,PHASE2_TEST_IMPORT_PATH:audio,MUSICMETERS_TEST_VIDEO:video,PHASE4_TEST_IMAGE_PATH:image,PHASE5_TEST_USER_DATA:path.join(dir,'profile'),MUSICMETERS_STORAGE_SMOKE:'1',MUSICMETERS_STORAGE_DIR:dir},stdio:['ignore',fd,fd],windowsHide:true})
+  const child=spawn(packagedExecutable(path.resolve(process.argv[2])),[],{env:{...process.env,TEMP:path.join(dir,'temp'),TMP:path.join(dir,'temp'),TMPDIR:path.join(dir,'temp'),PHASE2_HEADLESS:'1',PHASE2_TEST_INPUT:audio,PHASE2_TEST_IMPORT_PATH:audio,MUSICMETERS_TEST_VIDEO:video,PHASE4_TEST_IMAGE_PATH:image,PHASE5_TEST_USER_DATA:path.join(dir,'profile'),MUSICMETERS_STORAGE_SMOKE:'1',MUSICMETERS_STORAGE_DIR:dir},stdio:['ignore',fd,fd],windowsHide:true})
   const code=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{child.kill();reject(new Error('Storage smoke timed out'))},120000);child.once('error',reject);child.once('close',code=>{clearTimeout(timer);resolve(code)})})
   fs.closeSync(fd)
   const log=fs.readFileSync(path.join(dir,'editor.log'),'utf8')

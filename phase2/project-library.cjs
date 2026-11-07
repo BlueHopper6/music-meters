@@ -3,21 +3,22 @@ const path = require('node:path')
 const { createHash, randomUUID } = require('node:crypto')
 const { normalizeProject } = require('./project.cjs')
 const { imagePaths, readImage, resolveArtwork, saveArtwork } = require('./assets.cjs')
-const { prepareStoredMedia, renameLocal } = require('./media-storage.cjs')
+const { isDarwinRootSystemSymlink, samePath, prepareStoredMedia, renameLocal } = require('./media-storage.cjs')
 const { projectSaveName } = require('./project-path.cjs')
 const { resolveProjectAudio, projectAudioReference } = require('./project-audio.cjs')
 const { saveVideoReferences, resolveVideoReferences } = require('./project-media.cjs')
 const OWNED_MEDIA = '.musicmeters-owned-media'
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
-const samePath = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()
 
 function assertLocal(input) {
   if (typeof input !== 'string' || !path.isAbsolute(input) || input.startsWith('\\\\')) throw new Error('Choose a local absolute path')
   let current = path.resolve(input)
   for (;;) {
     try {
-      if (fs.lstatSync(current).isSymbolicLink()) throw new Error('Project operations do not follow links or junctions')
+      if (!isDarwinRootSystemSymlink(current) && fs.lstatSync(current).isSymbolicLink()) {
+        throw new Error('Project operations do not follow links or junctions')
+      }
     } catch (error) { if (error.code !== 'ENOENT') throw error }
     const parent = path.dirname(current)
     if (parent === current) break
@@ -346,7 +347,7 @@ async function deleteLibraryProject(source, trash) {
     writeAtomic(stagedProject, JSON.stringify(next, null, 2) + '\n')
     inspectTree(staging)
     await trash(staging)
-    if (fs.existsSync(staging)) throw new Error('Recycle Bin did not accept the project')
+    if (fs.existsSync(staging)) throw new Error((process.platform === 'darwin' ? 'Trash' : 'Recycle Bin') + ' did not accept the project')
   } catch (error) {
     try {
       const stagedProject = path.join(payload, path.basename(source))
@@ -370,4 +371,4 @@ async function deleteLibraryProject(source, trash) {
   return { path: source, name: snapshot.project.title }
 }
 
-module.exports = { readLibraryProject, renameLibraryProject, copyLibraryProject, removeOriginalProject, deleteLibraryProject }
+module.exports = { samePath, readLibraryProject, renameLibraryProject, copyLibraryProject, removeOriginalProject, deleteLibraryProject }

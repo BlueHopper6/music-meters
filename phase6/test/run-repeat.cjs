@@ -12,7 +12,8 @@ async function main() {
   }
   const dir = path.resolve(process.argv[packaged ? 4 : 2])
   if (fs.existsSync(dir)) throw new Error(`Output already exists: ${dir}`)
-  fs.mkdirSync(dir, { recursive: true })
+  const tempDir = path.join(dir, 'temp')
+  fs.mkdirSync(tempDir, { recursive: true })
   const input = path.join(dir, 'repeat-song.wav')
   const fixture = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
     'sine=frequency=660:duration=2', '-ac', '2', '-ar', '48000', input], { encoding: 'utf8' })
@@ -23,7 +24,8 @@ async function main() {
   const logPath = path.join(dir, 'editor.log')
   const log = fs.openSync(logPath, 'w')
   const child = spawn(electron, electronArgs, {
-    env: { ...process.env, PHASE2_HEADLESS: '1', PHASE6_REPEAT_SMOKE: '1',
+    env: { ...process.env, TEMP: tempDir, TMP: tempDir, TMPDIR: tempDir,
+      PHASE2_HEADLESS: '1', PHASE6_REPEAT_SMOKE: '1',
       PHASE6_REPEAT_DIR: dir, PHASE2_TEST_INPUT: input,
       PHASE2_TEST_OUTPUT_PATH: path.join(dir, 'first-export.mp4'),
       PHASE2_TEST_PROJECT_PATH: path.join(dir, 'selection-project.json'),

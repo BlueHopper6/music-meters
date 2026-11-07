@@ -2,12 +2,34 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { createHash, randomUUID } = require('node:crypto')
 
-function assertLocal(input) {
-  if (typeof input !== 'string' || !path.isAbsolute(input) || input.startsWith('\\\\')) throw new Error('Choose a local absolute path')
-  for (let current = path.resolve(input);;) {
-    try { if (fs.lstatSync(current).isSymbolicLink()) throw new Error('Media storage does not follow links or junctions') }
-    catch (error) { if (error.code !== 'ENOENT') throw error }
-    const parent = path.dirname(current)
+function isDarwinRootSystemSymlink(targetPath, platform = process.platform) {
+  return platform === 'darwin' && (targetPath === '/var' || targetPath === '/tmp' || targetPath === '/etc')
+}
+
+function samePath(a, b) {
+  const resolvedA = path.resolve(a)
+  const resolvedB = path.resolve(b)
+  if (resolvedA === resolvedB) return true
+  if (resolvedA.toLowerCase() !== resolvedB.toLowerCase()) return false
+  let statA, statB
+  try { statA = fs.statSync(resolvedA, { bigint: true }) } catch { statA = null }
+  try { statB = fs.statSync(resolvedB, { bigint: true }) } catch { statB = null }
+  if (statA && statB) return statA.dev === statB.dev && statA.ino === statB.ino
+  if (statA || statB) return false
+  return true
+}
+
+function assertLocal(input, options = {}) {
+  const platform = options.platform || process.platform
+  const pathMod = platform === 'win32' ? path.win32 : platform === 'darwin' ? path.posix : path
+  if (typeof input !== 'string' || !pathMod.isAbsolute(input) || input.startsWith('\\\\')) throw new Error('Choose a local absolute path')
+  for (let current = pathMod.resolve(input);;) {
+    try {
+      if (!isDarwinRootSystemSymlink(current, platform) && fs.lstatSync(current).isSymbolicLink()) {
+        throw new Error('Media storage does not follow links or junctions')
+      }
+    } catch (error) { if (error.code !== 'ENOENT') throw error }
+    const parent = pathMod.dirname(current)
     if (parent === current) break
     current = parent
   }
@@ -90,4 +112,4 @@ async function prepareStoredMedia(project, target) {
   }
   return copied
 }
-module.exports = { assertLocal, ensureDirectory, renameLocal, fileDigest, writeAtomic, copyMedia, prepareStoredMedia }
+module.exports = { isDarwinRootSystemSymlink, samePath, assertLocal, ensureDirectory, renameLocal, fileDigest, writeAtomic, copyMedia, prepareStoredMedia }

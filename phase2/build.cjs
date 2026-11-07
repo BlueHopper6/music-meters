@@ -2,6 +2,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { execFileSync } = require('node:child_process')
 const { verifyElectronRuntime } = require('../phase6/electron-runtime.cjs')
+const { verifyFfmpegInstallation } = require('./ffmpeg.cjs')
 
 const ROOT = path.resolve(__dirname, '..')
 const PRISM = path.join(ROOT, 'upstream', 'prism')
@@ -19,8 +20,7 @@ function prerequisites() {
     if (!fs.existsSync(required)) throw new Error(`Missing prerequisite: ${required}`)
   }
   verifyElectronRuntime()
-  execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' })
-  execFileSync('ffprobe', ['-version'], { stdio: 'ignore' })
+  verifyFfmpegInstallation()
 }
 
 async function build() {

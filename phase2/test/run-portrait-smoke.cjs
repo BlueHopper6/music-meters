@@ -12,12 +12,14 @@ async function main() {
   if (process.argv.length !== 5 || process.argv[2] !== '--package') throw new Error('Usage: node phase2/test/run-portrait-smoke.cjs --package <package-dir> <fresh-output>')
   const pack = path.resolve(process.argv[3]), dir = path.resolve(process.argv[4])
   if (fs.existsSync(dir)) throw new Error('Use a fresh output directory')
-  fs.mkdirSync(dir, { recursive: true })
+  const tempDir = path.join(dir, 'temp')
+  fs.mkdirSync(tempDir, { recursive: true })
   const input = path.join(dir, 'portrait-tone.wav')
   run('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2', '-ac', '2', '-ar', '48000', input])
   const logPath = path.join(dir, 'editor.log'), log = fs.openSync(logPath, 'w')
   const child = spawn(packagedExecutable(pack), [], {
-    env: { ...process.env, PHASE2_HEADLESS: '1', PHASE2_PORTRAIT_SMOKE: '1', PHASE2_PORTRAIT_DIR: dir,
+    env: { ...process.env, TEMP: tempDir, TMP: tempDir, TMPDIR: tempDir,
+      PHASE2_HEADLESS: '1', PHASE2_PORTRAIT_SMOKE: '1', PHASE2_PORTRAIT_DIR: dir,
       PHASE2_TEST_INPUT: input, PHASE2_TEST_PROJECT_PATH: path.join(dir, 'portrait.json'),
       PHASE2_TEST_OUTPUT_PATH: path.join(dir, 'portrait.mp4'), PHASE5_TEST_USER_DATA: path.join(dir, 'profile') },
     stdio: ['ignore', log, log], shell: false, windowsHide: true,
