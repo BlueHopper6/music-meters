@@ -26,6 +26,7 @@ const { lockWindowNavigation } = require('../window-security.cjs')
 const { mediaPlan, copySource, MediaCache } = require('../project-media.cjs')
 const { exportRange, assertRangeAudioMode } = require('../export-range.cjs')
 const { VideoFrames } = require('../video-frames.cjs')
+const { ffmpegExecutable } = require('../ffmpeg.cjs')
 const { precomputeSpectra } = require('../../phase3/spectrum.cjs')
 const { precomputeOscilloscopes } = require('../../phase3/oscilloscope.cjs')
 const { precomputeSpectrograms } = require('../../phase3/spectrogram.cjs')
@@ -81,7 +82,7 @@ function startEncoder(temp, input, totalFrames, audioMode, metadata) {
     ...(audioMode === 'copy' ? [] : ['-frames:v', String(totalFrames)]),
     ...audioArgs, temp,
   ]
-  const child = spawn(process.env.PHASE6_TEST_ENCODER || 'ffmpeg', args,
+  const child = spawn(process.env.PHASE6_TEST_ENCODER || ffmpegExecutable(), args,
     { stdio: ['pipe', 'ignore', 'pipe'], shell: false })
   let errors = ''
   child.stderr.on('data', chunk => { errors = (errors + chunk.toString()).slice(-8192) })

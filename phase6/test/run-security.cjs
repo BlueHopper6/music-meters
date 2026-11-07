@@ -8,11 +8,13 @@ async function main() {
   const packageDir = path.resolve(process.argv[2])
   const dir = path.resolve(process.argv[3])
   if (fs.existsSync(dir)) throw new Error(`Output already exists: ${dir}`)
-  fs.mkdirSync(dir, { recursive: true })
+  const tempDir = path.join(dir, 'temp')
+  fs.mkdirSync(tempDir, { recursive: true })
   const logPath = path.join(dir, 'security.log')
   const log = fs.openSync(logPath, 'w')
   const child = spawn(packagedExecutable(packageDir), [], {
-    env: { ...process.env, PHASE2_HEADLESS: '1', PHASE6_SECURITY_SMOKE: '1',
+    env: { ...process.env, TEMP: tempDir, TMP: tempDir, TMPDIR: tempDir,
+      PHASE2_HEADLESS: '1', PHASE6_SECURITY_SMOKE: '1',
       PHASE5_TEST_USER_DATA: path.join(dir, 'user-data') },
     stdio: ['ignore', log, log], shell: false, windowsHide: true,
   })

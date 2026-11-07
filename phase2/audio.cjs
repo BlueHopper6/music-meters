@@ -1,14 +1,20 @@
 const { execFileSync } = require('node:child_process')
 const { PcmReader } = require('../phase1/pcm-reader.cjs')
+const { ffprobeExecutable, missingFfmpegMessage } = require('./ffmpeg.cjs')
+const { isForeignPlatformReference } = require('./project-audio.cjs')
 
 function probeAudio(input) {
+  if (typeof input !== 'string' || !input || isForeignPlatformReference(input)) {
+    throw new Error('Could not read audio metadata: Choose a local audio file')
+  }
   let raw
   try {
-    raw = execFileSync('ffprobe', [
+    raw = execFileSync(ffprobeExecutable(), [
       '-v', 'error', '-show_entries', 'stream=codec_type,codec_name,channels,sample_rate,duration:format=duration',
       '-of', 'json', input,
     ], { encoding: 'utf8', maxBuffer: 1024 * 1024 })
   } catch (error) {
+    if (error && error.code === 'ENOENT') throw new Error(missingFfmpegMessage('FFprobe'))
     throw new Error(`Could not read audio metadata: ${error.stderr?.toString().trim() || error.message}`)
   }
   const data = JSON.parse(raw)

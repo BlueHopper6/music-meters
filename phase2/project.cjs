@@ -140,6 +140,35 @@ function validFontFamily(value) {
     && value === value.trim() && !/[\u0000-\u001f\u007f"\\]/.test(value)
 }
 
+const CROSS_PLATFORM_FONT_FALLBACKS = Object.freeze({
+  'segoe ui': ['Helvetica Neue', 'Arial'],
+  consolas: ['Menlo', 'Monaco', 'Courier New'],
+  bahnschrift: ['Helvetica Neue', 'Arial'],
+  calibri: ['Helvetica Neue', 'Arial'],
+  cambria: ['Georgia', 'Times New Roman'],
+  candara: ['Optima', 'Helvetica Neue', 'Arial'],
+  'sf pro': ['Segoe UI', 'Arial'],
+  'sf pro display': ['Segoe UI', 'Arial'],
+  'sf pro text': ['Segoe UI', 'Arial'],
+  'helvetica neue': ['Segoe UI', 'Arial'],
+  helvetica: ['Arial', 'Segoe UI'],
+  menlo: ['Consolas', 'Courier New'],
+  monaco: ['Consolas', 'Courier New'],
+  avenir: ['Segoe UI', 'Arial'],
+  'avenir next': ['Segoe UI', 'Arial'],
+})
+
+function fontFallbacksFor(fontFamily) {
+  if (typeof fontFamily !== 'string') return []
+  return CROSS_PLATFORM_FONT_FALLBACKS[fontFamily.trim().toLowerCase()] || []
+}
+
+function canvasFontStack(fontFamily) {
+  if (!validFontFamily(fontFamily)) throw new Error('Unsupported font')
+  const families = [fontFamily, ...fontFallbacksFor(fontFamily)]
+  return families.map(name => JSON.stringify(name)).join(', ')
+}
+
 function localImagePath(value, name) {
   if (typeof value !== 'string' || value.length > 4096 || /[\u0000-\u001f]/.test(value)
       || /^[a-z][a-z0-9+.-]*:\/\//i.test(value) || /^file:/i.test(value)
@@ -384,4 +413,4 @@ function exportDimensions(project, preset) {
   return { width: Math.round(project.width * scale), height: Math.round(project.height * scale) }
 }
 
-module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, VECTORSCOPE_MODES, defaultProject, compositionProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, videoLayer, textLayer, validFontFamily, normalizeProject, normalizeMixer, localVideoPath, fitLayer, orientProject, exportDimensions }
+module.exports = { WIDTH, HEIGHT, FPS, FFT_SIZES, VECTORSCOPE_MODES, CROSS_PLATFORM_FONT_FALLBACKS, defaultProject, compositionProject, vectorscopeLayer, spectrumLayer, oscilloscopeLayer, spectrogramLayer, waveformLayer, vuLayer, loudnessLayer, waterfallLayer, imageLayer, videoLayer, textLayer, validFontFamily, fontFallbacksFor, canvasFontStack, normalizeProject, normalizeMixer, localVideoPath, fitLayer, orientProject, exportDimensions }

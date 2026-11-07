@@ -1,4 +1,4 @@
-const { packagedExecutable } = require('../packaged-executable.cjs')
+const { packagedExecutable, packagedAppRoot } = require('../packaged-executable.cjs')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -17,7 +17,8 @@ async function main() {
   const pack = path.resolve(process.argv[2])
   const dir = path.resolve(process.argv[3])
   if (fs.existsSync(dir)) throw new Error(`Smoke output already exists: ${dir}`)
-  fs.mkdirSync(dir, { recursive: true })
+  const tempDir = path.join(dir, 'temp')
+  fs.mkdirSync(tempDir, { recursive: true })
   const input = path.join(dir, 'Unicode café song 440.wav')
   run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
     'sine=frequency=440:duration=2', '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', input])
@@ -27,7 +28,8 @@ async function main() {
   fs.writeFileSync(projectPath, JSON.stringify(project, null, 2))
   const output = path.join(dir, 'portable output.mp4')
   const executable = packagedExecutable(pack)
-  const exportApp = path.join(pack, 'resources', 'app', 'phase2', 'export-app')
+  const appRoot = packagedAppRoot(pack)
+  const exportApp = path.join(appRoot, 'phase2', 'export-app')
   assert.ok(fs.existsSync(executable) && fs.existsSync(exportApp), 'Portable package is incomplete')
   assert.equal(fs.readFileSync(path.join(pack, 'version'), 'utf8').trim(), expectedVersion)
   for (const name of ['LICENSE', 'LICENSES.chromium.html', 'PRISM-LICENSE.txt',
@@ -39,16 +41,18 @@ async function main() {
   }
   const brand = path.join('phase2', 'editor-app', 'assets', 'brand')
   for (const name of ['icon-32.png', 'icon-64.png', 'music-meters.ico']) {
-    assert.ok(fs.existsSync(path.join(pack, 'resources', 'app', brand, name)), `Missing packaged brand asset: ${name}`)
+    assert.ok(fs.existsSync(path.join(appRoot, brand, name)), `Missing packaged brand asset: ${name}`)
   }
-  assert.ok(!fs.existsSync(path.join(pack, 'resources', 'app', brand, 'logo-master.png')),
+  assert.ok(!fs.existsSync(path.join(appRoot, brand, 'logo-master.png')),
     'Unused logo master must not be packaged')
   const cancelFile = path.join(dir, 'never.cancel')
   const logPath = path.join(dir, 'export.log')
   const log = fs.openSync(logPath, 'w')
   const child = spawn(executable, [], {
-    env: { ...process.env, PHASE2_JOB: JSON.stringify({ project: { ...project,
-      audioPath: input }, output, preset: '720p', cancelFile }) },
+    env: { ...process.env, TEMP: tempDir, TMP: tempDir, TMPDIR: tempDir,
+      PHASE5_TEST_USER_DATA: path.join(dir, 'user-data'),
+      PHASE2_JOB: JSON.stringify({ project: { ...project,
+        audioPath: input }, output, preset: '720p', cancelFile }) },
     stdio: ['ignore', log, log], shell: false, windowsHide: true,
   })
   const code = await new Promise((resolve, reject) => {

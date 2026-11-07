@@ -1,12 +1,12 @@
 # Run and test MusicMeters locally
 
-For running a downloaded build, use the [README](../README.md). These instructions are for Windows x64 development; there is no root package.json.
+For running a downloaded build, use the [README](../README.md). These instructions cover Windows x64 and macOS (`arm64` / `x64`) contributor development; there is no root package.json.
 
-For a first checkout, complete the prerequisites, Prism/build-tools setup, and pinned Electron installation below. Then use [Run during development](#run-during-development) for the edit/run loop and [Test your changes](#test-your-changes) for verification. All commands run in PowerShell from the repository root. This guide uses tracked scripts available to contributors; no private/local launcher is required.
+For a first checkout, complete the prerequisites, Prism/build-tools setup, and pinned Electron installation below. Then use [Run during development](#run-during-development) for the edit/run loop and [Test your changes](#test-your-changes) for verification. Commands run from the repository root in PowerShell on Windows or `zsh`/`bash` on macOS. This guide uses tracked scripts available to contributors; no private/local launcher is required.
 
 ## Prerequisites
 
-Install Node.js 24 LTS, Python, Visual Studio 2022 C++ build tools, and FFmpeg/FFprobe on PATH. Verify the selected tools before building. Host-specific Visual Studio detection notes are in the [Phase 0 setup record](phase-0-report.md).
+Install Node.js 24 LTS, Python 3, FFmpeg/FFprobe (`PATH` or `/opt/homebrew/bin` / `/usr/local/bin` on macOS, or `MUSICMETERS_FFMPEG_PATH` / `MUSICMETERS_FFPROBE_PATH`), and your platform's C++ build toolchain (Visual Studio 2022 C++ build tools on Windows; Xcode Command Line Tools on macOS). Verify the selected tools before building. Host-specific Visual Studio detection notes are in the [Phase 0 setup record](phase-0-report.md).
 
 Official release builds must also follow [the native build configuration](../BUILD-CONFIGURATION.md) and scan the resulting addon for developer paths.
 
@@ -36,7 +36,9 @@ The runtime helper rejects a missing or wrong-version Electron installation.
 
 ## Run during development
 
-After completing the setup above, create an isolated development session so experiments use separate preferences, templates, and temporary files. Run this once in your current PowerShell session:
+After completing the setup above, create an isolated development session so experiments use separate preferences, templates, and temporary files. Run this once in your current terminal session:
+
+**Windows (PowerShell):**
 
 ```powershell
 $devSession = Join-Path (Get-Location) ('artifacts/development/session-' + [guid]::NewGuid().ToString('N'))
@@ -44,6 +46,17 @@ New-Item -ItemType Directory -Path "$devSession/temp", "$devSession/user-data" -
 $env:TEMP = Join-Path $devSession 'temp'
 $env:TMP = $env:TEMP
 $env:PHASE5_TEST_USER_DATA = Join-Path $devSession 'user-data'
+```
+
+**macOS (`zsh` / `bash`):**
+
+```bash
+dev_session="$PWD/artifacts/development/session-$(uuidgen | tr -d '-' | tr '[:upper:]' '[:lower:]')"
+mkdir -p "$dev_session/temp" "$dev_session/user-data"
+export TMPDIR="$dev_session/temp"
+export TEMP="$TMPDIR"
+export TMP="$TMPDIR"
+export PHASE5_TEST_USER_DATA="$dev_session/user-data"
 ```
 
 These environment settings apply to this terminal and its child processes; they do not change system settings. The session folder is ignored by Git. Keep any test projects, exports, and sample media under that folder too. Closing the terminal ends these environment overrides; files remain available for inspection.
@@ -54,21 +67,21 @@ Launch the editor:
 node phase2/run.cjs
 ```
 
-The launcher checks prerequisites, rebuilds the renderer, and opens the Project Manager. Create a project and import a local WAV, MP3, or FLAC to try your changes. For synthetic sample audio, run `python phase1/make-fixtures.py` and import `artifacts/phase1/fixtures/stereo-10s-48k.wav`.
+The launcher checks prerequisites, rebuilds the renderer, and opens the Project Manager. Create a project and import a local WAV, MP3, or FLAC to try your changes. For synthetic sample audio, run `python phase1/make-fixtures.py` (`python3` on macOS) and import `artifacts/phase1/fixtures/stereo-10s-48k.wav`.
 
 After editing TypeScript, renderer HTML/CSS, or main/preload code, **close the development app and rerun `node phase2/run.cjs`**. There is no hot reload. Native code changes also require `node phase6/build-native.cjs` before relaunching. For a build without opening the app, use `node phase2/build.cjs`.
 
 ## Test your changes
 
-Use the same isolated terminal session. Start with the checks relevant to your change; the [Windows CI workflow](../.github/workflows/windows-build.yml) is the reference for the complete suite and prerequisites.
+Use the same isolated terminal session. Start with the checks relevant to your change; the [Windows CI workflow](../.github/workflows/windows-build.yml) and [macOS CI workflow](../.github/workflows/macos-build.yml) are the references for the complete suite and prerequisites.
 
 ### Unit tests and TypeScript
 
-Generate the synthetic fixtures, then run the core project, history, template, and window-security tests:
+Generate the synthetic fixtures, then run the core project, history, template, macOS support, and window-security tests:
 
 ```powershell
 python phase1/make-fixtures.py
-node --test phase2/test/project.test.cjs phase2/test/project-history.test.cjs phase5/test/templates.test.cjs phase6/test/window-security.test.cjs
+node --test phase2/test/project.test.cjs phase2/test/project-history.test.cjs phase2/test/macos-support.test.cjs phase5/test/templates.test.cjs phase6/test/window-security.test.cjs
 ```
 
 Run the separate strict TypeScript check as well; bundling does not type-check:
@@ -78,14 +91,14 @@ node phase6/build-tools/node_modules/typescript/lib/tsc.js --noEmit --strict --s
 git diff --check
 ```
 
-Check each command's exit code (`$LASTEXITCODE`): zero means success. Stop and investigate failures before treating later commands as validation.
+Check each command's exit code (`$LASTEXITCODE` in PowerShell or `$?` in `zsh`/`bash`): zero means success. Stop and investigate failures before treating later commands as validation.
 
 ### Manual editor checks
 
 Use a fresh test project and new output filenames:
 
 1. Import audio and verify Play/Pause, seeking, and a full-history still.
-2. Make a visible layer/text/style edit. Try Edit → Undo/Redo and Ctrl+Z / Ctrl+Y outside text fields; check the saved/unsaved indicator.
+2. Make a visible layer/text/style edit. Try Edit → Undo/Redo and Ctrl+Z / Ctrl+Y (Cmd+Z / Cmd+Shift+Z on macOS) outside text fields; check the saved/unsaved indicator.
 3. In the editor, use Templates → Manage templates… → Use layout. Confirm the audio stays loaded and plays. Seek to a different timestamp, then undo and redo the layout change; the playhead should stay at the current timestamp.
 4. Save, close, and reopen the test project. Check its audio, artwork, layout, and preview position.
 5. Export a short synthetic clip. Check the resulting video/audio and cancellation/recovery if your change affects export.
@@ -94,15 +107,24 @@ Include checks for the specific behavior and failure cases your change affects. 
 
 ## Install Windows packaging tools
 
-From the repository root, run `npm --prefix phase6/installer-tools ci --ignore-scripts --no-audit --no-fund`. This locked toolset provides executable branding and NSIS installer creation; it is used only at build time.
+On Windows, from the repository root, run `npm --prefix phase6/installer-tools ci --ignore-scripts --no-audit --no-fund`. This locked toolset provides Windows executable branding and NSIS installer creation; it is used only at build time on Windows.
 
 ## Create a portable development package
+
+**Windows x64:**
 
 ```powershell
 node phase6/package-windows.cjs --output artifacts/phase6/my-new-package
 ```
 
-Choose a fresh output directory that does not already exist. Launch its `MusicMeters.exe` and keep the whole folder together. It includes Electron, built renderer code, runtime icons, and the pinned Prism native addon. System FFmpeg and FFprobe are required separately. Installed-font discovery and this packaging script currently require Windows; Linux and macOS are unvalidated.
+**macOS (`arm64` / `x64`):**
+
+```bash
+node phase6/package-macos.cjs --output artifacts/phase6/my-new-package --zip artifacts/phase6/my-new-package.zip
+node phase6/test/package-macos-branding.cjs artifacts/phase6/my-new-package
+```
+
+Choose a fresh output directory that does not already exist. On Windows, launch `MusicMeters.exe` and keep the whole folder together. On macOS, launch `MusicMeters.app` (or `MusicMeters.app/Contents/MacOS/MusicMeters`) and keep the package folder together; local development and CI contribution builds use ad-hoc signing (`--sign -`), and `phase6/package-macos.cjs` rejects non-ad-hoc signing identities until a dedicated Developer ID + hardened runtime release-signing implementation is configured. Each package includes Electron, built renderer code, runtime icons, and the pinned Prism native addon. System FFmpeg and FFprobe are required separately. See the [macOS port PRD](macos-port-prd.md) for the macOS test matrix and release gates.
 
 Work files and export analysis caches use the current user's temp directory. Tests and development can redirect profiles/caches to isolated locations. Export checks estimated workspace needs and removes partial output after cancellation or failure.
 
@@ -110,7 +132,7 @@ Work files and export analysis caches use the current user's temp directory. Tes
 
 For video import, soundtrack routing, and export-quality changes, also run `node --test phase2/test/project-media.test.cjs` and `node phase6/test/run-media-quality.cjs <package-dir> <new-output-dir>`. The latter uses synthetic 24 FPS video and 96 kHz audio, exercises volume sliders/precise inputs, full-screen seeking, template naming, and the packaged editor, and verifies lossless master pixels/samples and 24-bit FLAC sample error. It does not upload to YouTube or establish perceptual listening quality.
 
-After installing packaging tools and creating the development package above, run the packaged checks relevant to the change. Each command below uses an isolated test profile; choose output paths that do not already exist on each run:
+After creating the development package above, run the packaged checks relevant to the change. Each command below uses an isolated test profile; choose output paths that do not already exist on each run:
 
 ```powershell
 node phase2/test/run-startup-smoke.cjs --package artifacts/phase6/my-new-package
@@ -137,7 +159,7 @@ The [Phase 6 report](phase-6-report.md), [audio export report](audio-export-repo
 
 ## Build a setup EXE
 
-After creating a portable folder:
+On Windows, after creating a portable folder:
 
 ```powershell
 node phase6/package-installer.cjs --package artifacts/phase6/my-new-package --output artifacts/phase6/my-new-installer --development
@@ -149,6 +171,6 @@ Use fresh output directories. This builds an assisted per-user Windows setup wit
 
 Builder caches default to ignored `artifacts/installer-cache`; the local development environment also isolates temp/npm caches. The setup compiles at moderate compression by default, overridable with `ELECTRON_BUILDER_COMPRESSION_LEVEL`. See the release checklist for validation. The hosted CI lifecycle test intentionally refuses to install on a developer account.
 
-For media storage changes, run `node --test phase2/test/media-storage.test.cjs` and `node phase6/test/run-media-storage.cjs <package-dir> <new-output-dir>`. These cover copy/link/cancel, original-byte preservation, Save As, library operations, changed-copy preservation, atomic-save failure, and junction rejection. Run junction tests with host permission and record skipped checks explicitly.
+For media storage changes, run `node --test phase2/test/media-storage.test.cjs` and `node phase6/test/run-media-storage.cjs <package-dir> <new-output-dir>`. These cover copy/link/cancel, original-byte preservation, Save As, library operations, changed-copy preservation, atomic-save failure, and junction/symlink rejection. Run Windows junction tests with host permission and record skipped checks explicitly.
 
 For meter styling, run `node --test phase2/test/meter-style.test.cjs` and `node phase6/test/run-meter-style.cjs <package-dir> <new-output-dir>`. The packaged suite exercises all eight meters, presets, custom fills, undo/redo, reset, locked-layer controls, and a lossless master. It compares the reopened preview’s first-frame pixels with the export renderer and encoded master, and retains UI captures for inspection.

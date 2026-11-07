@@ -62,7 +62,7 @@ module.exports=async function(win){
  try{
   await click('save-project');await wait('!document.getElementById("error-notice").hidden && !document.getElementById("editor-screen").inert','save failure notice')
   assert.match(await evaluate('document.getElementById("error-notice-title").textContent'),/saved/)
-  assert.match(await evaluate('document.getElementById("error-notice-message").textContent'),/Windows blocked access/)
+  assert.match(await evaluate('document.getElementById("error-notice-message").textContent'),/(Windows|macOS) blocked access/)
   assert.deepEqual(fs.readFileSync(process.env.PHASE2_TEST_PROJECT_PATH),original)
  }finally{fs.renameSync=rename}
  console.log(JSON.stringify({event:'user-feedback-pass',imageError:true,persistent:true,cancelQuiet:true,videoCancelQuiet:true,loadingUntilDecoded:true,loadingFailureClears:true,saveError:true,previousSaveIntact:true}))

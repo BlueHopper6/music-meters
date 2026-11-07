@@ -7,7 +7,8 @@ async function main() {
   if (process.argv.length !== 4) throw new Error('Usage: node phase2/test/run-playback-smoke.cjs <package> <fresh-output>')
   const pack = path.resolve(process.argv[2]), dir = path.resolve(process.argv[3])
   if (fs.existsSync(dir)) throw new Error('Use a fresh output directory')
-  fs.mkdirSync(dir, { recursive: true })
+  const tempDir = path.join(dir, 'temp')
+  fs.mkdirSync(tempDir, { recursive: true })
   const wav = path.join(dir, 'tone.wav')
   let input = wav
   const fixture = spawnSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'aevalsrc=0.3*sin(2*PI*if(lt(t\\,90)\\,440\\,880)*t):s=48000:d=180', '-ac', '2', '-ar', '48000', wav], { encoding: 'utf8' })
@@ -20,6 +21,7 @@ async function main() {
   }
   const logPath = path.join(dir, 'editor.log'), log = fs.openSync(logPath, 'w')
   const child = spawn(packagedExecutable(pack), [], { env: { ...process.env,
+    TEMP: tempDir, TMP: tempDir, TMPDIR: tempDir,
     PHASE2_HEADLESS: '1', PHASE2_PLAYBACK_SMOKE: '1', PHASE2_PLAYBACK_DIR: dir,
     PHASE2_TEST_INPUT: input, PHASE2_TEST_SAVE_PATH: path.join(dir, 'saved.json'),
     PHASE5_TEST_USER_DATA: path.join(dir, 'profile') }, stdio: ['ignore', log, log], windowsHide: true, shell: false })
