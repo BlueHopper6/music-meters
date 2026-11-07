@@ -25,7 +25,7 @@ type RecentProject = { path: string; name: string; lastOpened: number }
 type ProjectAction = 'rename' | 'move' | 'copy' | 'delete'
 type Initial = { platform?: string; project: Project; metadata: Metadata | null; projectPath: string | null; fonts: string[];
   templates: TemplateEntry[]; preferences: { exportPreset: string; lastTemplateId: string; recentProjects?: RecentProject[] };
-  missingMedia: MissingMedia[]; isStartupSession?: boolean; isAutomatedTest?: boolean }
+  missingMedia: MissingMedia[]; isStartupSession?: boolean; isAutomatedTest?: boolean; projectOpen?: boolean }
 type Desktop = {
   toggleWindowFullscreen(): Promise<void>
   minimizeWindow(): Promise<void>
@@ -2990,6 +2990,10 @@ async function start() {
         setTimeout(() => { splash.hidden = true }, 350)
       }
     }, 650)
+  } else if (!initial.projectOpen && !metadata && !projectPath) {
+    const splash = $('splash-screen')
+    if (splash) splash.hidden = true
+    showProjectManager()
   } else {
     const splash = $('splash-screen')
     if (splash) splash.hidden = true

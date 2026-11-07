@@ -261,6 +261,7 @@ handle('initial', () => {
     platform: process.platform, project, metadata, projectPath, fonts: installedFonts(),
     templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project),
     isStartupSession,
+    projectOpen: Boolean(projectOpen),
     isAutomatedTest: Boolean(isAutomatedTest),
   }
 })

@@ -172,7 +172,14 @@ function shouldQuitOnWindowAllClosed(options = {}) {
   return false
 }
 
+function initialScreenMode({ isStartupSession, projectOpen, metadata, projectPath }) {
+  if (isStartupSession) return 'project-manager-splash'
+  if (!projectOpen && !metadata && !projectPath) return 'project-manager'
+  return 'editor'
+}
+
 module.exports = {
   buildDarwinMenuTemplate,
   shouldQuitOnWindowAllClosed,
+  initialScreenMode,
 }

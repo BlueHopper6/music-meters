@@ -349,6 +349,34 @@ test('R5 & R6: Darwin application menu and window reopen lifecycle match macOS p
     }),
     true
   )
+
+  assert.equal(
+    darwinPlatform.initialScreenMode({
+      isStartupSession: true,
+      projectOpen: false,
+      metadata: null,
+      projectPath: null,
+    }),
+    'project-manager-splash'
+  )
+  assert.equal(
+    darwinPlatform.initialScreenMode({
+      isStartupSession: false,
+      projectOpen: false,
+      metadata: null,
+      projectPath: null,
+    }),
+    'project-manager'
+  )
+  assert.equal(
+    darwinPlatform.initialScreenMode({
+      isStartupSession: false,
+      projectOpen: true,
+      metadata: { totalFrames: 300 },
+      projectPath: null,
+    }),
+    'editor'
+  )
 })
 
 test('R7: project thumbnail cache distinguishes case-distinct project paths on case-sensitive volumes', () => {
