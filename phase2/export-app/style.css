@@ -1,2 +1,3 @@
-:root { color-scheme: dark; -webkit-font-smoothing: antialiased; }
+:root { color-scheme: dark; }
+canvas { -webkit-font-smoothing: auto; }
 body { margin: 0; }
