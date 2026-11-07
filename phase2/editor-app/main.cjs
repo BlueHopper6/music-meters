@@ -743,12 +743,27 @@ handle('confirm-app-close', () => {
   if (win && !win.isDestroyed()) win.close()
 })
 let restoreBounds = null
+function defaultEditorBounds(targetWin = win) {
+  if (process.platform !== 'darwin') return { width: 1480, height: 900 }
+  const display = (targetWin && !targetWin.isDestroyed() ? screen.getDisplayMatching(targetWin.getBounds()) : null) || screen.getPrimaryDisplay()
+  const area = display.workArea
+  const width = area.width > 1520 ? 1480 : Math.max(1000, area.width - 20)
+  const height = area.height > 940 ? 900 : Math.max(700, area.height - 20)
+  const x = area.x + Math.max(0, Math.floor((area.width - width) / 2))
+  const y = area.y + Math.max(0, Math.floor((area.height - height) / 2))
+  return { x, y, width, height }
+}
 function maximizeEditorWindow(targetWin = win) {
   if (!targetWin || targetWin.isDestroyed()) return
-  restoreBounds = targetWin.getBounds()
+  const current = targetWin.getBounds()
+  const display = screen.getDisplayMatching(current) || screen.getPrimaryDisplay()
+  if (current.width < display.workArea.width || current.height < display.workArea.height) {
+    restoreBounds = current
+  } else if (!restoreBounds) {
+    restoreBounds = defaultEditorBounds(targetWin)
+  }
   targetWin.maximize()
   if (process.platform === 'darwin' && !targetWin.isMaximized()) {
-    const display = screen.getDisplayMatching(targetWin.getBounds()) || screen.getPrimaryDisplay()
     targetWin.setBounds(display.workArea)
   }
   targetWin.webContents.send('window-state', windowState())
@@ -766,7 +781,7 @@ handle('maximize-window', () => {
   else if (win.isMaximized()) {
     win.unmaximize()
     if (process.platform === 'darwin' && win.isMaximized()) {
-      win.setBounds(restoreBounds || { x: 80, y: 80, width: 1480, height: 900 })
+      win.setBounds(restoreBounds || defaultEditorBounds(win))
     }
     win.webContents.send('window-state', windowState())
   } else maximizeEditorWindow(win)
@@ -789,11 +804,12 @@ app.whenReady().then(() => {
     projectOpen = true
     previewAudioRevision++
   }
+  const initialBounds = defaultEditorBounds(null)
   win = new BrowserWindow({
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
-    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 12 } } : {}),
+    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 12 }, x: initialBounds.x, y: initialBounds.y } : {}),
     backgroundColor: '#09090b',
-    width: 1480, height: 900, minWidth: 1000, minHeight: 700,
+    width: initialBounds.width, height: initialBounds.height, minWidth: 1000, minHeight: 700,
     icon: join(__dirname, 'assets', 'brand', process.platform === 'darwin' ? 'icon-64.png' : 'music-meters.ico'),
     show: false,
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true,
