@@ -9,6 +9,7 @@ const {
   missingFfmpegMessage,
 } = require('../ffmpeg.cjs')
 const { electronRelativeExecutable } = require('../../phase6/electron-runtime.cjs')
+const identity = require('../../phase6/application.cjs')
 const {
   packagedBundleRoot,
   packagedExecutable,
@@ -61,6 +62,10 @@ test('ffmpeg discovery checks env override, PATH, and macOS Homebrew/MacPorts fa
 })
 
 test('Electron runtime and packaged bundle helpers support darwin and win32 layouts', () => {
+  assert.equal(identity.macosExecutable, 'MusicMeters')
+  assert.equal(identity.macosBundleName, 'MusicMeters.app')
+  assert.equal(identity.macosIconFile, 'music-meters.icns')
+  assert.equal(identity.macosMinimumSystemVersion, '12.0')
   assert.equal(electronRelativeExecutable('darwin'), path.join('Electron.app', 'Contents', 'MacOS', 'Electron'))
   assert.equal(electronRelativeExecutable('win32'), 'electron.exe')
 
