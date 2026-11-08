@@ -12,12 +12,13 @@ async function main(){
   layers[0].multiband=true;layers[1].showSideLine=true;layers[2].underfillEnabled=true;layers[4].multiband=true;layers[7].colorMode='heat'
   fs.writeFileSync(file,JSON.stringify({...project.compositionProject(),title:'Meter styling',audioPath:undefined,audioRelativePath:'song.wav',layers}))
   const fd=fs.openSync(path.join(dir,'editor.log'),'wx')
-  const child=spawn(packagedExecutable(path.resolve(process.argv[2])),[],{env:{...process.env,TEMP:path.join(dir,'temp'),TMP:path.join(dir,'temp'),PHASE2_HEADLESS:'1',PHASE2_TEST_INPUT:audio,PHASE2_TEST_PROJECT_PATH:file,PHASE2_TEST_OUTPUT_PATH:output,PHASE5_TEST_USER_DATA:path.join(dir,'profile'),MUSICMETERS_STYLE_SMOKE:'1',MUSICMETERS_STYLE_DIR:dir},stdio:['ignore',fd,fd],windowsHide:true})
+  const child=spawn(packagedExecutable(path.resolve(process.argv[2])),[],{env:{...process.env,TEMP:path.join(dir,'temp'),TMP:path.join(dir,'temp'),TMPDIR:path.join(dir,'temp'),PHASE2_HEADLESS:'1',PHASE2_TEST_INPUT:audio,PHASE2_TEST_PROJECT_PATH:file,PHASE2_TEST_OUTPUT_PATH:output,PHASE5_TEST_USER_DATA:path.join(dir,'profile'),MUSICMETERS_STYLE_SMOKE:'1',MUSICMETERS_STYLE_DIR:dir},stdio:['ignore',fd,fd],windowsHide:true})
   const code=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{child.kill();reject(new Error('Meter style smoke timed out'))},300000);child.once('error',reject);child.once('close',code=>{clearTimeout(timer);resolve(code)})})
   fs.closeSync(fd);const log=fs.readFileSync(path.join(dir,'editor.log'),'utf8');assert.equal(code,0,log);assert.match(log,/"event":"meter-style-pass"/)
+  const assertBuffersEqual=(actual,expected,message)=>{if(!actual.equals(expected)){let diffBytes=0,maxDiff=0,firstIndex=-1;const len=Math.min(actual.length,expected.length);for(let i=0;i<len;i++){const d=Math.abs(actual[i]-expected[i]);if(d>0){diffBytes++;if(d>maxDiff)maxDiff=d;if(firstIndex===-1)firstIndex=i}}assert.fail(`${message} (lengths=${actual.length}/${expected.length}, diffBytes=${diffBytes}, maxDiff=${maxDiff}, firstIndex=${firstIndex})`)}}
   const pixels=input=>run('ffmpeg',['-v','error','-i',input,'-frames:v','1','-pix_fmt','rgb24','-f','rawvideo','pipe:1'])
   const encoded=pixels(output),rendered=pixels(output+'.rendered.png'),preview=pixels(path.join(dir,'preview-first.png'))
-  assert.deepEqual(encoded,rendered,'lossless master retains the styled rendered frame exactly')
+  assertBuffersEqual(encoded,rendered,'lossless master retains the styled rendered frame exactly')
   assert.equal(preview.length,rendered.length)
   let difference=0;for(let i=0;i<preview.length;i++)difference+=Math.abs(preview[i]-rendered[i])
   const meanDifference=difference/preview.length
@@ -29,7 +30,7 @@ async function main(){
   let changedFill=0
   for(let i=0;i<firstHeat.length;i+=3)if(Math.abs(firstHeat[i]-lateStill[i])+Math.abs(firstHeat[i+1]-lateStill[i+1])+Math.abs(firstHeat[i+2]-lateStill[i+2])>12)changedFill++
   assert.ok(changedFill>1500,`Heat fill must follow changing audio instead of freezing: ${changedFill} pixels`)
-  assert.deepEqual(lateStill,lateExport,'late heat-map still must match export without renderer history')
+  assertBuffersEqual(lateStill,lateExport,'late heat-map still must match export without renderer history')
   run('ffmpeg',['-v','error','-xerror','-i',output,'-f','null','-'])
   const png=fs.readFileSync(path.join(dir,'late-still.png')),portraitPng=fs.readFileSync(path.join(dir,'static-portrait.png'))
   assert.deepEqual([png.readUInt32BE(16),png.readUInt32BE(20)],[1280,720])
@@ -41,7 +42,7 @@ async function main(){
   const waves=['left','right','mix','stereo-envelope'].map(channel=>run('ffmpeg',['-v','error','-i',path.join(dir,'waveform-'+channel+'.png'),'-vf','crop=300:325:20:365','-pix_fmt','rgb24','-f','rawvideo','pipe:1']))
   assert.equal(new Set(waves.map(bytes=>createHash('sha256').update(bytes).digest('hex'))).size,4,'all four waveform input choices must be visually distinct')
   const audioPixels=file=>run('ffmpeg',['-v','error','-i',file,'-map','0:a:0','-f','f32le','-c:a','pcm_f32le','pipe:1'])
-  assert.deepEqual(audioPixels(output),audioPixels(audio),'waveform input changes leave the exported soundtrack unchanged')
+  assertBuffersEqual(audioPixels(output),audioPixels(audio),'waveform input changes leave the exported soundtrack unchanged')
   const result={code,meanDifference,pixelHash:createHash('sha256').update(encoded).digest('hex')}
   fs.writeFileSync(path.join(dir,'verification.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({dir,...result}))
 }

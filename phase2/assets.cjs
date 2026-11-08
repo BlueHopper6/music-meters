@@ -2,12 +2,12 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { createHash } = require('node:crypto')
 const { assertLocal, ensureDirectory } = require('./media-storage.cjs')
-const { projectAudioReference, resolveProjectAudio } = require('./project-audio.cjs')
+const { projectAudioReference, resolveProjectAudio, isForeignPlatformReference } = require('./project-audio.cjs')
 
 const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' }
 
 function readImage(input) {
-  if (typeof input !== 'string' || !path.isAbsolute(input) || input.startsWith('\\\\')) throw new Error('Artwork path must be local and absolute')
+  if (typeof input !== 'string' || isForeignPlatformReference(input) || !path.isAbsolute(input) || input.startsWith('\\\\')) throw new Error('Artwork path must be local and absolute')
   const extension = path.extname(input).toLowerCase()
   const mime = MIME[extension]
   if (!mime) throw new Error('Artwork must be PNG, JPEG, or WebP')
@@ -39,6 +39,7 @@ function assetData(project, requireComplete = true) {
   const data = {}
   let totalBytes = 0
   for (const input of imagePaths(project)) {
+    if (isForeignPlatformReference(input)) { if (!requireComplete) continue; throw new Error('Artwork path must be local and absolute') }
     if (!requireComplete && !fs.existsSync(input)) continue
     const { bytes, mime } = readImage(input)
     totalBytes += bytes.length

@@ -1,4 +1,4 @@
-"""Create the source archive that accompanies one clean portable build."""
+"""Create the source archive that accompanies one clean portable or macOS application build."""
 
 import argparse
 import hashlib
@@ -57,9 +57,14 @@ def main():
     output = args.output.resolve()
     if output.exists():
         raise RuntimeError(f"Source archive already exists: {output}")
-    if not package.is_dir() or not any((package / name).is_file()
-                                     for name in ("MusicMeters.exe", "electron.exe")):
-        raise RuntimeError("Choose a completed Windows portable package")
+    executables = (
+        package / "MusicMeters.exe",
+        package / "electron.exe",
+        package / "MusicMeters.app" / "Contents" / "MacOS" / "MusicMeters",
+        package / "Contents" / "MacOS" / "MusicMeters",
+    )
+    if not package.is_dir() or not any(path.is_file() for path in executables):
+        raise RuntimeError("Choose a completed Windows portable or macOS application package")
     revision = git(ROOT, "rev-parse", "HEAD").decode().strip()
     if git(ROOT, "status", "--porcelain", "--untracked-files=no").strip():
         raise RuntimeError("Commit tracked source changes before generating release source")

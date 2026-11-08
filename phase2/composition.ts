@@ -10,7 +10,7 @@ import { Waterfall } from '../upstream/prism/src/renderer/visualizers/Waterfall'
 import type { WaterfallFrame, WaterfallNativeAnalyzer } from '../upstream/prism/src/types/waterfall'
 import type { SpectrumNativeAnalyzer, OscilloscopeNativeAnalyzer, SpectrogramNativeAnalyzer, WaveformNativeAnalyzer, VUMeterNativeAnalyzer, LUFSMeterNativeAnalyzer } from '../upstream/prism/src/renderer/audio/native'
 import type { SpectrogramNativeOptions, SpectrogramNativeResult, VUMeterNativeSnapshot, LUFSMeterNativeSnapshot } from '../upstream/prism/src/renderer/audio/native/visualizer-dsp'
-import { normalizeProject } from './project.cjs'
+import { normalizeProject, canvasFontStack } from './project.cjs'
 import { vectorscopeCorrelations } from '../phase3/vectorscope-correlation.cjs'
 import { gradientPixels } from './gradient.cjs'
 
@@ -450,7 +450,7 @@ export class Composition {
     } else {
       ctx.beginPath(); ctx.rect(-layer.w / 2, -layer.h / 2, layer.w, layer.h); ctx.clip()
       ctx.fillStyle = layer.color
-      ctx.font = `${layer.fontWeight} ${layer.fontSize}px ${JSON.stringify(layer.fontFamily)}`
+      ctx.font = `${layer.fontWeight} ${layer.fontSize}px ${canvasFontStack(layer.fontFamily)}`
       ctx.textAlign = layer.align
       ctx.textBaseline = 'middle'
       const x = layer.align === 'left' ? -layer.w / 2 : layer.align === 'right' ? layer.w / 2 : 0

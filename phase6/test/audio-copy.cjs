@@ -25,7 +25,11 @@ async function exportCase(executable, dir, name, input, audioMode = 'copy', opti
   const project = { ...defaultProject(), title: name, layers: [spectrumLayer()], audioPath: input }
   const logPath = path.join(dir, `${name}.log`)
   const log = fs.openSync(logPath, 'w')
+  const tempDir = path.join(dir, 'temp')
+  fs.mkdirSync(tempDir, { recursive: true })
   const child = spawn(executable, [], { env: { ...process.env,
+    TEMP: tempDir, TMP: tempDir, TMPDIR: tempDir,
+    PHASE5_TEST_USER_DATA: path.join(dir, 'user-data'),
     PHASE6_TEST_ENCODER: options.encoder || '',
     PHASE2_JOB: JSON.stringify({ project, output, preset: '720p', audioMode,
       cancelFile: path.join(dir, `${name}.cancel`), cancelAfterFrames: options.cancelAfterFrames }),

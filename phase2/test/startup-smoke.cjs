@@ -1,7 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const assert = require('node:assert/strict')
-const { app, dialog } = require('electron')
+const { app, BrowserWindow, dialog, Menu } = require('electron')
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -48,6 +48,23 @@ module.exports = async function startupSmoke(win) {
   assert.equal(win.isMaximized(), true)
   assert.equal(win.isFullScreen(), false)
   await capture('startup-maximized.png')
+  if (process.platform === 'darwin') {
+    assert.equal(await evaluate('document.body.classList.contains("platform-darwin")'), true)
+    assert.equal(await evaluate('document.querySelector(".window-controls").getClientRects().length'), 0,
+      'macOS must use native traffic lights without duplicate Windows caption buttons')
+    assert.equal(await evaluate('parseFloat(getComputedStyle(document.querySelector(".app-titlebar-content")).paddingLeft)'), 82,
+      'macOS title content must clear the native traffic lights')
+    win.setFullScreen(true)
+    await waitFor('document.body.classList.contains("window-fullscreen")', 'macOS fullscreen chrome')
+    assert.equal(await evaluate('parseFloat(getComputedStyle(document.querySelector(".app-titlebar-content")).paddingLeft)'), 12,
+      'macOS fullscreen title must release the traffic-light inset')
+    assert.equal(await evaluate('parseFloat(getComputedStyle(document.querySelector(".command-toolbar")).left)'), 132)
+    win.setFullScreen(false)
+    await waitFor('!document.body.classList.contains("window-fullscreen")', 'macOS windowed chrome restored')
+  } else {
+    assert.equal(await evaluate('document.querySelector(".window-controls").getClientRects().length'), 1,
+      'Windows caption buttons must remain visible')
+  }
   win.unmaximize()
   win.setContentSize(1000, 700)
 
@@ -99,6 +116,10 @@ module.exports = async function startupSmoke(win) {
   assert.equal(factoryCount, require('../templates.cjs').BUILTINS.length)
   await evaluate('document.querySelector("#template-manager-builtins [data-action=use]").click()')
   await waitFor('!document.getElementById("editor-screen").hidden', 'editor visible after using a managed template')
+  if (process.platform === 'darwin') {
+    assert.equal(await evaluate('parseFloat(getComputedStyle(document.querySelector(".command-toolbar")).right)'), 12,
+      'macOS editor commands must not reserve space for hidden Windows caption buttons')
+  }
   assert.equal(await evaluate('document.getElementById("project-manager-screen").hidden'), true)
   assert.equal(await evaluate('document.getElementById("window-project-title").hidden'), false)
   await click('close-project')
@@ -169,7 +190,7 @@ module.exports = async function startupSmoke(win) {
     const controls = document.querySelector('.window-controls').getBoundingClientRect()
     const brand = document.querySelector('.app-titlebar strong').getBoundingClientRect()
     return { top: bar.top, bottom: bar.bottom, left: bar.left, right: bar.right,
-      brandRight: brand.right, controlsLeft: controls.left,
+      brandRight: brand.right, controlsLeft: controls.left, viewportWidth: innerWidth,
       workspaceTop: document.querySelector('.workspace').getBoundingClientRect().top,
       drag: getComputedStyle(document.querySelector('.command-toolbar')).webkitAppRegion,
       menusDrag: getComputedStyle(document.querySelector('.command-menus')).webkitAppRegion,
@@ -178,7 +199,9 @@ module.exports = async function startupSmoke(win) {
   })()`)
   assert.equal(caption.top, 0); assert.equal(caption.bottom, 40)
   assert.equal(caption.workspaceTop, 40)
-  assert.ok(caption.left > caption.brandRight && caption.right <= caption.controlsLeft && caption.titleWidth >= 96)
+  assert.ok(caption.left > caption.brandRight && caption.titleWidth >= 96)
+  assert.ok(caption.right <= (process.platform === 'darwin' ? caption.viewportWidth - 12 : caption.controlsLeft),
+    'Caption commands must fit between the brand and the platform-specific right inset')
   assert.equal(caption.drag, 'drag'); assert.equal(caption.menusDrag, 'no-drag'); assert.equal(caption.actionsDrag, 'no-drag')
 
   // Real pointer input verifies caption commands receive clicks in their no-drag region.
@@ -524,7 +547,8 @@ module.exports = async function startupSmoke(win) {
     input.dispatchEvent(new Event('input', { bubbles: true })); })()`)
   assert.equal(await evaluate('document.title.endsWith("*")'), true)
   await click('open-export')
-  await click('window-close')
+  if (process.platform === 'darwin') win.close()
+  else await click('window-close')
   await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'caption close dirty guard')
   assert.equal(await evaluate('document.getElementById("export-modal").hidden && !document.getElementById("editor-screen").inert'), true)
   await click('unsaved-changes-cancel')
@@ -556,6 +580,50 @@ module.exports = async function startupSmoke(win) {
   await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'Ctrl+W project-close guard before shutdown')
   await click('unsaved-changes-discard')
   await waitFor('!document.getElementById("project-manager-screen").hidden', 'project manager after caption close cancelled')
+  if (process.platform === 'darwin') {
+    const appMenu = Menu.getApplicationMenu()
+    assert.ok(appMenu, 'Expected Darwin application menu to be installed')
+    assert.deepEqual(appMenu.items.map(item => item.label), ['MusicMeters', 'File', 'Edit', 'Templates', 'View', 'Window', 'Help'])
+    appMenu.getMenuItemById('menu-new-blank').click()
+    await waitFor('!document.getElementById("editor-screen").hidden', 'Darwin File -> New Blank Project')
+    await evaluate(`(() => { const input = document.getElementById('title'); input.value = 'Menu History Title'; input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true })); input.blur(); })()`)
+    assert.equal(await evaluate('document.getElementById("title").value'), 'Menu History Title')
+    appMenu.getMenuItemById('menu-undo').click()
+    await waitFor('document.getElementById("title").value === "Untitled project"', 'Darwin Edit -> Undo project history')
+    appMenu.getMenuItemById('menu-redo').click()
+    await waitFor('document.getElementById("title").value === "Menu History Title"', 'Darwin Edit -> Redo project history')
+    appMenu.getMenuItemById('menu-help-about').click()
+    await waitFor('!document.getElementById("about-modal").hidden', 'Darwin Help -> About')
+    await click('about-close')
+    await waitFor('document.getElementById("about-modal").hidden', 'Darwin Help -> About closed')
+    appMenu.getMenuItemById('menu-close-project').click()
+    await waitFor('!document.getElementById("unsaved-changes-modal").hidden', 'Darwin File -> Close Project dirty guard')
+    await click('unsaved-changes-discard')
+    await waitFor('!document.getElementById("project-manager-screen").hidden', 'Darwin returned to project manager')
+    appMenu.getMenuItemById('menu-close-window').click()
+    const closeDeadline = Date.now() + 10000
+    while (!win.isDestroyed() && Date.now() < closeDeadline) await delay(50)
+    assert.equal(win.isDestroyed(), true, 'Darwin Window -> Close Window must destroy the window while keeping app alive')
+    assert.equal(BrowserWindow.getAllWindows().length, 0)
+    app.emit('activate')
+    let reopened = null
+    const reopenDeadline = Date.now() + 15000
+    while (Date.now() < reopenDeadline) {
+      const windows = BrowserWindow.getAllWindows()
+      if (windows.length === 1 && !windows[0].isDestroyed()) {
+        try {
+          const ready = await windows[0].webContents.executeJavaScript('Boolean(document.getElementById("project-manager-screen") && !document.getElementById("project-manager-screen").hidden && document.getElementById("splash-screen").hidden)')
+          if (ready) { reopened = windows[0]; break }
+        } catch {}
+      }
+      await delay(50)
+    }
+    assert.ok(reopened, 'Darwin activate must recreate BrowserWindow on Project Manager')
+    reopened.once('closed', () => console.log(JSON.stringify({ event: 'startup-smoke', status: 'PASS',
+      captionClose: 'dirty guard and cancel preserved', darwinLifecycle: 'menu and activate reopen verified', quit: 'File guard, cancelled save, Project Manager shutdown' })))
+    await reopened.webContents.executeJavaScript('document.getElementById("pm-quit").click()')
+    return
+  }
   win.once('closed', () => console.log(JSON.stringify({ event: 'startup-smoke', status: 'PASS',
     captionClose: 'dirty guard and cancel preserved', quit: 'File guard, cancelled save, Project Manager shutdown' })))
   await click('pm-quit')

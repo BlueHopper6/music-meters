@@ -1,13 +1,36 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { createHash, randomUUID } = require('node:crypto')
+const { isForeignPlatformReference } = require('./project-audio.cjs')
 
-function assertLocal(input) {
-  if (typeof input !== 'string' || !path.isAbsolute(input) || input.startsWith('\\\\')) throw new Error('Choose a local absolute path')
-  for (let current = path.resolve(input);;) {
-    try { if (fs.lstatSync(current).isSymbolicLink()) throw new Error('Media storage does not follow links or junctions') }
-    catch (error) { if (error.code !== 'ENOENT') throw error }
-    const parent = path.dirname(current)
+function isDarwinRootSystemSymlink(targetPath, platform = process.platform) {
+  return platform === 'darwin' && (targetPath === '/var' || targetPath === '/tmp' || targetPath === '/etc')
+}
+
+function samePath(a, b) {
+  const resolvedA = path.resolve(a)
+  const resolvedB = path.resolve(b)
+  if (resolvedA === resolvedB) return true
+  if (resolvedA.toLowerCase() !== resolvedB.toLowerCase()) return false
+  let statA, statB
+  try { statA = fs.statSync(resolvedA, { bigint: true }) } catch { statA = null }
+  try { statB = fs.statSync(resolvedB, { bigint: true }) } catch { statB = null }
+  if (statA && statB) return statA.dev === statB.dev && statA.ino === statB.ino
+  if (statA || statB) return false
+  return true
+}
+
+function assertLocal(input, options = {}) {
+  const platform = options.platform || process.platform
+  const pathMod = platform === 'win32' ? path.win32 : platform === 'darwin' ? path.posix : path
+  if (typeof input !== 'string' || !pathMod.isAbsolute(input) || input.startsWith('\\\\')) throw new Error('Choose a local absolute path')
+  for (let current = pathMod.resolve(input);;) {
+    try {
+      if (!isDarwinRootSystemSymlink(current, platform) && fs.lstatSync(current).isSymbolicLink()) {
+        throw new Error('Media storage does not follow links or junctions')
+      }
+    } catch (error) { if (error.code !== 'ENOENT') throw error }
+    const parent = pathMod.dirname(current)
     if (parent === current) break
     current = parent
   }
@@ -80,14 +103,14 @@ async function copyMedia(input, target) {
 }
 async function prepareStoredMedia(project, target) {
   const copied = structuredClone(project)
-  if (copied.audioPath && copied.audioStorage === 'copy') {
+  if (copied.audioPath && copied.audioStorage === 'copy' && !isForeignPlatformReference(copied.audioPath)) {
     copied.audioName ??= path.basename(copied.audioPath)
     copied.audioPath = await copyMedia(copied.audioPath, target)
   }
-  for (const layer of copied.layers) if (layer.type === 'video' && layer.videoPath && layer.storage === 'copy') {
+  for (const layer of copied.layers) if (layer.type === 'video' && layer.videoPath && layer.storage === 'copy' && !isForeignPlatformReference(layer.videoPath)) {
     layer.sourceName ??= path.basename(layer.videoPath)
     layer.videoPath = await copyMedia(layer.videoPath, target)
   }
   return copied
 }
-module.exports = { assertLocal, ensureDirectory, renameLocal, fileDigest, writeAtomic, copyMedia, prepareStoredMedia }
+module.exports = { isDarwinRootSystemSymlink, samePath, assertLocal, ensureDirectory, renameLocal, fileDigest, writeAtomic, copyMedia, prepareStoredMedia }

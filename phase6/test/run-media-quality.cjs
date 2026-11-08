@@ -16,7 +16,7 @@ async function main() {
   run('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=990:sample_rate=96000:duration=2', '-c:a', 'pcm_s24le', song])
   run('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=navy:size=160x90:rate=30:duration=0.1', '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', path.join(dir, 'silent.mp4')])
   const logPath = path.join(dir, 'editor.log'), log = fs.openSync(logPath, 'wx')
-  const child = spawn(executable, [], { env: { ...process.env, TEMP: path.join(dir, 'temp'), TMP: path.join(dir, 'temp'),
+  const child = spawn(executable, [], { env: { ...process.env, TEMP: path.join(dir, 'temp'), TMP: path.join(dir, 'temp'), TMPDIR: path.join(dir, 'temp'),
     PHASE2_HEADLESS: '1', PHASE2_TEST_INPUT: song, MUSICMETERS_TEST_VIDEO: video,
     MUSICMETERS_MEDIA_SMOKE: '1', MUSICMETERS_MEDIA_SMOKE_DIR: dir, PHASE5_TEST_USER_DATA: path.join(dir, 'profile') },
     stdio: ['ignore', log, log], shell: false, windowsHide: true })
@@ -74,7 +74,7 @@ async function main() {
   run('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.1', '-af', 'volume=6', '-c:a', 'pcm_s24le', hot])
   const clippedOutput = path.join(dir, 'overload.mkv'), clippedLog = path.join(dir, 'overload.log')
   const clippedFd = fs.openSync(clippedLog, 'wx')
-  const overload = spawn(executable, [], { env: { ...process.env, TEMP: path.join(dir, 'temp'), TMP: path.join(dir, 'temp'),
+  const overload = spawn(executable, [], { env: { ...process.env, TEMP: path.join(dir, 'temp'), TMP: path.join(dir, 'temp'), TMPDIR: path.join(dir, 'temp'),
     MUSICMETERS_EXPORT_PROFILE: path.join(dir, 'overload-profile'), PHASE2_JOB: JSON.stringify({
       project: { ...project, layers: [], audioPath: hot, mixer: { ...project.mixer, audioVolume: 2, masterVolume: 2, durationMode: 'audio' } },
       output: clippedOutput, preset: '720p', audioMode: 'flac', cancelFile: path.join(dir, 'overload.cancel') }) },

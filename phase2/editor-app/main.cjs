@@ -1,12 +1,13 @@
-const { app, BrowserWindow, dialog, ipcMain, protocol, shell } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, shell } = require('electron')
 const { join, resolve, dirname, basename, extname, isAbsolute } = require('node:path')
 const { spawn } = require('node:child_process')
 const { Worker } = require('node:worker_threads')
 const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
-const { prepareStoredMedia, writeAtomic } = require('../media-storage.cjs')
+const { prepareStoredMedia, samePath, writeAtomic } = require('../media-storage.cjs')
 const { jobPath } = require('../runtime.cjs')
-const { resolveProjectAudio, projectAudioReference } = require('../project-audio.cjs')
+const { resolveProjectAudio, projectAudioReference, isForeignPlatformReference } = require('../project-audio.cjs')
+const { buildDarwinMenuTemplate, shouldQuitOnWindowAllClosed } = require('./darwin-platform.cjs')
 const { defaultProject, compositionProject, normalizeProject } = require('../project.cjs')
 const { encapsulateProjectPath, projectSaveName, projectTitleForSave } = require('../project-path.cjs')
 const { readLibraryProject, renameLibraryProject, copyLibraryProject, removeOriginalProject, deleteLibraryProject } = require('../project-library.cjs')
@@ -41,6 +42,8 @@ if (process.env.PHASE5_TEST_USER_DATA) {
 }
 let win
 let forceQuit = false
+let quitRequested = false
+let hasShownSplash = false
 let project = defaultProject()
 const allowedImages = new Set()
 
@@ -63,12 +66,14 @@ let projectPath = null
 let projectOpen = false
 let projectManagementRunning = false
 let quitAfterProjectManagement = false
+let closeWindowAfterProjectManagement = false
 let previewGeneration = 0
 let previewAudioRevision = 0
 let previewWorker = null
 const pendingPreviews = new Map()
 let exportJob = null
 let closingAfterExport = false
+let closingWindowAfterExport = false
 let playbackVideo
 let playbackRequest = 0
 let playbackCleaned = false
@@ -123,16 +128,18 @@ function getPreviewWorker() {
   return worker
 }
 
+const isPresentLocalMedia = file => Boolean(file) && !isForeignPlatformReference(file) && fs.existsSync(file)
+
 function missingMedia(value) {
   const missing = []
   const video = videoOf(value)
-  if (video?.videoPath && !fs.existsSync(video.videoPath)) missing.push({ kind: 'video', label: video.name, path: video.videoPath, id: video.id })
-  if (value.audioPath && !fs.existsSync(value.audioPath)) missing.push({ kind: 'audio', label: 'Audio', path: value.audioPath })
+  if (video?.videoPath && !isPresentLocalMedia(video.videoPath)) missing.push({ kind: 'video', label: video.name, path: video.videoPath, id: video.id })
+  if (value.audioPath && !isPresentLocalMedia(value.audioPath)) missing.push({ kind: 'audio', label: 'Audio', path: value.audioPath })
   if (value.version === 2) {
-    if (value.background.type === 'image' && value.background.imagePath && !fs.existsSync(value.background.imagePath)) {
+    if (value.background.type === 'image' && value.background.imagePath && !isPresentLocalMedia(value.background.imagePath)) {
       missing.push({ kind: 'background', label: 'Background image', path: value.background.imagePath })
     }
-    for (const layer of value.layers) if (layer.type === 'image' && layer.imagePath && !fs.existsSync(layer.imagePath)) {
+    for (const layer of value.layers) if (layer.type === 'image' && layer.imagePath && !isPresentLocalMedia(layer.imagePath)) {
       missing.push({ kind: 'layer', id: layer.id, label: layer.name, path: layer.imagePath })
     }
   }
@@ -172,14 +179,19 @@ function validateActiveProject(raw, restoring = false) {
   return normalized
 }
 
-function currentMediaInfo(value) {
-  const available = { ...value, audioPath: value.audioPath && fs.existsSync(value.audioPath) ? value.audioPath : '',
-    layers: value.layers.filter(layer => layer.type !== 'video' || layer.videoPath && fs.existsSync(layer.videoPath)) }
-  // Keep missing references in the project; metadata describes available sources.
-  if (!available.audioPath && !videoOf(available)?.videoPath) return null
+function availableMediaProject(value) {
+  const available = { ...value, audioPath: isPresentLocalMedia(value.audioPath) ? value.audioPath : '',
+    layers: value.layers.filter(layer => layer.type !== 'video' || isPresentLocalMedia(layer.videoPath)) }
   const mode = value.mixer?.durationMode
   const missingDurationSource = mode === 'video' && !videoOf(available)?.videoPath || mode === 'audio' && !available.audioPath
-  return mediaPlan({ ...available, mixer: { ...value.mixer, ...(missingDurationSource ? { durationMode: 'longest' } : {}) } })?.metadata || null
+  return { ...available, mixer: { ...value.mixer, ...(missingDurationSource ? { durationMode: 'longest' } : {}) } }
+}
+
+function currentMediaInfo(value) {
+  const available = availableMediaProject(value)
+  // Keep missing references in the project; metadata describes available sources.
+  if (!available.audioPath && !videoOf(available)?.videoPath) return null
+  return mediaPlan(available)?.metadata || null
 }
 handle('media-info', (_event, raw) => {
   const value = validateActiveProject(raw)
@@ -202,7 +214,7 @@ handle('choose-video', async () => {
 })
 handle('load-videos', async (_event, raw) => {
   const value = validateActiveProject(raw), video = videoOf(value)
-  if (!video?.videoPath || !fs.existsSync(video.videoPath)) return {}
+  if (!video?.videoPath || !isPresentLocalMedia(video.videoPath)) return {}
   const preview = await videoCache.prepare(video.videoPath)
   return { [video.videoPath]: preview.url }
 })
@@ -242,13 +254,20 @@ const isAutomatedTest = Boolean(
   process.env.PHASE2_SMOKE
 )
 
-handle('initial', () => ({ project, metadata, projectPath, fonts: installedFonts(),
-  templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project),
-  isStartupSession: process.env.PHASE2_STARTUP_SMOKE === '1' || !isAutomatedTest,
-  isAutomatedTest: Boolean(isAutomatedTest) }))
+handle('initial', () => {
+  const isStartupSession = !hasShownSplash && (process.env.PHASE2_STARTUP_SMOKE === '1' || !isAutomatedTest)
+  hasShownSplash = true
+  return {
+    platform: process.platform, project, metadata, projectPath, fonts: installedFonts(),
+    templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: missingMedia(project),
+    isStartupSession,
+    projectOpen: Boolean(projectOpen),
+    isAutomatedTest: Boolean(isAutomatedTest),
+  }
+})
 handle('get-recent-projects', () => availableRecentProjects(userData()))
 function assertRecentThumbnailPath(input) {
-  if (typeof input !== 'string' || !readPreferences(userData()).recentProjects.some(item => item.path.toLowerCase() === input.toLowerCase())) throw new Error('Project is not in recent projects')
+  if (typeof input !== 'string' || !readPreferences(userData()).recentProjects.some(item => samePath(item.path, input))) throw new Error('Project is not in recent projects')
   return resolve(input)
 }
 async function thumbnailSource(value, frame) {
@@ -256,6 +275,7 @@ async function thumbnailSource(value, frame) {
   let videoFrame = ''
   const layer = videoOf(value)
   if (layer?.videoPath && layer.visible && layer.opacity > 0) {
+    if (!isPresentLocalMedia(layer.videoPath)) throw new Error('Choose a local video file')
     const reader = new VideoFrames(layer, 1 / 30, 480, frame / 30)
     try { videoFrame = await reader.read() } finally { await reader.close() }
   }
@@ -268,7 +288,7 @@ handle('get-project-thumbnail', async (_event, input) => {
   if (url) return { url, version }
   const { project: saved } = readLibraryProject(file)
   const layer = videoOf(saved)
-  const frame = saved.previewFrame || (layer?.videoPath ? Math.round(Math.min(1,probeVideo(layer.videoPath).duration * 0.1)*30) : 0)
+  const frame = saved.previewFrame || (layer?.videoPath && isPresentLocalMedia(layer.videoPath) ? Math.round(Math.min(1,probeVideo(layer.videoPath).duration * 0.1)*30) : 0)
   return { project: saved, source: await thumbnailSource(saved,frame), version }
 })
 handle('cache-project-thumbnail', (_event, input, version, png) => thumbnails.writeThumbnail(userData(),assertRecentThumbnailPath(input),version,png))
@@ -292,7 +312,7 @@ handle('new-blank-project', () => {
   return { project, metadata, projectPath, fonts: installedFonts(),
     templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: [] }
 })
-handle('close-project', () => {
+function resetProjectSession() {
   allowedVideos.clear(); allowedVideos.add(''); videoCache.media.clear()
   projectOpen = false
   cancelPreview()
@@ -302,6 +322,10 @@ handle('close-project', () => {
   metadata = null
   allowedImages.clear()
   historyAudio.clear(); historyAudio.add('')
+  chosenExportDestination = null
+}
+handle('close-project', () => {
+  resetProjectSession()
   return { project, metadata, projectPath, fonts: installedFonts(),
     templates: listTemplates(userData()), preferences: readPreferences(userData()), missingMedia: [] }
 })
@@ -409,7 +433,7 @@ handle('restore-project', async (_event, raw) => {
   cancelPreview()
   previewAudioRevision++
   project = next
-  activeAudio = next.audioPath && fs.existsSync(next.audioPath) ? next.audioPath : ''
+  activeAudio = isPresentLocalMedia(next.audioPath) ? next.audioPath : ''
   metadata = currentMediaInfo(next)
   return { project, metadata, missingMedia: missingMedia(project) }
 })
@@ -421,7 +445,7 @@ handle('preview-at', async (_event, frame, raw) => {
   const value = validateActiveProject(raw)
   cancelPreview()
   const id = previewGeneration
-  const prepared = await mediaCache.prepare(value)
+  const prepared = await mediaCache.prepare(availableMediaProject(value))
   if (id !== previewGeneration) return { superseded: true }
   const worker = getPreviewWorker()
   return new Promise((resolve, reject) => {
@@ -440,7 +464,7 @@ handle('prepare-playback', async (_event, raw, frame) => {
   assetData(value)
   cancelPreview()
   const generation = ++playbackRequest
-  const prepared = await mediaCache.prepare(value)
+  const prepared = await mediaCache.prepare(availableMediaProject(value))
   if (generation !== playbackRequest) return { superseded: true }
   const result = await playbackVideo.open({ ...value, audioPath: prepared.analysisPath }, prepared.metadata, frame, prepared.outputPath)
   return { ...result, peak: prepared.peak }
@@ -489,7 +513,15 @@ handle('save-project', async (_event, raw, asNew = false, thumbnail) => {
     if (quitAfterProjectManagement) {
       quitAfterProjectManagement = false
       if (savedSuccessfully) app.quit()
-      else win.close() // A failed save still needs the normal unsaved guard.
+      else if (win && !win.isDestroyed()) win.close() // A failed save still needs the normal unsaved guard.
+    } else if (closeWindowAfterProjectManagement) {
+      closeWindowAfterProjectManagement = false
+      if (savedSuccessfully) {
+        forceQuit = true
+        if (win && !win.isDestroyed()) win.close()
+      } else if (win && !win.isDestroyed()) {
+        win.close()
+      }
     }
   }
 })
@@ -504,7 +536,7 @@ function loadProjectFromDisk(target) {
   for (const input of imagePaths(value)) allowedImages.add(input)
   let nextMetadata = null
   let nextAudio = ''
-  if (candidate && fs.existsSync(candidate)) {
+  if (candidate && isPresentLocalMedia(candidate)) {
     const info = audioInfo(candidate)
     nextMetadata = info.metadata
     nextAudio = info.path
@@ -542,7 +574,7 @@ handle('open-project-path', async (_event, targetPath) => {
   }
   const resolved = resolve(targetPath)
   const recent = readPreferences(userData()).recentProjects
-  if (!recent.some(item => item.path.toLowerCase() === resolved.toLowerCase())) {
+  if (!recent.some(item => samePath(item.path, resolved))) {
     throw new Error('Project is not in recent projects')
   }
   if (isMissingProject(resolved)) throw new Error(missingProjectMessage)
@@ -559,26 +591,26 @@ handle('manage-project', async (_event, source, action, name = '') => {
   if (!['rename', 'move', 'copy', 'delete'].includes(action)) throw new Error('Invalid project action')
   source = resolve(source)
   const recent = readPreferences(userData()).recentProjects
-  if (!recent.some(item => item.path.toLowerCase() === source.toLowerCase())) throw new Error('Project is not in recent projects')
+  if (!recent.some(item => samePath(item.path, source))) throw new Error('Project is not in recent projects')
   if (isMissingProject(source)) throw new Error(missingProjectMessage)
   projectManagementRunning = true
   try {
     if (action === 'rename') {
       const renamed = renameLibraryProject(source, name)
       const current = readPreferences(userData())
-      writePreferences(userData(), { recentProjects: [{ path: renamed.path, name: renamed.name, lastOpened: Date.now() }, ...current.recentProjects.filter(item => ![source.toLowerCase(), renamed.path.toLowerCase()].includes(item.path.toLowerCase()))] })
+      writePreferences(userData(), { recentProjects: [{ path: renamed.path, name: renamed.name, lastOpened: Date.now() }, ...current.recentProjects.filter(item => !samePath(item.path, source) && !samePath(item.path, renamed.path))] })
       return { path: renamed.path, name: renamed.name }
     }
     const original = readLibraryProject(source)
     if (action === 'delete') {
       const choice = await dialog.showMessageBox(win, { type: 'warning', title: 'Delete project',
         message: `Delete “${original.project.title || basename(source, '.json')}”?`,
-        detail: `${source}\n\nThe project and its recorded copied media will go to the Recycle Bin. Original media and unrelated files will be kept.`,
+        detail: `${source}\n\nThe project and its recorded copied media will go to the ${process.platform === 'darwin' ? 'Trash' : 'Recycle Bin'}. Original media and unrelated files will be kept.`,
         buttons: ['Cancel', 'Delete project'], defaultId: 0, cancelId: 0, noLink: true })
       if (choice.response !== 1) return null
       const deleted = await deleteLibraryProject(source, folder => shell.trashItem(folder))
       const current = readPreferences(userData())
-      writePreferences(userData(), { recentProjects: current.recentProjects.filter(item => item.path.toLowerCase() !== source.toLowerCase()) })
+      writePreferences(userData(), { recentProjects: current.recentProjects.filter(item => !samePath(item.path, source)) })
       return deleted
     }
     const folder = dirname(source)
@@ -598,7 +630,7 @@ handle('manage-project', async (_event, source, action, name = '') => {
       try { removeOriginalProject(copied) }
       catch (error) { throw new Error(`Copy is available at ${target}. Move did not finish: ${error.message}`) }
       const current = readPreferences(userData())
-      writePreferences(userData(), { recentProjects: current.recentProjects.filter(item => item.path.toLowerCase() !== source.toLowerCase()) })
+      writePreferences(userData(), { recentProjects: current.recentProjects.filter(item => !samePath(item.path, source)) })
     }
     return { path: copied.path, name: copied.name }
   } catch (error) {
@@ -607,6 +639,11 @@ handle('manage-project', async (_event, source, action, name = '') => {
   } finally {
     projectManagementRunning = false
     if (quitAfterProjectManagement) { quitAfterProjectManagement = false; app.quit() }
+    else if (closeWindowAfterProjectManagement) {
+      closeWindowAfterProjectManagement = false
+      forceQuit = true
+      if (win && !win.isDestroyed()) win.close()
+    }
   }
 })
 let chosenExportDestination = null
@@ -730,28 +767,174 @@ function launchExport(value, output, preset, audioMode, range, stillFrame) {
     else sendExport({ event: code === 2 ? 'cancelled' : 'failed',
       message: code === 2 ? 'Export cancelled' : job.errors.trim() || `Exporter exited ${code}`, output })
     if (closingAfterExport) app.quit()
+    else if (closingWindowAfterExport) {
+      closingWindowAfterExport = false
+      forceQuit = true
+      if (win && !win.isDestroyed()) win.close()
+    }
   })
   return output
 }
 handle('confirm-app-close', () => {
+  if (process.platform === 'darwin' && !quitRequested && exportJob) {
+    closingWindowAfterExport = true
+    fs.writeFileSync(exportJob.cancelFile, 'cancel')
+    return
+  }
   forceQuit = true
   if (win && !win.isDestroyed()) win.close()
+  if (quitRequested) app.quit()
 })
+handle('cancel-app-close', () => {
+  quitRequested = false
+  forceQuit = false
+  closingAfterExport = false
+  closingWindowAfterExport = false
+  quitAfterProjectManagement = false
+  closeWindowAfterProjectManagement = false
+})
+let restoreBounds = null
+function defaultEditorBounds(targetWin = win) {
+  if (process.platform !== 'darwin') return { width: 1480, height: 900 }
+  const display = (targetWin && !targetWin.isDestroyed() ? screen.getDisplayMatching(targetWin.getBounds()) : null) || screen.getPrimaryDisplay()
+  const area = display.workArea
+  const width = area.width > 1520 ? 1480 : Math.max(1000, area.width - 20)
+  const height = area.height > 940 ? 900 : Math.max(700, area.height - 20)
+  const x = area.x + Math.max(0, Math.floor((area.width - width) / 2))
+  const y = area.y + Math.max(0, Math.floor((area.height - height) / 2))
+  return { x, y, width, height }
+}
+function maximizeEditorWindow(targetWin = win) {
+  if (!targetWin || targetWin.isDestroyed()) return
+  const current = targetWin.getBounds()
+  const display = screen.getDisplayMatching(current) || screen.getPrimaryDisplay()
+  if (current.width < display.workArea.width || current.height < display.workArea.height) {
+    restoreBounds = current
+  } else if (!restoreBounds) {
+    restoreBounds = defaultEditorBounds(targetWin)
+  }
+  targetWin.maximize()
+  if (process.platform === 'darwin' && !targetWin.isMaximized()) {
+    targetWin.setBounds(display.workArea)
+  }
+  targetWin.webContents.send('window-state', windowState())
+}
+
 handle('toggle-window-fullscreen', () => {
-  win.setFullScreen(!win.isFullScreen())
+  if (win && !win.isDestroyed()) win.setFullScreen(!win.isFullScreen())
 })
-const windowState = () => ({ fullscreen: win.isFullScreen(), maximized: win.isMaximized() })
+const windowState = () => ({ fullscreen: Boolean(win && !win.isDestroyed() && win.isFullScreen()), maximized: Boolean(win && !win.isDestroyed() && win.isMaximized()) })
 handle('window-state', windowState)
-handle('minimize-window', () => win.minimize())
+handle('minimize-window', () => { if (win && !win.isDestroyed()) win.minimize() })
 handle('maximize-window', () => {
+  if (!win || win.isDestroyed()) return
   if (win.isFullScreen()) win.setFullScreen(false)
-  else if (win.isMaximized()) win.unmaximize()
-  else win.maximize()
+  else if (win.isMaximized()) {
+    win.unmaximize()
+    if (process.platform === 'darwin' && win.isMaximized()) {
+      win.setBounds(restoreBounds || defaultEditorBounds(win))
+    }
+    win.webContents.send('window-state', windowState())
+  } else maximizeEditorWindow(win)
 })
-handle('close-window', () => win.close())
+handle('close-window', (_event, quitApp = false) => {
+  if (quitApp) quitRequested = true
+  if (win && !win.isDestroyed()) win.close()
+  else if (quitApp) app.quit()
+})
 handle('cancel-render', () => {
   if (exportJob) fs.writeFileSync(exportJob.cancelFile, 'cancel')
 })
+
+function sendMenuCommand(command) {
+  if (!win || win.isDestroyed()) {
+    void createWindow(command)
+    return
+  }
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+  win.webContents.send('menu-command', command)
+}
+
+function createWindow(initialMenuCommand = '') {
+  if (win && !win.isDestroyed()) {
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+    if (initialMenuCommand) win.webContents.send('menu-command', initialMenuCommand)
+    return Promise.resolve(win)
+  }
+  forceQuit = false
+  closingWindowAfterExport = false
+  closeWindowAfterProjectManagement = false
+  const initialBounds = defaultEditorBounds(null)
+  const created = new BrowserWindow({
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 12 }, x: initialBounds.x, y: initialBounds.y } : {}),
+    backgroundColor: '#09090b',
+    width: initialBounds.width, height: initialBounds.height, minWidth: 1000, minHeight: 700,
+    icon: join(__dirname, 'assets', 'brand', process.platform === 'darwin' ? 'icon-64.png' : 'music-meters.ico'),
+    show: false,
+    webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true,
+      nodeIntegration: false, sandbox: true, backgroundThrottling: false },
+  })
+  win = created
+  created.once('ready-to-show', () => {
+    if (process.env.PHASE2_HEADLESS !== '1' && !created.isDestroyed()) {
+      if (process.platform === 'darwin') {
+        created.show()
+        maximizeEditorWindow(created)
+      } else {
+        created.maximize()
+        created.show()
+      }
+    }
+  })
+  if (process.platform !== 'darwin') {
+    created.setMenuBarVisibility(false)
+    created.setMenu(null)
+  }
+  for (const event of ['enter-full-screen', 'leave-full-screen', 'maximize', 'unmaximize']) {
+    created.on(event, () => {
+      if (!created.isDestroyed()) created.webContents.send('window-state', windowState())
+    })
+  }
+  lockWindowNavigation(created.webContents)
+  created.webContents.on('render-process-gone', () => {
+    if (pendingStorage) { const pending = pendingStorage; pendingStorage = null; pending.resolve(null) }
+  })
+  created.on('closed', () => {
+    if (pendingStorage) { const pending = pendingStorage; pendingStorage = null; pending.resolve(null) }
+    if (win === created) win = null
+    if (process.platform === 'darwin' && !quitRequested) {
+      forceQuit = false
+      closingWindowAfterExport = false
+      closeWindowAfterProjectManagement = false
+      ++playbackRequest
+      void playbackVideo?.cancel()
+      mediaCache.cancel()
+      resetProjectSession()
+    }
+  })
+  created.on('close', event => {
+    if (projectManagementRunning) {
+      event.preventDefault()
+      if (process.platform === 'darwin' && !quitRequested) closeWindowAfterProjectManagement = true
+      else quitAfterProjectManagement = true
+      return
+    }
+    if (forceQuit || (isAutomatedTest && process.env.MUSICMETERS_MACOS_LIFECYCLE_SMOKE !== '1')) return
+    event.preventDefault()
+    created.webContents.send('app-close-requested')
+  })
+  return created.loadFile(editorDocument).then(() => {
+    if (initialMenuCommand && !created.isDestroyed()) {
+      created.webContents.send('menu-command', initialMenuCommand)
+    }
+    return created
+  })
+}
 
 app.disableHardwareAcceleration()
 app.whenReady().then(() => {
@@ -766,37 +949,24 @@ app.whenReady().then(() => {
     projectOpen = true
     previewAudioRevision++
   }
-  win = new BrowserWindow({
-    titleBarStyle: 'hidden',
-    backgroundColor: '#09090b',
-    width: 1480, height: 900, minWidth: 1000, minHeight: 700,
-    icon: join(__dirname, 'assets', 'brand', 'music-meters.ico'),
-    show: false,
-    webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true,
-      nodeIntegration: false, sandbox: true, backgroundThrottling: false },
-  })
-  win.once('ready-to-show', () => {
-    if (process.env.PHASE2_HEADLESS !== '1') { win.maximize(); win.show() }
-  })
-  win.setMenuBarVisibility(false)
-  win.setMenu(null)
-  for (const event of ['enter-full-screen', 'leave-full-screen', 'maximize', 'unmaximize']) {
-    win.on(event, () => win.webContents.send('window-state', windowState()))
+  if (process.platform === 'darwin') {
+    Menu.setApplicationMenu(Menu.buildFromTemplate(buildDarwinMenuTemplate({
+      appName: identity.productName,
+      onCommand: sendMenuCommand,
+      onRequestQuit: () => {
+        quitRequested = true
+        if (win && !win.isDestroyed()) win.close()
+        else app.quit()
+      },
+      onRequestCloseWindow: () => {
+        if (win && !win.isDestroyed()) win.close()
+      },
+      onToggleFullScreen: () => {
+        if (win && !win.isDestroyed()) win.setFullScreen(!win.isFullScreen())
+      },
+    })))
   }
-  lockWindowNavigation(win.webContents)
-  win.webContents.on('render-process-gone', () => {
-    if (pendingStorage) { const pending = pendingStorage; pendingStorage = null; pending.resolve(null) }
-  })
-  win.on('closed', () => {
-    if (pendingStorage) { const pending = pendingStorage; pendingStorage = null; pending.resolve(null) }
-  })
-  win.on('close', event => {
-    if (projectManagementRunning) { event.preventDefault(); quitAfterProjectManagement = true; return }
-    if (forceQuit || isAutomatedTest) return
-    event.preventDefault()
-    win.webContents.send('app-close-requested')
-  })
-  return win.loadFile(editorDocument).then(async () => {
+  return createWindow().then(async () => {
     if (process.env.MUSICMETERS_THUMBNAIL_SMOKE === '1' || process.env.MUSICMETERS_VIDEO_TRANSFORM_SMOKE === '1' || process.env.MUSICMETERS_RANGE_SMOKE === '1' || process.env.MUSICMETERS_FEEDBACK_SMOKE === '1' || process.env.MUSICMETERS_SNAPPING_SMOKE === '1' || process.env.MUSICMETERS_STYLE_SMOKE === '1' || process.env.MUSICMETERS_STORAGE_SMOKE === '1' || process.env.MUSICMETERS_MEDIA_SMOKE === '1' || process.env.PHASE2_PLAYBACK_SMOKE === '1' || process.env.PHASE2_PORTRAIT_SMOKE === '1' || process.env.PHASE2_STARTUP_SMOKE === '1' || process.env.PHASE6_SECURITY_SMOKE === '1' || process.env.PHASE6_AUDIO_COPY_EDITOR_SMOKE === '1' || process.env.PHASE6_PREVIEW_PERF_SMOKE === '1' || process.env.PHASE6_REPEAT_SMOKE === '1' || process.env.PHASE5_RELINK_SMOKE === '1' || process.env.PHASE5_WORKFLOW_SMOKE === '1' || process.env.PHASE4_LEGACY_SMOKE === '1' || process.env.PHASE4_COMPOSITION_SMOKE === '1' || process.env.PHASE2_SMOKE === '1' || process.env.PHASE2_LONG_PREVIEW === '1' || process.env.PHASE2_MISSING_SMOKE === '1' || process.env.PHASE3_SPECTRUM_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_SMOKE === '1' || process.env.PHASE3_OSCILLOSCOPE_LONG === '1' || process.env.PHASE3_SPECTROGRAM_SMOKE === '1' || process.env.PHASE3_WAVEFORM_SMOKE === '1' || process.env.PHASE3_VU_SMOKE === '1' || process.env.PHASE3_LOUDNESS_SMOKE === '1' || process.env.PHASE3_WATERFALL_SMOKE === '1' || process.env.PHASE3_VECTORSCOPE_SMOKE === '1' || process.env.PHASE3_ALL_METERS_SMOKE === '1') {
       try {
         if (process.env.MUSICMETERS_THUMBNAIL_SMOKE === '1') await require('../test/project-thumbnails-smoke.cjs')(win)
@@ -836,8 +1006,32 @@ app.whenReady().then(() => {
     }
   })
 }).catch(error => { console.error(error); app.exit(1) })
-app.on('window-all-closed', () => app.quit())
+app.on('activate', () => {
+  if (!win || win.isDestroyed()) {
+    void createWindow()
+    return
+  }
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+})
+app.on('window-all-closed', () => {
+  if (shouldQuitOnWindowAllClosed({
+    platform: process.platform,
+    quitRequested,
+    isAutomatedTest,
+    lifecycleSmoke: process.env.MUSICMETERS_MACOS_LIFECYCLE_SMOKE === '1',
+  })) {
+    app.quit()
+  }
+})
 app.on('before-quit', event => {
+  quitRequested = true
+  if (win && !win.isDestroyed() && !forceQuit && !(isAutomatedTest && process.env.MUSICMETERS_MACOS_LIFECYCLE_SMOKE !== '1')) {
+    event.preventDefault()
+    win.close()
+    return
+  }
   if (projectManagementRunning) { event.preventDefault(); quitAfterProjectManagement = true; return }
   if (exportJob) {
     event.preventDefault()

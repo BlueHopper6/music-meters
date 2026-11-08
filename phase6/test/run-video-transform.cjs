@@ -9,7 +9,7 @@ async function main(){
   run(['-f','lavfi','-i','sine=frequency=440:duration=3','-c:a','pcm_s24le',audio])
   run(['-f','lavfi','-i','color=blue:s=320x180:r=30:d=3','-c:v','ffv1',video])
   const fd=fs.openSync(path.join(dir,'editor.log'),'wx')
-  const child=spawn(packagedExecutable(path.resolve(process.argv[2])),[],{env:{...process.env,TEMP:path.join(dir,'temp'),TMP:path.join(dir,'temp'),PHASE5_TEST_USER_DATA:path.join(dir,'profile'),PHASE2_HEADLESS:'1',PHASE2_TEST_INPUT:audio,MUSICMETERS_TEST_VIDEO:video,PHASE2_TEST_SAVE_PATH:path.join(dir,'saved.json'),MUSICMETERS_VIDEO_TRANSFORM_SMOKE:'1',MUSICMETERS_VIDEO_TRANSFORM_DIR:dir},stdio:['ignore',fd,fd],windowsHide:true})
+  const child=spawn(packagedExecutable(path.resolve(process.argv[2])),[],{env:{...process.env,TEMP:path.join(dir,'temp'),TMP:path.join(dir,'temp'),TMPDIR:path.join(dir,'temp'),PHASE5_TEST_USER_DATA:path.join(dir,'profile'),PHASE2_HEADLESS:'1',PHASE2_TEST_INPUT:audio,MUSICMETERS_TEST_VIDEO:video,PHASE2_TEST_SAVE_PATH:path.join(dir,'saved.json'),MUSICMETERS_VIDEO_TRANSFORM_SMOKE:'1',MUSICMETERS_VIDEO_TRANSFORM_DIR:dir},stdio:['ignore',fd,fd],windowsHide:true})
   const code=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{child.kill();reject(new Error('Video transform smoke timed out'))},180000);child.once('error',reject);child.once('close',code=>{clearTimeout(timer);resolve(code)})})
   fs.closeSync(fd);assert.equal(code,0,fs.readFileSync(path.join(dir,'editor.log'),'utf8'))
   const saved=JSON.parse(fs.readFileSync(fs.readFileSync(path.join(dir,'saved-path.txt'),'utf8'))),layer=saved.layers.find(l=>l.type==='video')

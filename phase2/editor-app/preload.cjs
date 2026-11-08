@@ -4,7 +4,7 @@ contextBridge.exposeInMainWorld('desktop', {
   toggleWindowFullscreen: () => ipcRenderer.invoke('toggle-window-fullscreen'),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
-  closeWindow: () => ipcRenderer.invoke('close-window'),
+  closeWindow: (quitApp = false) => ipcRenderer.invoke('close-window', quitApp),
   windowState: () => ipcRenderer.invoke('window-state'),
   onWindowState: listener => {
     const handler = (_event, state) => listener(state)
@@ -55,6 +55,12 @@ contextBridge.exposeInMainWorld('desktop', {
   cancelRender: () => ipcRenderer.invoke('cancel-render'),
   closeProject: () => ipcRenderer.invoke('close-project'),
   confirmAppClose: () => ipcRenderer.invoke('confirm-app-close'),
+  cancelAppClose: () => ipcRenderer.invoke('cancel-app-close'),
+  onMenuCommand: listener => {
+    const handler = (_event, command) => listener(command)
+    ipcRenderer.on('menu-command', handler)
+    return () => ipcRenderer.off('menu-command', handler)
+  },
   onAppCloseRequested: listener => {
     const handler = () => listener()
     ipcRenderer.on('app-close-requested', handler)

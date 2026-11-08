@@ -1,11 +1,13 @@
 const { spawn } = require('node:child_process')
+const { ffmpegExecutable } = require('../phase2/ffmpeg.cjs')
 
 // FFmpeg's stdout is consumed only when the analyzer needs more samples. Node's
 // stream backpressure keeps the decoder from filling application memory.
 class PcmReader {
-  constructor(input, sampleRate, ffmpeg = 'ffmpeg', startSeconds = 0) {
+  constructor(input, sampleRate, ffmpeg = ffmpegExecutable(), startSeconds = 0) {
     if (!Number.isFinite(startSeconds) || startSeconds < 0) throw new Error('Invalid decoder seek position')
-    this.child = spawn(ffmpeg, [
+    const executable = ffmpeg === 'ffmpeg' ? ffmpegExecutable() : ffmpeg
+    this.child = spawn(executable, [
       '-nostdin', '-v', 'error', ...(startSeconds ? ['-ss', String(startSeconds)] : []), '-i', input, '-map', '0:a:0',
       '-f', 'f32le', '-acodec', 'pcm_f32le', '-ac', '2',
       '-ar', String(sampleRate), 'pipe:1',

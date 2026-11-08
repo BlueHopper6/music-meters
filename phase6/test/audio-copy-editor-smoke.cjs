@@ -35,7 +35,8 @@ module.exports = async function audioCopyEditorSmoke(win) {
     viewport: innerWidth, height: document.querySelector('.toolbar').getBoundingClientRect().height,
     controlsLeft: document.querySelector('.window-controls').getBoundingClientRect().left,
   }))()`)
-  assert.ok(toolbar.menusLeft >= 0 && toolbar.menusRight < toolbar.actionsLeft && toolbar.actionsRight <= toolbar.controlsLeft && toolbar.height === 40)
+  const rightEdge = process.platform === 'darwin' ? toolbar.viewport - 12 : toolbar.controlsLeft
+  assert.ok(toolbar.menusLeft >= 0 && toolbar.menusRight < toolbar.actionsLeft && toolbar.actionsRight <= rightEdge && toolbar.height === 40)
   await evaluate('document.getElementById("open-export").click()')
   const dialogBounds = await evaluate(`(() => { const r = document.querySelector('.export-card').getBoundingClientRect();
     return { left: r.left, right: r.right, bottom: r.bottom, viewport: innerWidth, height: innerHeight }; })()`)

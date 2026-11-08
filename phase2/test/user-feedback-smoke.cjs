@@ -42,7 +42,10 @@ module.exports=async function(win){
   // reading a video-tainted canvas through getImageData.
   const point=await evaluate('(()=>{const r=document.getElementById("stage").getBoundingClientRect();return {x:Math.round(r.x+r.width*0.02),y:Math.round(r.y+r.height*0.9)}})()')
   const screenshot=await win.capturePage();fs.writeFileSync(path.join(dir,'ready-video.png'),screenshot.toPNG())
-  const pixel=screenshot.crop({...point,width:1,height:1}).toBitmap()
+  // DOM coordinates are page coordinates; cropping the full native bitmap
+  // instead samples the wrong location on Retina displays.
+  const pixel=(await win.webContents.capturePage({...point,width:1,height:1})).toBitmap()
+  console.log(JSON.stringify({event:'feedback-video-pixel',point,imageSize:screenshot.getSize(),windowSize:win.getContentSize(),scaleFactors:screenshot.getScaleFactors(),bgr:[...pixel.subarray(0,3)]}))
   assert.ok(pixel[0]>pixel[2]+50,'decoded blue picture must be on the canvas when loading finishes')
   cancelling=true;await click('import-video')
   const cancelDeadline=Date.now()+30000;while(!cancelSeen && Date.now()<cancelDeadline)await delay(50)
@@ -62,7 +65,7 @@ module.exports=async function(win){
  try{
   await click('save-project');await wait('!document.getElementById("error-notice").hidden && !document.getElementById("editor-screen").inert','save failure notice')
   assert.match(await evaluate('document.getElementById("error-notice-title").textContent'),/saved/)
-  assert.match(await evaluate('document.getElementById("error-notice-message").textContent'),/Windows blocked access/)
+  assert.match(await evaluate('document.getElementById("error-notice-message").textContent'),/(Windows|macOS) blocked access/)
   assert.deepEqual(fs.readFileSync(process.env.PHASE2_TEST_PROJECT_PATH),original)
  }finally{fs.renameSync=rename}
  console.log(JSON.stringify({event:'user-feedback-pass',imageError:true,persistent:true,cancelQuiet:true,videoCancelQuiet:true,loadingUntilDecoded:true,loadingFailureClears:true,saveError:true,previousSaveIntact:true}))

@@ -2,6 +2,21 @@
 
 User-facing release history, newest first. GitHub release notes provide the download announcement and exact package details; this file keeps the feature history with the source.
 
+## Unreleased
+
+### Added
+
+- Experimental macOS application packaging for Apple Silicon and Intel, with native window controls, application menus, and macOS keyboard shortcuts. macOS 13 is the runtime minimum; oldest-OS compatibility is unverified.
+
+### Fixed
+
+- Preserve Windows media references when a project is opened on macOS, avoiding accidental resolution against unrelated local files.
+- Keep separate project thumbnails for distinct files on case-sensitive volumes.
+
+### Requirements and limitations
+
+- Mac builds use ad-hoc signing and are unnotarized; macOS may block downloaded builds. FFmpeg and FFprobe remain separate prerequisites. Any experimental download requires its exact matching source and explicit release approval; these source changes do not announce a published Mac release.
+
 ## [1.3.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.3.0) — 2026-11-06
 
 Published November 6 in America/Indianapolis. See the [release notes](docs/releases/1.3.0.md) for exact downloads, checksums, and validation.

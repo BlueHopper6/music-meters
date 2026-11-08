@@ -15,7 +15,7 @@ async function main() {
   run('ffmpeg', ['-v','error','-f','lavfi','-i','color=red:s=160x90:r=30:d=1','-f','lavfi','-i','color=blue:s=160x90:r=30:d=2','-filter_complex','[0:v][1:v]concat=n=2:v=1:a=0[out]','-map','[out]','-c:v','ffv1',video])
   const fd = fs.openSync(path.join(dir, 'editor.log'), 'wx')
   const child = spawn(packagedExecutable(path.resolve(process.argv[2])), [], {env: {...process.env,
-    TEMP:path.join(dir,'temp'),TMP:path.join(dir,'temp'),PHASE5_TEST_USER_DATA:path.join(dir,'profile'),
+    TEMP:path.join(dir,'temp'),TMP:path.join(dir,'temp'),TMPDIR:path.join(dir,'temp'),PHASE5_TEST_USER_DATA:path.join(dir,'profile'),
     PHASE2_HEADLESS:'1',PHASE2_TEST_INPUT:audio,MUSICMETERS_TEST_VIDEO:video,MUSICMETERS_RANGE_SMOKE:'1',MUSICMETERS_RANGE_DIR:dir},
     stdio:['ignore',fd,fd],windowsHide:true})
   const code = await new Promise((resolve,reject) => {

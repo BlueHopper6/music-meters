@@ -3,6 +3,7 @@ const path = require('node:path')
 const { spawn } = require('node:child_process')
 const { randomUUID } = require('node:crypto')
 const { probeVideo, runFFmpeg, assertCachePath } = require('./project-media.cjs')
+const { ffmpegExecutable } = require('./ffmpeg.cjs')
 
 // Sequential offline decoding: bounded by one PNG plus stream backpressure.
 // FFmpeg maps variable-rate input onto the composition's 30 FPS clock.
@@ -13,7 +14,7 @@ class VideoFrames {
     const info = probeVideo(layer.videoPath)
     this.duration = info.duration
     const seek = layer.endBehavior === 'loop' ? start % info.duration : Math.min(start, Math.max(0, info.duration - 1 / 30))
-    this.child = spawn('ffmpeg', ['-nostdin', '-v', 'error',
+    this.child = spawn(ffmpegExecutable(), ['-nostdin', '-v', 'error',
       ...(layer.endBehavior === 'loop' ? ['-stream_loop', '-1'] : []),
       '-protocol_whitelist', 'file,pipe', ...(seek > 0 ? ['-ss', String(seek)] : []), '-i', layer.videoPath, '-map', `0:${info.streamIndex}`, '-an',
       '-vf', `fps=30,scale=w='min(iw,${maxDimension})':h='min(ih,${maxDimension})':force_original_aspect_ratio=decrease,setsar=1,tpad=stop_mode=clone:stop_duration=${duration}`,

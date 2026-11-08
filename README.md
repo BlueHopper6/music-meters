@@ -59,7 +59,7 @@ The latest release is [MusicMeters 1.3.0](https://github.com/BlueHopper6/music-m
 
 ## Download
 
-MusicMeters targets **Windows x64**. Download the setup EXE or portable ZIP from [MusicMeters 1.3.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.3.0) and check its requirements and checksums. Linux and macOS builds have not been validated.
+Official release downloads currently target **Windows x64**. Download the setup EXE or portable ZIP from [MusicMeters 1.3.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.3.0) and check its requirements and checksums. Contributor macOS (`arm64` / `x64`) development and packaging support is in progress (see the [macOS port PRD](docs/macos-port-prd.md)); Linux builds have not been validated.
 
 1. Install the FFmpeg command-line tools and put both `ffmpeg` and `ffprobe` on your Windows `PATH`. Check `ffmpeg -version` and `ffprobe -version` in a new terminal.
 2. For the **setup EXE**, run it to install MusicMeters for your Windows account, then open **MusicMeters** from the Start menu. Setup adds an uninstall entry and preserves the existing templates/preferences location.
@@ -81,7 +81,7 @@ Saving a new project creates a project folder. Keep its JSON and sibling `.asset
 
 ## Developing
 
-Want to change the app? Start with [Run and test locally](docs/development.md): it covers Windows setup, launching the editor, rebuilding after edits, and automated/manual checks. There is no root package.json or `npm run dev` command.
+Want to change the app? Start with [Run and test locally](docs/development.md): it covers Windows and macOS contributor setup, launching the editor, rebuilding after edits, and automated/manual checks. There is no root package.json or `npm run dev` command.
 
 After completing setup, run this from the repository root:
 
@@ -95,7 +95,8 @@ The launcher rebuilds the renderer and opens the development app. See the guide'
 
 - [User guide](docs/user-guide.md) — meters, composition, playback, templates, and project files.
 - [Changelog](CHANGELOG.md) — release history and the complete 1.0.0 feature baseline.
-- [Run and test locally](docs/development.md) — Windows setup, the edit/run loop, automated tests, and development packages.
+- [Run and test locally](docs/development.md) — Windows and macOS contributor setup, the edit/run loop, automated tests, and development packages.
+- [macOS port PRD](docs/macos-port-prd.md) — macOS architecture, requirements-to-test matrix, and release gates.
 - [Release checklist](docs/release-checklist.md) — verification and matching source delivery.
 - [Contributing](CONTRIBUTING.md) · [Report an issue](https://github.com/BlueHopper6/music-meters/issues).
 

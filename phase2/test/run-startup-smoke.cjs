@@ -19,7 +19,9 @@ async function main() {
   fs.mkdirSync(outDir, { recursive: true })
 
   const userData = path.join(outDir, 'user-data')
+  const tempDir = path.join(outDir, 'temp')
   fs.mkdirSync(userData, { recursive: true })
+  fs.mkdirSync(tempDir, { recursive: true })
   // Simulate a project deleted in File Explorer before the app was reopened.
   fs.writeFileSync(path.join(userData, 'workflow-preferences.json'), JSON.stringify({
     recentProjects: [{ path: path.join(outDir, 'deleted-project.json'), name: 'Deleted project', lastOpened: Date.now() }],
@@ -38,6 +40,9 @@ async function main() {
   const child = spawn(electron, args, {
     env: {
       ...process.env,
+      TEMP: tempDir,
+      TMP: tempDir,
+      TMPDIR: tempDir,
       PHASE2_HEADLESS: '0', // Exercise the normal maximized window startup.
       PHASE2_STARTUP_SMOKE: '1',
       PHASE2_STARTUP_SMOKE_DIR: outDir,

@@ -2,7 +2,7 @@ name: Windows build and synthetic export
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/macos-*']
   pull_request:
 
 jobs:
@@ -55,8 +55,8 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           python phase1/make-fixtures.py
           node phase2/build.cjs
-          node phase6/build-tools/node_modules/typescript/lib/tsc.js --noEmit --strict --skipLibCheck --allowJs --checkJs false --target es2022 --module esnext --moduleResolution bundler --lib es2022,dom,dom.iterable --typeRoots phase6/build-tools/node_modules/@types --types node upstream/prism/src/renderer/env.d.ts phase2/composition.ts phase2/editor.ts phase2/export-renderer.ts
-          node --test phase2/test/project-thumbnails.test.cjs phase2/test/waveform-channels.test.cjs phase2/test/still-output.test.cjs phase6/test/space.test.cjs phase6/test/window-security.test.cjs phase5/test/templates.test.cjs phase2/test/template-thumbnail.test.cjs phase2/test/project.test.cjs phase2/test/stage-geometry.test.cjs phase2/test/audio-output.test.cjs phase4/test/assets.test.cjs phase2/test/fonts.test.cjs phase1/test/pcm-reader.test.cjs phase3/test/vectorscope-correlation.test.cjs phase3/test/spectrum-payload.test.cjs phase2/test/user-message.test.cjs
+          node phase6/build-tools/node_modules/typescript/lib/tsc.js --project phase6/tsconfig.json
+          node --test phase6/test/typecheck.test.cjs phase2/test/macos-support.test.cjs phase2/test/project-thumbnails.test.cjs phase2/test/waveform-channels.test.cjs phase2/test/still-output.test.cjs phase6/test/space.test.cjs phase6/test/window-security.test.cjs phase5/test/templates.test.cjs phase2/test/template-thumbnail.test.cjs phase2/test/project.test.cjs phase2/test/stage-geometry.test.cjs phase2/test/audio-output.test.cjs phase4/test/assets.test.cjs phase2/test/fonts.test.cjs phase1/test/pcm-reader.test.cjs phase3/test/vectorscope-correlation.test.cjs phase3/test/spectrum-payload.test.cjs phase2/test/user-message.test.cjs
       - name: Prepare locked Windows installer tools
         shell: pwsh
         run: |
