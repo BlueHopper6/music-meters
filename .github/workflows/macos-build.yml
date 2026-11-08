@@ -4,6 +4,17 @@ on:
   push:
     branches: [main, 'feature/macos-*']
   pull_request:
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: 'Full 40-character commit SHA of the selected ref'
+        required: true
+        type: string
+      export_review_builds:
+        description: 'Owner-approved PUBLIC binary/source review downloads (3 days; not a release)'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -22,6 +33,20 @@ jobs:
             arch: x64
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify manually selected source revision
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]] || [[ "$(git rev-parse HEAD)" != "$EXPECTED_COMMIT" ]]; then
+            echo 'Select the intended ref and supply its full exact commit SHA.' >&2
+            exit 1
+          fi
+          test -z "$(git status --porcelain)"
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -116,11 +141,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 phase6/release-source.py --package artifacts/phase6/ci-package --output artifacts/phase6/ci-source.zip
+          python3 phase6/release-source.py --package artifacts/phase6/ci-package --output "artifacts/phase6/MusicMeters-source-macos-${{ matrix.arch }}.zip"
           node phase6/package-macos.cjs --pack-existing artifacts/phase6/ci-package --zip "artifacts/phase6/MusicMeters-macos-${{ matrix.arch }}.zip"
           mkdir -p "artifacts/phase6/Relocated Café App"
           ditto -x -k "artifacts/phase6/MusicMeters-macos-${{ matrix.arch }}.zip" "artifacts/phase6/Relocated Café App"
-          python3 phase6/test/source-archive.py "artifacts/phase6/Relocated Café App" artifacts/phase6/ci-source.zip artifacts/phase6/ci-extracted
+          python3 phase6/test/source-archive.py "artifacts/phase6/Relocated Café App" "artifacts/phase6/MusicMeters-source-macos-${{ matrix.arch }}.zip" artifacts/phase6/ci-extracted
           node phase6/test/package-macos-branding.cjs "artifacts/phase6/Relocated Café App"
           codesign --verify --deep --strict "artifacts/phase6/Relocated Café App/MusicMeters.app"
           node phase6/test/run-security.cjs "artifacts/phase6/Relocated Café App" artifacts/phase6/ci-relocated-security
@@ -139,6 +164,43 @@ jobs:
           node phase6/test/package-macos-branding.cjs ../../ci-rebuilt-package
           node phase6/test/package-smoke.cjs ../../ci-rebuilt-package ../../ci-rebuilt-smoke
           popd
-          shasum -a 256 "artifacts/phase6/MusicMeters-macos-${{ matrix.arch }}.zip" artifacts/phase6/ci-source.zip
+          shasum -a 256 "artifacts/phase6/MusicMeters-macos-${{ matrix.arch }}.zip" "artifacts/phase6/MusicMeters-source-macos-${{ matrix.arch }}.zip"
           cat "artifacts/phase6/Relocated Café App/BUILD-PROVENANCE.json"
           cat "artifacts/phase6/Relocated Café App/SOURCE-ARCHIVE.json"
+
+      # Public Actions artifacts are not private file transfer. Ordinary push/PR
+      # checks never export binaries. Dispatch with this flag only after the
+      # owner approves public review sharing for the chosen source revision.
+      - name: Stage tested review archives and checksums
+        if: github.event_name == 'workflow_dispatch' && inputs.export_review_builds && github.repository == 'BlueHopper6/music-meters'
+        shell: bash
+        env:
+          REVIEW_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          mkdir artifacts/phase6/review-downloads
+          cp "artifacts/phase6/MusicMeters-macos-${REVIEW_ARCH}.zip" artifacts/phase6/review-downloads/
+          # Keep the source filename recorded inside SOURCE-ARCHIVE.json intact.
+          cp "artifacts/phase6/MusicMeters-source-macos-${REVIEW_ARCH}.zip" artifacts/phase6/review-downloads/
+          cd artifacts/phase6/review-downloads
+          shasum -a 256 "MusicMeters-macos-${REVIEW_ARCH}.zip" "MusicMeters-source-macos-${REVIEW_ARCH}.zip" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          {
+            echo "### Experimental macOS review candidate (${REVIEW_ARCH})"
+            echo "Source: ${GITHUB_SHA}"
+            echo 'Ad-hoc signed; unnotarized. Not a published release.'
+            echo '```text'
+            cat SHA256SUMS.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Export owner-approved public review candidates
+        if: github.event_name == 'workflow_dispatch' && inputs.export_review_builds && github.repository == 'BlueHopper6/music-meters'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: MusicMeters-macos-${{ matrix.arch }}-${{ github.sha }}
+          path: |
+            artifacts/phase6/review-downloads/MusicMeters-macos-${{ matrix.arch }}.zip
+            artifacts/phase6/review-downloads/MusicMeters-source-macos-${{ matrix.arch }}.zip
+            artifacts/phase6/review-downloads/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 3
