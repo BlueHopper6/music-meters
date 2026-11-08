@@ -87,9 +87,11 @@ node --test phase2/test/project.test.cjs phase2/test/project-history.test.cjs ph
 Run the separate strict TypeScript check as well; bundling does not type-check:
 
 ```powershell
-node phase6/build-tools/node_modules/typescript/lib/tsc.js --noEmit --strict --skipLibCheck --allowJs --checkJs false --target es2022 --module esnext --moduleResolution bundler --lib es2022,dom,dom.iterable --typeRoots phase6/build-tools/node_modules/@types --types node upstream/prism/src/renderer/env.d.ts phase2/composition.ts phase2/editor.ts phase2/export-renderer.ts
+node phase6/build-tools/node_modules/typescript/lib/tsc.js --project phase6/tsconfig.json
 git diff --check
 ```
+
+The configuration resolves Prism's type-only React import directly to the locked build-tool declarations, so an unrelated React installation above the checkout cannot change the result. No React runtime is installed for the editor.
 
 Check each command's exit code (`$LASTEXITCODE` in PowerShell or `$?` in `zsh`/`bash`): zero means success. Stop and investigate failures before treating later commands as validation.
 

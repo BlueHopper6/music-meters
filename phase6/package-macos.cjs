@@ -122,7 +122,7 @@ function buildInfoPlist(options = {}, baseXml = '') {
     CFBundlePackageType: 'APPL',
     CFBundleShortVersionString: options.version || identity.version,
     CFBundleVersion: options.buildVersion || options.version || identity.version,
-    LSMinimumSystemVersion: options.minimumSystemVersion || identity.macosMinimumSystemVersion || '12.0',
+    LSMinimumSystemVersion: options.minimumSystemVersion || identity.macosMinimumSystemVersion || '13.0',
     NSHighResolutionCapable: true,
     NSHumanReadableCopyright: options.copyright || identity.copyright || 'Copyright 2026 Vilohit Kale',
   }

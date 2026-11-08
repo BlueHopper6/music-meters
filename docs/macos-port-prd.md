@@ -31,10 +31,10 @@ Included in scope:
 
 | Target | Architecture | Bundle Minimum OS (`LSMinimumSystemVersion`) | CI Runner Image (Verified OS) | Packaging Output |
 | :--- | :--- | :--- | :--- | :--- |
-| Apple Silicon | `arm64` | macOS `12.0` (`phase6/application.cjs`; native addon `MACOSX_DEPLOYMENT_TARGET: 10.15`) | `macos-15` (`arm64`, macOS 15.7.5) | `MusicMeters.app` + `MusicMeters-macos-arm64.zip` |
-| Intel Mac | `x64` | macOS `12.0` (`phase6/application.cjs`; native addon `MACOSX_DEPLOYMENT_TARGET: 10.15`) | `macos-15-intel` (`x64`, macOS 15.7.5) | `MusicMeters.app` + `MusicMeters-macos-x64.zip` |
+| Apple Silicon | `arm64` | macOS `13.0` (`phase6/application.cjs`; native addon `MACOSX_DEPLOYMENT_TARGET: 10.15`) | `macos-15` (`arm64`, macOS 15.7.5) | `MusicMeters.app` + `MusicMeters-macos-arm64.zip` |
+| Intel Mac | `x64` | macOS `13.0` (`phase6/application.cjs`; native addon `MACOSX_DEPLOYMENT_TARGET: 10.15`) | `macos-15-intel` (`x64`, macOS 15.7.5) | `MusicMeters.app` + `MusicMeters-macos-x64.zip` |
 
-> **Runtime verification scope:** `LSMinimumSystemVersion: 12.0` in `Info.plist` is a bundle metadata floor matching the Electron 45 runtime requirement. Automated CI verification is executed on GitHub-hosted macOS 15 (`macos-15` and `macos-15-intel`) runners; macOS 12–14 remain unverified until tested on target OS hardware or VMs.
+> **Runtime verification scope:** `LSMinimumSystemVersion: 13.0` in `Info.plist` matches the minimum declared by the bundled Electron 45 Mach-O executable. The packaged branding test rejects a bundle minimum below its executable/framework requirements. This metadata floor does not establish oldest-OS compatibility. Automated CI targets GitHub-hosted macOS 15 (`macos-15` and `macos-15-intel`); macOS 13–14 remain unverified until tested on target OS hardware or VMs. Recheck CI results for the exact source being released.
 
 Pinned runtime dependencies remain identical across Windows and macOS:
 
@@ -149,7 +149,8 @@ All Windows security controls remain mandatory on macOS:
 
 - `phase6/package-macos.cjs` supports ad-hoc Mach-O code signing (`codesign --force --sign -`) only (`assertSupportedSignIdentity`) for local contributor and CI builds (required by Apple Silicon's kernel task policy when modifying bundled Mach-O executables and frameworks), and records `signingMode: "adhoc"` in `BUILD-PROVENANCE.json`.
 - Passing any non-ad-hoc signing identity (`MUSICMETERS_MACOS_SIGN_IDENTITY`) is explicitly rejected until a dedicated Developer ID release-signing workflow (with `--options runtime`, secure `--timestamp`, Electron helper entitlements, `xcrun notarytool submit`, and `xcrun stapler staple`) is separately implemented and approved.
-- Ad-hoc signed CI builds are strictly development/contribution verification artifacts, not notarized public releases. Documentation and release notes must never instruct users to strip quarantine extended attributes or bypass macOS Gatekeeper; public macOS binary distribution requires Developer ID Application signing and Apple notarization on the exact release archive.
+- Production macOS releases require Developer ID Application signing and Apple notarization on the exact release archive. Ad-hoc signed CI builds are development/contribution verification artifacts and must never be called notarized.
+- A project-owner-approved experimental GitHub prerelease may instead use ad-hoc signing without paid Apple enrollment. Record that exception for the exact source/binary pair, clearly label the download **unnotarized**, disclose OS/architecture, FFmpeg prerequisites and deferred acceptance checks, and obtain separate owner approval before publication. Such a preview does not satisfy the production signing or clean-Mac gates; macOS may block its launch. Documentation and release notes must never instruct users to strip quarantine extended attributes or bypass macOS Gatekeeper.
 
 ---
 

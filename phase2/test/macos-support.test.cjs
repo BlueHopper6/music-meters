@@ -73,7 +73,7 @@ test('Electron runtime and packaged bundle helpers support darwin and win32 layo
   assert.equal(identity.macosExecutable, 'MusicMeters')
   assert.equal(identity.macosBundleName, 'MusicMeters.app')
   assert.equal(identity.macosIconFile, 'music-meters.icns')
-  assert.equal(identity.macosMinimumSystemVersion, '12.0')
+  assert.equal(identity.macosMinimumSystemVersion, '13.0')
   assert.equal(electronRelativeExecutable('darwin'), path.join('Electron.app', 'Contents', 'MacOS', 'Electron'))
   assert.equal(electronRelativeExecutable('win32'), 'electron.exe')
 
