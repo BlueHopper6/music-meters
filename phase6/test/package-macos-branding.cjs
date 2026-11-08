@@ -13,6 +13,16 @@ function sha256(file) {
   return createHash('sha256').update(fs.readFileSync(file)).digest('hex')
 }
 
+function compareVersions(left, right) {
+  const a = left.split('.').map(Number)
+  const b = right.split('.').map(Number)
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const difference = (a[i] || 0) - (b[i] || 0)
+    if (difference) return difference
+  }
+  return 0
+}
+
 function verifyMacBranding(directory) {
   const bundleDir = packagedBundleRoot(directory)
   const executable = packagedExecutable(directory)
@@ -59,6 +69,8 @@ function verifyMacBranding(directory) {
   assert.match(plistText, new RegExp(`<key>CFBundleIdentifier</key>\\s*<string>${identity.appId}</string>`))
   assert.match(plistText, new RegExp(`<key>CFBundleIconFile</key>\\s*<string>${identity.macosIconFile}</string>`))
   assert.match(plistText, new RegExp(`<key>CFBundleShortVersionString</key>\\s*<string>${identity.version}</string>`))
+  const minimumSystemVersion = plistText.match(/<key>LSMinimumSystemVersion<\/key>\s*<string>([^<]+)<\/string>/)?.[1]
+  assert.equal(minimumSystemVersion, identity.macosMinimumSystemVersion, 'Bundle OS minimum must match application identity')
 
   const metadata = JSON.parse(fs.readFileSync(path.join(appRoot, 'package.json'), 'utf8'))
   assert.equal(metadata.name, identity.name, 'Preserve original packaged profile identity')
@@ -96,7 +108,8 @@ function verifyMacBranding(directory) {
     assert.equal(verify.status, 0, `codesign verify failed: ${verify.stderr}`)
 
     const expectedMachArch = process.arch === 'arm64' ? 'arm64' : 'x86_64'
-    for (const bin of [executable, helperExec, addon]) {
+    const frameworkExec = path.join(frameworkRoot, 'Electron Framework')
+    for (const bin of [executable, frameworkExec, helperExec, addon]) {
       const fileOut = spawnSync('file', ['-b', bin], { encoding: 'utf8', shell: false })
       assert.equal(fileOut.status, 0)
       assert.match(fileOut.stdout, /Mach-O 64-bit/, `${bin} must be a 64-bit Mach-O binary: ${fileOut.stdout}`)
@@ -106,6 +119,14 @@ function verifyMacBranding(directory) {
       assert.equal(otool.status, 0)
       const linkedLibs = otool.stdout.trim().split(/\r?\n/).slice(1).join('\n')
       assert.doesNotMatch(linkedLibs, /\/Users\/|\/opt\/homebrew\/|\/usr\/local\//, `Mach-O binary links non-system path (${bin}): ${linkedLibs}`)
+
+      const commands = spawnSync('otool', ['-l', bin], { encoding: 'utf8', shell: false })
+      assert.equal(commands.status, 0, `Cannot inspect Mach-O OS requirement: ${commands.stderr}`)
+      const binaryMinimum = commands.stdout.match(/cmd LC_BUILD_VERSION\s[\s\S]*?\bminos (\d+(?:\.\d+)*)/)?.[1]
+        || commands.stdout.match(/cmd LC_VERSION_MIN_MACOSX\s[\s\S]*?\bversion (\d+(?:\.\d+)*)/)?.[1]
+      assert.ok(binaryMinimum, `Missing Mach-O macOS requirement: ${bin}`)
+      assert.ok(compareVersions(minimumSystemVersion, binaryMinimum) >= 0,
+        `Bundle declares macOS ${minimumSystemVersion}, but ${path.basename(bin)} requires macOS ${binaryMinimum}`)
     }
   }
 
@@ -117,6 +138,7 @@ function verifyMacBranding(directory) {
     arch: process.arch,
     icon: identity.macosIconFile,
     profile: identity.name,
+    minimumSystemVersion,
   }))
 }
 

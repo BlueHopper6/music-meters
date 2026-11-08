@@ -40,24 +40,32 @@ module.exports = async function portraitSmoke(win) {
   win.showInactive()
   await delay(300)
   assert.equal(await evaluate('document.getElementById("window-fullscreen") === null'), true)
-  await pointAt('window-minimize')
-  await wait('getComputedStyle(document.getElementById("window-minimize")).backgroundColor === "rgb(44, 44, 51)"', 'minimize hover transition')
-  await pointAt('window-maximize')
-  await wait('getComputedStyle(document.getElementById("window-maximize")).backgroundColor === "rgb(44, 44, 51)"', 'maximize hover transition')
-  await pointAt('window-close')
-  await wait('getComputedStyle(document.getElementById("window-close")).backgroundColor === "rgb(196, 43, 28)"', 'close hover transition')
-  fs.writeFileSync(path.join(dir, 'close-hover.png'), (await win.capturePage()).toPNG())
+  if (process.platform === 'darwin') {
+    assert.equal(await evaluate('document.querySelector(".window-controls").getClientRects().length'), 0,
+      'macOS uses native traffic lights rather than Windows caption buttons')
+  } else {
+    await pointAt('window-minimize')
+    await wait('getComputedStyle(document.getElementById("window-minimize")).backgroundColor === "rgb(44, 44, 51)"', 'minimize hover transition')
+    await pointAt('window-maximize')
+    await wait('getComputedStyle(document.getElementById("window-maximize")).backgroundColor === "rgb(44, 44, 51)"', 'maximize hover transition')
+    await pointAt('window-close')
+    await wait('getComputedStyle(document.getElementById("window-close")).backgroundColor === "rgb(196, 43, 28)"', 'close hover transition')
+    fs.writeFileSync(path.join(dir, 'close-hover.png'), (await win.capturePage()).toPNG())
+  }
   fullscreenKey()
   await wait('document.body.classList.contains("window-fullscreen")', 'app fullscreen')
   assert.equal(win.isFullScreen(), true)
   fullscreenKey()
   await wait('!document.body.classList.contains("window-fullscreen")', 'exit app fullscreen')
-  await clickControl('window-maximize')
+  if (process.platform === 'darwin') { await evaluate('window.desktop.maximizeWindow()'); await delay(200) }
+  else await clickControl('window-maximize')
   assert.equal(win.isMaximized(), true)
   assert.equal(await evaluate('document.querySelector("#window-maximize").title'), 'Restore')
-  await clickControl('window-maximize')
+  if (process.platform === 'darwin') { await evaluate('window.desktop.maximizeWindow()'); await delay(200) }
+  else await clickControl('window-maximize')
   assert.equal(win.isMaximized(), false)
-  await clickControl('window-minimize')
+  if (process.platform === 'darwin') { await evaluate('window.desktop.minimizeWindow()'); await delay(200) }
+  else await clickControl('window-minimize')
   assert.equal(win.isMinimized(), true)
   win.restore(); await delay(300)
   win.setContentSize(1480, 900)

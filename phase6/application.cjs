@@ -8,5 +8,5 @@ module.exports = {
   macosExecutable: 'MusicMeters',
   macosBundleName: 'MusicMeters.app',
   macosIconFile: 'music-meters.icns',
-  macosMinimumSystemVersion: '12.0',
+  macosMinimumSystemVersion: '13.0',
 }
