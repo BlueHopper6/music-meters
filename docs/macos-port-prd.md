@@ -8,7 +8,7 @@ This specification defines the architecture, security invariants, platform adapt
 
 Included in scope:
 
-- Native compilation of the pinned Prism C++17/Objective-C++ N-API DSP addon (`visualizer_dsp.node`) against Electron `45.2.3` (`node 24.22.2` headers) on macOS.
+- Native compilation of the pinned Prism C++17/Objective-C++ N-API DSP addon (`visualizer_dsp.node`) against Electron `45.3.0` (`node 24.22.2` headers) on macOS.
 - Cross-platform Electron runtime and packaged executable resolution for both Windows portable directories (`MusicMeters.exe`) and macOS application bundles (`MusicMeters.app/Contents/MacOS/MusicMeters`).
 - Bounded, injection-safe macOS font discovery and deterministic cross-platform font fallback so built-in factory layouts and projects created on either Windows or macOS open, preview, and export consistently without silently corrupting saved project files.
 - Deterministic FFmpeg and FFprobe discovery that works both from terminal sessions and when `MusicMeters.app` is launched from Finder/Dock (where macOS provides a minimal `PATH` that omits `/opt/homebrew/bin` and `/usr/local/bin`).
@@ -39,7 +39,7 @@ Included in scope:
 Pinned runtime dependencies remain identical across Windows and macOS:
 
 - **Application version**: `1.3.0` (`phase6/application.cjs`)
-- **Electron runtime**: `45.2.3` (`phase6/electron-runtime.cjs`)
+- **Electron runtime**: `45.3.0` (`phase6/electron-runtime.cjs`)
 - **Electron Node headers**: `24.22.2`
 - **Prism commit**: `49721802252b115d169e353c98b27408daa5e2b7` (`upstream/prism`)
 

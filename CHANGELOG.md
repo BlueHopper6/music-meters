@@ -13,6 +13,10 @@ User-facing release history, newest first. GitHub release notes provide the down
 - Preserve Windows media references when a project is opened on macOS, avoiding accidental resolution against unrelated local files.
 - Keep separate project thumbnails for distinct files on case-sensitive volumes.
 
+### Changed
+
+- Source builds use Electron 45.3.0 with Chromium security fixes. Published Windows 1.3.0 download files remain unchanged.
+
 ### Requirements and limitations
 
 - Mac builds use ad-hoc signing and are unnotarized; macOS may block downloaded builds. FFmpeg and FFprobe remain separate prerequisites. Any experimental download requires its exact matching source and explicit release approval; these source changes do not announce a published Mac release.
