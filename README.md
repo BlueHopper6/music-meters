@@ -6,7 +6,7 @@
 
 **Turn your music into videos with editable audio visualizers.**
 
-[Download for Windows](https://github.com/BlueHopper6/music-meters/releases) · [Getting started](#getting-started) · [User guide](docs/user-guide.md) · [Changelog](CHANGELOG.md)
+[Download for Windows](https://github.com/BlueHopper6/music-meters/releases/tag/v1.3.0) · [Mac preview](https://github.com/BlueHopper6/music-meters/releases/tag/macos-v1.3.0-preview.1) · [Getting started](#getting-started) · [User guide](docs/user-guide.md) · [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -55,11 +55,15 @@ Each meter has its own settings, colors, and placement, with six coordinated col
 - **Lossless master:** MKV with lossless RGB video and 32-bit float PCM audio; files can be much larger.
 - Track export progress, cancel an export, and keep existing videos safe from silent overwrites.
 
-The latest release is [MusicMeters 1.3.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.3.0), with project thumbnails, video-region and still-frame exports, and improved composition controls. See the [changelog](CHANGELOG.md) for the release history.
+The latest stable Windows release is [MusicMeters 1.3.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.3.0), with project thumbnails, video-region and still-frame exports, and improved composition controls. See the [changelog](CHANGELOG.md) for the release history.
 
 ## Download
 
-Official release downloads currently target **Windows x64**. Download the setup EXE or portable ZIP from [MusicMeters 1.3.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.3.0) and check its requirements and checksums. Contributor macOS (`arm64` / `x64`) development and packaging support is in progress (see the [macOS port PRD](docs/macos-port-prd.md)); Linux builds have not been validated.
+Stable **Windows x64** setup and portable downloads are available from [MusicMeters 1.3.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.3.0).
+
+An **experimental, unnotarized macOS preview** is available for Apple Silicon and Intel Macs from [Mac Experimental Preview 1](https://github.com/BlueHopper6/music-meters/releases/tag/macos-v1.3.0-preview.1). It requires macOS 13 or later and separate FFmpeg/FFprobe; macOS may block downloaded builds. Read the [Mac preview notes](docs/releases/macos-1.3.0-preview.1.md) for checksums, matching source archives, the disclosed Node security patch gap and testing limits. Linux remains unverified.
+
+For Windows:
 
 1. Install the FFmpeg command-line tools and put both `ffmpeg` and `ffprobe` on your Windows `PATH`. Check `ffmpeg -version` and `ffprobe -version` in a new terminal.
 2. For the **setup EXE**, run it to install MusicMeters for your Windows account, then open **MusicMeters** from the Start menu. Setup adds an uninstall entry and preserves the existing templates/preferences location.

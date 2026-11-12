@@ -2,7 +2,9 @@
 
 User-facing release history, newest first. GitHub release notes provide the download announcement and exact package details; this file keeps the feature history with the source.
 
-## Unreleased
+## [macOS 1.3.0 Experimental Preview 1](https://github.com/BlueHopper6/music-meters/releases/tag/macos-v1.3.0-preview.1) — 2026-11-11
+
+See the [Mac preview notes](docs/releases/macos-1.3.0-preview.1.md) for exact downloads, validation and the disclosed Node security patch gap. The stable Windows 1.3.0 downloads are unchanged.
 
 ### Added
 
@@ -19,7 +21,7 @@ User-facing release history, newest first. GitHub release notes provide the down
 
 ### Requirements and limitations
 
-- Mac builds use ad-hoc signing and are unnotarized; macOS may block downloaded builds. FFmpeg and FFprobe remain separate prerequisites. Any experimental download requires its exact matching source and explicit release approval; these source changes do not announce a published Mac release.
+- Mac builds use ad-hoc signing and are unnotarized; macOS may block downloaded builds. FFmpeg and FFprobe remain separate prerequisites. Each architecture has its exact matching source archive. Clean-Mac/download acceptance and macOS 13–14 compatibility remain unverified. Electron 45.3.0 embeds Node 24.22.2; inclusion of the November 11 Node 24.22.3 security fixes is unverified.
 
 ## [1.3.0](https://github.com/BlueHopper6/music-meters/releases/tag/v1.3.0) — 2026-11-06
 
